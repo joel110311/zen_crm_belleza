@@ -1,0 +1,2 @@
+ALTER TABLE "Appointment"
+ADD COLUMN IF NOT EXISTS "remindersOptOut" BOOLEAN NOT NULL DEFAULT false;

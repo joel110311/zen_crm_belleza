@@ -1,0 +1,35 @@
+[2026-02-10T18:56:25.790Z] [UPLOAD] Looking for file: C:\Users\Joel\Documents\Desarrollos\CRM\talosflow-crm\public\uploads\1770749785472-alusem.m4a
+[2026-02-10T18:56:25.797Z] [UPLOAD] Uploading to 0x0.st: 1770749785472-alusem.m4a (102342 bytes)
+[2026-02-10T18:56:26.395Z] [UPLOAD] ERROR: 0x0.st returned 400: suspected malware client, rejecting traffic
+[2026-02-10T18:59:46.097Z] [UPLOAD] Looking for file: C:\Users\Joel\Documents\Desarrollos\CRM\talosflow-crm\public\uploads\1770749985806-ws65as.m4a
+[2026-02-10T18:59:46.102Z] [UPLOAD] File read: 1770749985806-ws65as.m4a (107277 bytes)
+[2026-02-10T18:59:46.106Z] [UPLOAD] Uploading to file.io...
+[2026-02-10T18:59:46.788Z] [UPLOAD] file.io failed: Unexpected token '<', "<html>
+<he"... is not valid JSON
+[2026-02-10T18:59:46.791Z] [UPLOAD] Trying 0x0.st as fallback...
+[2026-02-10T18:59:48.158Z] [UPLOAD] SUCCESS via 0x0.st: https://0x0.st/PAe6.m4a
+[2026-02-10T23:59:31.002Z] [RESOLVE] Public media URL: https://merry-vagally-thomasina.ngrok-free.dev/api/media/1770767970734-garruh.ogg
+[2026-02-11T01:05:52.160Z] [CONVERT] Converting 1770771951652-kqzgk.ogg to OGG/Opus
+[2026-02-11T01:05:52.162Z] [CONVERT] FFmpeg: \ROOT\node_modules\ffmpeg-static\ffmpeg.exe
+[2026-02-11T01:05:52.172Z] [CONVERT] ERROR: spawn \ROOT\node_modules\ffmpeg-static\ffmpeg.exe ENOENT
+[2026-02-11T01:05:52.173Z] [RESOLVE] WARNING: FFmpeg conversion failed, uploading original file
+[2026-02-11T01:05:52.176Z] [UPLOAD] Uploading 1770771951652-kqzgk.ogg (148439 bytes) to catbox...
+[2026-02-11T01:05:52.378Z] [UPLOAD] ERROR: fetch failed
+[2026-02-11T01:05:52.380Z] [RESOLVE] ERROR: Failed to upload to catbox
+[2026-02-11T01:06:43.483Z] [CONVERT] Converting 1770772003186-dh698f.ogg to MP3
+[2026-02-11T01:06:43.497Z] [CONVERT] ERROR: spawn \ROOT\node_modules\ffmpeg-static\ffmpeg.exe ENOENT
+[2026-02-11T01:06:43.503Z] [RESOLVE] WARNING: FFmpeg conversion failed, uploading original file
+[2026-02-11T01:06:43.508Z] [UPLOAD] Uploading 1770772003186-dh698f.ogg (66057 bytes) to catbox.moe...
+[2026-02-11T01:06:43.989Z] [UPLOAD] Success: https://files.catbox.moe/g7x17c.ogg
+[2026-02-11T01:06:44.000Z] [RESOLVE] Final public URL: https://files.catbox.moe/g7x17c.ogg
+[2026-02-11T01:09:35.096Z] [CONVERT] Converting 1770772174661-cl5e14.ogg to MP3
+[2026-02-11T01:09:35.315Z] [CONVERT] Success: 1770772174661-cl5e14.mp3 (142986 bytes)
+[2026-02-11T01:09:35.319Z] [UPLOAD] Uploading 1770772174661-cl5e14.mp3 (142986 bytes) to catbox.moe...
+[2026-02-11T01:09:36.098Z] [UPLOAD] Success: https://files.catbox.moe/yolskr.mp3
+[2026-02-11T01:09:36.101Z] [RESOLVE] Final public URL: https://files.catbox.moe/yolskr.mp3
+[2026-02-15T04:55:21.976Z] [UPLOAD] Uploading 1771131321902-aacl9.pdf (172094 bytes) to catbox.moe...
+[2026-02-15T04:55:22.561Z] [UPLOAD] Success: https://files.catbox.moe/coqx4p.pdf
+[2026-02-15T04:55:22.562Z] [RESOLVE] Final public URL: https://files.catbox.moe/coqx4p.pdf
+[2026-02-15T04:57:47.243Z] [UPLOAD] Uploading 1771131467203-1gngg2.pdf (172094 bytes) to catbox.moe...
+[2026-02-15T04:57:47.686Z] [UPLOAD] Success: https://files.catbox.moe/coqx4p.pdf
+[2026-02-15T04:57:47.687Z] [RESOLVE] Final public URL: https://files.catbox.moe/coqx4p.pdf

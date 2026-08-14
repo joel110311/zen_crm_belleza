@@ -1,0 +1,4 @@
+phone,name,last_name,email,company,role,status,tags
+5215512345678,Karen,Ruiz,karen@example.com,Zen Estates,Compras,lead,"vip;reactivacion"
+5215511223344,Joel,Venegas,joel@example.com,CRM Logic,Director,qualified,"demo;hot-list"
+5215511122233,Bodega Norte,,bodega@example.com,Almacen Norte,Operaciones,customer,"norte;seguimiento"

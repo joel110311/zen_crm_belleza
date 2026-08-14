@@ -1,0 +1,14 @@
+node_modules
+.next
+.git
+.gitignore
+*.md
+.env
+.env.*
+.vscode
+.idea
+cookies.txt
+csrf.json
+build_stats.txt
+media-upload.log
+tmp*

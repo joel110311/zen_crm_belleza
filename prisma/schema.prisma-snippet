@@ -1,0 +1,10 @@
+model Deal {
+  id        String   @id @default(cuid())
+  title     String
+  value     Float
+  stage     String   @default("new") // new, qualified, proposal, negotiation, won
+  contactId String?
+  contact   Contact? @relation(fields: [contactId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

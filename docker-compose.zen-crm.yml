@@ -1,0 +1,129 @@
+services:
+  zen-crm:
+    image: ghcr.io/joel110311/zen_crm_oftalmo:latest
+    environment:
+      - DATABASE_URL=postgresql://zencrm:${POSTGRES_PASSWORD}@${CRM_DB_HOST:-zen-crm-db}:5432/${POSTGRES_DB}
+      - WHATSAPP_GATEWAY_URL=http://whatsapp-gateway:8080
+      - WUZAPI_ADMIN_TOKEN=${WUZAPI_ADMIN_TOKEN}
+      - WUZAPI_USER_TOKEN=${WUZAPI_USER_TOKEN:-}
+      - WHATSAPP_INSTANCE_NAME=${WHATSAPP_INSTANCE_NAME:-zen-crm}
+      - WUZAPI_GLOBAL_ENCRYPTION_KEY=${WUZAPI_GLOBAL_ENCRYPTION_KEY}
+      - WUZAPI_GLOBAL_HMAC_KEY=${WUZAPI_GLOBAL_HMAC_KEY}
+      - PRISMA_LOG_QUERIES=${PRISMA_LOG_QUERIES:-false}
+      - ALLOW_ENV_AI_FALLBACK=${ALLOW_ENV_AI_FALLBACK:-false}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - INITIAL_ADMIN_EMAIL=${INITIAL_ADMIN_EMAIL}
+      - INITIAL_ADMIN_PASSWORD=${INITIAL_ADMIN_PASSWORD}
+      - INITIAL_ADMIN_NAME=${INITIAL_ADMIN_NAME:-Owner}
+      - AUTH_SECRET=${AUTH_SECRET}
+      - AUTH_URL=${AUTH_URL}
+      - APP_BASE_URL=${APP_BASE_URL}
+      - WHATSAPP_WEBHOOK_BASE_URL=${WHATSAPP_WEBHOOK_BASE_URL}
+      - TZ=${TZ:-America/Mexico_City}
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+      - STARTUP_DB_MAX_ATTEMPTS=${STARTUP_DB_MAX_ATTEMPTS:-40}
+      - STARTUP_DB_RETRY_MS=${STARTUP_DB_RETRY_MS:-5000}
+    networks:
+      - traefik-public
+    volumes:
+      - zen_crm_uploads:/app/public/uploads
+    depends_on:
+      - zen-crm-db
+      - whatsapp-gateway
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/api/health?scope=ready').then((res)=>process.exit(res.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "5"
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.${STACK_SLUG:-zen-crm}.rule=Host(`${APP_DOMAIN}`)"
+        - "traefik.http.routers.${STACK_SLUG:-zen-crm}.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}"
+        - "traefik.http.routers.${STACK_SLUG:-zen-crm}.tls.certresolver=${TRAEFIK_CERTRESOLVER:-letsencryptresolver}"
+        - "traefik.http.services.${STACK_SLUG:-zen-crm}.loadbalancer.server.port=3000"
+        - "traefik.docker.network=${TRAEFIK_NETWORK:-SociosNet}"
+
+  whatsapp-gateway:
+    image: asternic/wuzapi:sha-e6d58f8
+    environment:
+      - WUZAPI_ADMIN_TOKEN=${WUZAPI_ADMIN_TOKEN}
+      - WUZAPI_GLOBAL_ENCRYPTION_KEY=${WUZAPI_GLOBAL_ENCRYPTION_KEY}
+      - WUZAPI_GLOBAL_HMAC_KEY=${WUZAPI_GLOBAL_HMAC_KEY}
+      - DB_USER=zencrm
+      - DB_PASSWORD=${POSTGRES_PASSWORD}
+      - DB_NAME=${POSTGRES_DB}
+      - DB_HOST=${WUZAPI_DB_HOST:-zen-crm-db}
+      - DB_PORT=5432
+      - DB_SSLMODE=false
+      - TZ=${TZ:-America/Mexico_City}
+      - WEBHOOK_FORMAT=json
+      - SESSION_DEVICE_NAME=${SESSION_DEVICE_NAME:-Zen CRM}
+    networks:
+      - traefik-public
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "5"
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
+  zen-crm-db:
+    image: ghcr.io/joel110311/zen_crm_oftalmo_db:latest
+    environment:
+      - POSTGRES_USER=zencrm
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - TZ=${TZ:-America/Mexico_City}
+    volumes:
+      - zen_crm_db_data:/var/lib/postgresql/data
+    networks:
+      - traefik-public
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zencrm -d ${POSTGRES_DB}"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "5"
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+
+volumes:
+  zen_crm_db_data:
+  zen_crm_uploads:
+
+networks:
+  traefik-public:
+    external: true
+    name: ${TRAEFIK_NETWORK:-SociosNet}

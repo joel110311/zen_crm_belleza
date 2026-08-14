@@ -1,0 +1,997 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions", "driverAdapters"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  extensions = [vector]
+}
+
+model User {
+  id          String   @id @default(cuid())
+  email       String   @unique
+  name        String?
+  password    String
+  role        String   @default("RECEPCION")
+  permissions Json     @default("[]")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  appointments          Appointment[]
+  assignedConversations Conversation[] @relation("ConversationAssignee")
+  bulkCampaigns         BulkCampaign[]
+  specialists           Specialist[]
+  cashMovements         CashMovement[]
+  cashClosures          CashClosure[]
+}
+
+model Contact {
+  id                       String    @id @default(cuid())
+  phone                    String    @unique
+  name                     String?
+  lastName                 String?
+  email                    String?
+  company                  String?
+  role                     String?
+  whatsappAvatarUrl        String?
+  whatsappAvatarPictureId  String?
+  whatsappAvatarCheckedAt  DateTime?
+  whatsappAvatarUpdatedAt  DateTime?
+  bulkCampaignOptOutAt     DateTime?
+  bulkCampaignOptOutReason String?
+  tags                     String[]
+  status                   String    @default("lead") // lead, qualified, customer
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
+
+  conversations          Conversation[]
+  appointments           Appointment[]
+  patients               Patient[]
+  cashMovements          CashMovement[]
+  paymentLinks           PaymentLink[]
+  deals                  Deal[]
+  bulkCampaignRecipients BulkCampaignRecipient[]
+}
+
+model Conversation {
+  id             String   @id @default(cuid())
+  contactId      String
+  contact        Contact  @relation(fields: [contactId], references: [id])
+  assignedUserId String?
+  assignedUser   User?    @relation("ConversationAssignee", fields: [assignedUserId], references: [id])
+  status         String   @default("active") // active, closed, archived
+  sourceType     String   @default("wuzapi") @map("source_type") // wuzapi, ycloud
+  sourceId       String?  @map("source_id") // account id / instance id
+  isMuted        Boolean  @default(false)
+  isFavorite     Boolean  @default(false)
+  isGroup        Boolean  @default(false)
+  botActive      Boolean  @default(true) // true = IA handles, false = Humano handles
+  createdAt      DateTime @default(now())
+
+  updatedAt        DateTime  @updatedAt
+  sessionExpiresAt DateTime? // Tracks the 24h WhatsApp Business API window
+
+  messages               Message[]
+  catalogState           CatalogConversationState?
+  bulkCampaignRecipients BulkCampaignRecipient[]
+
+  @@index([updatedAt(sort: Desc)])
+  @@index([contactId])
+  @@index([contactId, sourceType, sourceId, status])
+  @@index([sourceType, sourceId])
+  @@index([assignedUserId])
+}
+
+model Message {
+  id                String       @id @default(cuid())
+  conversationId    String
+  conversation      Conversation @relation(fields: [conversationId], references: [id])
+  content           String
+  type              String       @default("text") // text, image, document, audio, video
+  direction         String // inbound, outbound
+  sourceType        String       @default("wuzapi") @map("source_type") // wuzapi, ycloud
+  sourceId          String?      @map("source_id") // account id / instance id
+  status            String       @default("sent") // sent, delivered, read, failed
+  senderType        String? // "bot" for IA responses, "human" for CRM agent
+  mediaUrl          String? // URL to media file
+  mediaType         String? // MIME type (image/jpeg, audio/ogg, etc.)
+  mediaFileName     String? // Original filename for documents
+  providerMessageId String? // Native WhatsApp/WuzAPI message id
+  reaction          String? // Emoji reaction (e.g., '👍', '❤️')
+  createdAt         DateTime     @default(now())
+
+  @@index([conversationId, createdAt(sort: Desc)])
+  @@index([providerMessageId])
+  @@index([sourceType, sourceId])
+  @@index([sourceType, providerMessageId])
+}
+
+model Appointment {
+  id                   String        @id @default(cuid())
+  title                String
+  startTime            DateTime
+  endTime              DateTime
+  status               String        @default("scheduled") // scheduled, completed, cancelled
+  notes                String?
+  googleEventId        String?
+  googleCalendarId     String?
+  googleCalendarName   String?
+  googleCalendarColor  String?
+  specialistName       String?
+  googleEventUpdatedAt DateTime?
+  appointmentType      String?       @default("Consulta")
+  source               String        @default("internal") // internal, portal, chat, google
+  isFirstVisit         Boolean       @default(false)
+  isOverbook           Boolean       @default(false)
+  confirmationStatus   String        @default("pending") // pending, confirmed, declined
+  reminderStatus       String        @default("pending") // pending, queued, sent, failed
+  remindersOptOut      Boolean       @default(false)
+  paymentStatus        String        @default("unpaid")
+  paymentAmount        Float         @default(0)
+  paymentCurrency      String        @default("MXN")
+  paymentMethod        String?       @default("efectivo")
+  paymentLinkUrl       String?
+  publicToken          String?       @unique
+  visitMode            String        @default("presencial") // presencial, virtual, hibrida
+  meetStatus           String        @default("none") // none, requested, generated, failed
+  meetLink             String?
+  arrivalAt            DateTime?
+  calledAt             DateTime?
+  startedAt            DateTime?
+  completedAt          DateTime?
+  cancelledAt          DateTime?
+  noShowAt             DateTime?
+  confirmedAt          DateTime?
+  cancellationReason   String?
+  parentAppointmentId  String?
+  parentAppointment    Appointment?  @relation("AppointmentClones", fields: [parentAppointmentId], references: [id], onDelete: SetNull)
+  clonedAppointments   Appointment[] @relation("AppointmentClones")
+
+  contactId String?
+  contact   Contact? @relation(fields: [contactId], references: [id])
+
+  patientId String?
+  patient   Patient? @relation(fields: [patientId], references: [id])
+
+  specialistId String?
+  specialist   Specialist? @relation(fields: [specialistId], references: [id], onDelete: SetNull)
+
+  serviceId String?
+  service   Service? @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id])
+
+  patientConsultations PatientConsultation[]
+  cashMovements        CashMovement[]
+  paymentLinks         PaymentLink[]
+  appointmentReminders AppointmentReminder[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([googleCalendarId, googleEventId])
+  @@index([startTime])
+  @@index([contactId])
+  @@index([patientId])
+  @@index([googleCalendarId])
+  @@index([specialistId, startTime])
+  @@index([serviceId])
+  @@index([status, startTime])
+  @@index([source])
+  @@index([paymentStatus, startTime])
+  @@index([visitMode, startTime])
+  @@index([parentAppointmentId])
+}
+
+model AppointmentReminder {
+  id                String      @id @default(cuid())
+  appointmentId     String
+  appointment       Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  offsetMinutes     Int
+  label             String
+  channel           String      @default("whatsapp")
+  provider          String      @default("wuzapi") // wuzapi, ycloud
+  messageKind       String      @default("text") // text, template
+  scheduledFor      DateTime
+  status            String      @default("queued") // queued, sending, sent, failed, cancelled, skipped
+  attempts          Int         @default(0)
+  lastError         String?
+  sentAt            DateTime?
+  messageId         String?
+  providerMessageId String?
+  lockId            String?
+  lockExpiresAt     DateTime?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  @@unique([appointmentId, offsetMinutes, channel])
+  @@index([status, scheduledFor])
+  @@index([appointmentId])
+  @@index([provider])
+}
+
+model Specialist {
+  id                     String                        @id @default(cuid())
+  name                   String
+  displayName            String?
+  specialty              String?
+  email                  String?
+  phone                  String?
+  professionalTitle      String?
+  professionalLicense    String?
+  color                  String?                       @default("#2563EB")
+  room                   String?
+  bio                    String?
+  photoUrl               String?
+  defaultDurationMinutes Int                           @default(30)
+  isActive               Boolean                       @default(true)
+  sortOrder              Int                           @default(0)
+  userId                 String?
+  user                   User?                         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  googleCalendarSourceId String?                       @unique
+  googleCalendarSource   GoogleCalendarSource?         @relation(fields: [googleCalendarSourceId], references: [id], onDelete: SetNull)
+  appointments           Appointment[]
+  patientConsultations   PatientConsultation[]
+  availabilityBlocks     SpecialistAvailabilityBlock[]
+  cashMovements          CashMovement[]
+  paymentLinks           PaymentLink[]
+  services               SpecialistService[]
+  createdAt              DateTime                      @default(now())
+  updatedAt              DateTime                      @updatedAt
+
+  @@index([isActive, sortOrder])
+  @@index([userId])
+}
+
+model ServiceCategory {
+  id          String    @id @default(cuid())
+  name        String    @unique
+  description String?
+  color       String?   @default("#B7923A")
+  isActive    Boolean   @default(true)
+  sortOrder   Int       @default(0)
+  services    Service[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([isActive, sortOrder])
+}
+
+model Service {
+  id              String              @id @default(cuid())
+  name            String              @unique
+  description     String?
+  categoryId      String
+  category        ServiceCategory     @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  price           Float               @default(0)
+  currency        String              @default("MXN")
+  durationMinutes Int                 @default(30)
+  imageUrl        String?
+  showPrice       Boolean             @default(true)
+  isFeatured      Boolean             @default(false)
+  isActive        Boolean             @default(true)
+  sortOrder       Int                 @default(0)
+  specialists     SpecialistService[]
+  appointments    Appointment[]
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  @@index([categoryId, isActive, sortOrder])
+}
+
+model SpecialistService {
+  specialistId String
+  serviceId    String
+  specialist   Specialist @relation(fields: [specialistId], references: [id], onDelete: Cascade)
+  service      Service    @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now())
+
+  @@id([specialistId, serviceId])
+  @@index([serviceId])
+}
+
+model SpecialistAvailabilityBlock {
+  id           String      @id @default(cuid())
+  specialistId String?
+  specialist   Specialist? @relation(fields: [specialistId], references: [id], onDelete: Cascade)
+  title        String
+  type         String      @default("block") // block, holiday, license
+  startTime    DateTime
+  endTime      DateTime
+  notes        String?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  @@index([specialistId, startTime])
+  @@index([startTime, endTime])
+}
+
+model Patient {
+  id                     String    @id @default(cuid())
+  patientNumber          String    @unique
+  firstName              String
+  lastName               String
+  phone                  String?
+  email                  String?
+  address                String?
+  dob                    DateTime?
+  sex                    String?
+  idType                 String?
+  idNumber               String?
+  allergies              String?
+  pathologicalHistory    String?
+  nonPathologicalHistory String?
+  familyHistory          String?
+  surgicalHistory        String?
+  currentMedications     String?
+  notes                  String?
+  balance                Float     @default(0)
+  lastVisitAt            DateTime?
+  contactId              String?
+  contact                Contact?  @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  appointments     Appointment[]
+  consultations    PatientConsultation[]
+  evolutionNotes   PatientEvolutionNote[]
+  budgets          PatientBudget[]
+  clinicalAnalyses PatientClinicalAnalysis[]
+  cashMovements    CashMovement[]
+  paymentLinks     PaymentLink[]
+
+  @@index([firstName, lastName])
+  @@index([phone])
+  @@index([lastVisitAt])
+  @@index([contactId])
+}
+
+model PatientConsultation {
+  id             String                 @id @default(cuid())
+  patientId      String
+  patient        Patient                @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  appointmentId  String?
+  appointment    Appointment?           @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  specialistId   String?
+  specialist     Specialist?            @relation(fields: [specialistId], references: [id], onDelete: SetNull)
+  parentId       String?
+  parent         PatientConsultation?   @relation("ConsultationFollowUps", fields: [parentId], references: [id], onDelete: SetNull)
+  followUps      PatientConsultation[]  @relation("ConsultationFollowUps")
+  type           String                 @default("consultation")
+  chiefComplaint String
+  notes          String?
+  diagnosis      String?
+  treatmentPlan  String?
+  vitalSigns     Json?
+  medications    Json?
+  studies        Json?
+  studyRequests  Json?
+  bmi            Float?
+  doctorName     String?
+  professionalTitle String?
+  professionalLicense String?
+  clinicName     String?
+  evolutionNotes PatientEvolutionNote[]
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+
+  @@index([patientId, createdAt])
+  @@index([appointmentId])
+  @@index([specialistId])
+  @@index([parentId])
+}
+
+model PatientEvolutionNote {
+  id             String               @id @default(cuid())
+  patientId      String
+  patient        Patient              @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  consultationId String?
+  consultation   PatientConsultation? @relation(fields: [consultationId], references: [id], onDelete: SetNull)
+  note           String
+  doctorName     String?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  @@index([patientId, createdAt])
+  @@index([consultationId])
+}
+
+model PatientBudget {
+  id         String    @id @default(cuid())
+  patientId  String
+  patient    Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  title      String
+  status     String    @default("draft")
+  currency   String    @default("MXN")
+  items      Json
+  subtotal   Float     @default(0)
+  discount   Float     @default(0)
+  total      Float     @default(0)
+  payments   Json?
+  plan       Json?
+  notes      String?
+  validUntil DateTime?
+  acceptedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([patientId, createdAt])
+  @@index([status])
+}
+
+model PatientClinicalAnalysis {
+  id         String    @id @default(cuid())
+  patientId  String
+  patient    Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  kind       String    @default("result")
+  title      String
+  category   String?
+  results    String?
+  studies    Json?
+  resultDate DateTime?
+  notes      String?
+  files      Json?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([patientId, createdAt])
+}
+
+model CashMovement {
+  id            String       @id @default(cuid())
+  type          String       @default("income") // income, expense, adjustment
+  concept       String
+  amount        Float
+  currency      String       @default("MXN")
+  paymentMethod String?      @default("efectivo")
+  status        String       @default("confirmed") // pending, confirmed, cancelled
+  occurredAt    DateTime     @default(now())
+  notes         String?
+  appointmentId String?
+  appointment   Appointment? @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  patientId     String?
+  patient       Patient?     @relation(fields: [patientId], references: [id], onDelete: SetNull)
+  contactId     String?
+  contact       Contact?     @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  specialistId  String?
+  specialist    Specialist?  @relation(fields: [specialistId], references: [id], onDelete: SetNull)
+  recordedById  String?
+  recordedBy    User?        @relation(fields: [recordedById], references: [id], onDelete: SetNull)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@index([occurredAt])
+  @@index([type, status, occurredAt])
+  @@index([appointmentId])
+  @@index([patientId])
+  @@index([specialistId])
+  @@index([recordedById])
+}
+
+model CashClosure {
+  id            String   @id @default(cuid())
+  dateKey       String
+  timeZone      String   @default("America/Mexico_City")
+  from          DateTime
+  to            DateTime
+  closedAt      DateTime @default(now())
+  income        Float    @default(0)
+  expense       Float    @default(0)
+  balance       Float    @default(0)
+  movementCount Int      @default(0)
+  notes         String?
+  closedById    String?
+  closedBy      User?    @relation(fields: [closedById], references: [id], onDelete: SetNull)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([dateKey, closedAt])
+  @@index([closedAt])
+  @@index([closedById])
+}
+
+model PaymentLink {
+  id            String       @id @default(cuid())
+  provider      String       @default("manual") // manual, mercadopago
+  status        String       @default("pending") // pending, sent, paid, expired, cancelled
+  title         String
+  amount        Float
+  currency      String       @default("MXN")
+  url           String?
+  externalId    String?
+  appointmentId String?
+  appointment   Appointment? @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  patientId     String?
+  patient       Patient?     @relation(fields: [patientId], references: [id], onDelete: SetNull)
+  contactId     String?
+  contact       Contact?     @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  specialistId  String?
+  specialist    Specialist?  @relation(fields: [specialistId], references: [id], onDelete: SetNull)
+  expiresAt     DateTime?
+  paidAt        DateTime?
+  sentAt        DateTime?
+  notes         String?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@index([status, createdAt])
+  @@index([appointmentId])
+  @@index([patientId])
+  @@index([specialistId])
+  @@index([provider, externalId])
+}
+
+model PatientEducationArticle {
+  id          String   @id @default(cuid())
+  title       String
+  slug        String   @unique
+  summary     String?
+  content     String
+  category    String?  @default("General")
+  audience    String?  @default("pacientes")
+  isPublished Boolean  @default(true)
+  featured    Boolean  @default(false)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([isPublished, sortOrder])
+  @@index([category])
+}
+
+model Document {
+  id        String                       @id @default(cuid())
+  title     String
+  content   String // Text content for RAG
+  embedding Unsupported("vector(1536)")? // Using pgvector if available, otherwise handle in code
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model KnowledgeSource {
+  id         String    @id @default(cuid())
+  title      String
+  type       String
+  status     String    @default("pending") // pending, processing, ready, failed
+  sourceUri  String?
+  rawContent String?
+  mimeType   String?
+  error      String?
+  chunkCount Int       @default(0)
+  metadata   Json?
+  syncedAt   DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  chunks KnowledgeChunk[]
+
+  @@index([type, status])
+  @@index([updatedAt(sort: Desc)])
+}
+
+model KnowledgeChunk {
+  id         String                       @id @default(cuid())
+  sourceId   String
+  source     KnowledgeSource              @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  title      String?
+  content    String
+  chunkIndex Int
+  tokenCount Int?
+  metadata   Json?
+  embedding  Unsupported("vector(1536)")?
+  createdAt  DateTime                     @default(now())
+
+  @@index([sourceId, chunkIndex])
+}
+
+model CatalogItem {
+  id             String                       @id @default(cuid())
+  externalId     String                       @unique
+  development    String
+  location       String?
+  question       String
+  answer         String
+  searchableText String
+  isActive       Boolean                      @default(true)
+  embedding      Unsupported("vector(1536)")?
+  createdAt      DateTime                     @default(now())
+  updatedAt      DateTime                     @updatedAt
+
+  assets        CatalogAsset[]
+  conversations CatalogConversationState[]
+
+  @@index([development])
+  @@index([isActive])
+}
+
+model CatalogAsset {
+  id        String      @id @default(cuid())
+  itemId    String
+  item      CatalogItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  type      String // image | pdf | link
+  url       String
+  label     String?
+  sortOrder Int         @default(0)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  @@index([itemId, type, sortOrder])
+}
+
+model CatalogConversationState {
+  id             String       @id @default(cuid())
+  conversationId String       @unique
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  catalogItemId  String?
+  catalogItem    CatalogItem? @relation(fields: [catalogItemId], references: [id], onDelete: SetNull)
+  pendingImages  Boolean      @default(false)
+  pendingPdf     Boolean      @default(false)
+  pendingLink    Boolean      @default(false)
+  offeredAt      DateTime?
+  lastSentAt     DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([catalogItemId])
+}
+
+model Template {
+  id            String    @id @default(cuid())
+  name          String
+  content       String
+  category      String?
+  language      String    @default("es")
+  status        String    @default("approved")
+  type          String    @default("text") // text, image, document
+  mediaUrl      String?
+  mediaType     String?
+  mediaFileName String?
+  shortcut      String?   @unique
+  variables     Json?
+  isFavorite    Boolean   @default(false)
+  isActive      Boolean   @default(true)
+  sortOrder     Int       @default(0)
+  usageCount    Int       @default(0)
+  lastUsedAt    DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive, category])
+  @@index([isFavorite, updatedAt(sort: Desc)])
+}
+
+model BulkCampaign {
+  id                           String    @id @default(cuid())
+  name                         String
+  description                  String?
+  status                       String    @default("draft") // draft, running, paused, completed, cancelled, failed
+  audienceFilters              Json?
+  sourceType                   String    @default("wuzapi") @map("source_type") // wuzapi, ycloud
+  sourceId                     String?   @map("source_id") // selected sender account / number
+  type                         String    @default("text") // text, image, document, template
+  mediaUrl                     String?
+  mediaType                    String?
+  mediaFileName                String?
+  ycloudTemplateName           String?
+  ycloudTemplateLanguage       String?
+  ycloudTemplateComponents     Json?
+  ycloudTemplateVariableValues Json?
+  batchSize                    Int       @default(3)
+  batchDelayMinutes            Int       @default(5)
+  randomDelayMinSeconds        Int       @default(25)
+  randomDelayMaxSeconds        Int       @default(75)
+  respectBusinessHours         Boolean   @default(true)
+  stopOnReply                  Boolean   @default(true)
+  followUpCount                Int       @default(0)
+  followUpDelayDays            Int       @default(1)
+  senderStrategy               String    @default("primary")
+  totalRecipients              Int       @default(0)
+  sentCount                    Int       @default(0)
+  failedCount                  Int       @default(0)
+  repliedCount                 Int       @default(0)
+  skippedCount                 Int       @default(0)
+  startedAt                    DateTime?
+  completedAt                  DateTime?
+  lastProcessedAt              DateTime?
+  scheduledStartAt             DateTime?
+  nextRunAt                    DateTime?
+  workerLockId                 String?
+  workerLockExpiresAt          DateTime?
+  createdById                  String?
+  createdBy                    User?     @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt                    DateTime  @default(now())
+  updatedAt                    DateTime  @updatedAt
+
+  variants   BulkCampaignVariant[]
+  recipients BulkCampaignRecipient[]
+
+  @@index([status, nextRunAt])
+  @@index([sourceType, sourceId])
+  @@index([createdAt(sort: Desc)])
+}
+
+model BulkCampaignVariant {
+  id         String       @id @default(cuid())
+  campaignId String
+  campaign   BulkCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  label      String
+  content    String
+  weight     Int          @default(1)
+  sortOrder  Int          @default(0)
+  variables  Json?
+  isActive   Boolean      @default(true)
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+
+  recipients BulkCampaignRecipient[]
+
+  @@index([campaignId, sortOrder])
+}
+
+model BulkCampaignRecipient {
+  id                String               @id @default(cuid())
+  campaignId        String
+  campaign          BulkCampaign         @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  contactId         String
+  contact           Contact              @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  conversationId    String?
+  conversation      Conversation?        @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  variantId         String?
+  variant           BulkCampaignVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  status            String               @default("queued") // queued, sent, failed, replied, skipped, cancelled
+  sequenceIndex     Int
+  attemptNumber     Int                  @default(0)
+  plannedAt         DateTime             @default(now())
+  sentAt            DateTime?
+  repliedAt         DateTime?
+  lastInboundAt     DateTime?
+  lastError         String?
+  renderedContent   String?
+  providerMessageId String?
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+
+  @@unique([campaignId, contactId, attemptNumber])
+  @@index([campaignId, status, sequenceIndex])
+  @@index([campaignId, status, plannedAt, sequenceIndex])
+  @@index([contactId, status])
+}
+
+model PipelineStage {
+  id           String            @id @default(cuid())
+  name         String
+  color        String            @default("#64748B")
+  order        Int
+  isIncoming   Boolean           @default(false)
+  isClosedWon  Boolean           @default(false)
+  isClosedLost Boolean           @default(false)
+  deals        Deal[]
+  automations  StageAutomation[]
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+}
+
+model Deal {
+  id           String            @id @default(cuid())
+  title        String
+  value        Float             @default(0)
+  stageId      String
+  stage        PipelineStage     @relation(fields: [stageId], references: [id])
+  source       String            @default("whatsapp") // whatsapp, manual, web
+  notes        String?
+  priority     String            @default("medium") // low, medium, high
+  contactId    String?
+  contact      Contact?          @relation(fields: [contactId], references: [id])
+  assignedTo   String?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  dealTags     DealTag[]
+  intelligence LeadIntelligence?
+
+  @@index([stageId])
+  @@index([contactId])
+}
+
+model LeadIntelligence {
+  id                  String    @id @default(cuid())
+  dealId              String    @unique
+  deal                Deal      @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  score               Int       @default(0)
+  interestStatus      String    @default("nuevo") // nuevo, interesado, calificado
+  currentStep         String    @default("inicio") // inicio, interes, captura_nombre, captura_email, calificado
+  stepProgress        Int       @default(0)
+  pendingCaptureField String? // name | email
+  nameCaptured        Boolean   @default(false)
+  emailCaptured       Boolean   @default(false)
+  nameDeclined        Boolean   @default(false)
+  emailDeclined       Boolean   @default(false)
+  capturedName        String?
+  capturedEmail       String?
+  askedForNameAt      DateTime?
+  askedForEmailAt     DateTime?
+  capturedNameAt      DateTime?
+  capturedEmailAt     DateTime?
+  interestDetectedAt  DateTime?
+  lastScoredAt        DateTime?
+  sameDayInboundCount Int       @default(0)
+  lastSummary         String?
+  signals             Json?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@index([interestStatus])
+  @@index([score])
+}
+
+model Tag {
+  id          String            @id @default(cuid())
+  name        String            @unique
+  color       String            @default("#64748B")
+  createdAt   DateTime          @default(now())
+  dealTags    DealTag[]
+  automations StageAutomation[]
+}
+
+model StageAutomation {
+  id        String        @id @default(cuid())
+  stageId   String
+  stage     PipelineStage @relation(fields: [stageId], references: [id], onDelete: Cascade)
+  trigger   String        @default("on_enter")
+  action    String // "add_tag" | "remove_tag"
+  tagId     String
+  tag       Tag           @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  applyAll  Boolean       @default(false)
+  createdAt DateTime      @default(now())
+}
+
+model DealTag {
+  id     String @id @default(cuid())
+  dealId String
+  deal   Deal   @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  tagId  String
+  tag    Tag    @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@unique([dealId, tagId])
+}
+
+model SystemSettings {
+  id                                   String                 @id @default(cuid())
+  openaiApiKey                         String?
+  openaiModel                          String?                @default("gpt-4o-mini")
+  geminiApiKey                         String?
+  whatsappWabaId                       String?
+  whatsappPhoneNumberId                String?
+  whatsappDisplayPhoneNumber           String?
+  whatsappAccessToken                  String?
+  whatsappBusinessId                   String?
+  whatsappConnectedAt                  DateTime?
+  whatsappMetaAppId                    String?
+  whatsappMetaAppSecret                String?
+  whatsappEmbeddedSignupConfigId       String?
+  whatsappTechProviderSolutionId       String?
+  whatsappGraphApiVersion              String?                @default("v26.0")
+  whatsappRegistrationPin              String?
+  whatsappWebhookVerifyToken           String?
+  whatsappWebhookBaseUrl               String?
+  whatsappBaseUrl                      String?
+  whatsappAdminToken                   String?
+  whatsappUserToken                    String?
+  whatsappInstanceName                 String?                @default("zen-crm")
+  whatsappProxyEnabled                 Boolean                @default(false)
+  whatsappProxyUrl                     String?
+  isBotEnabled                         Boolean                @default(false)
+  n8nWebhookUrl                        String?
+  agentName                            String?                @default("Asistente Zen")
+  agentPrompt                          String?
+  welcomeMessage                       String?
+  welcomeRepeatHours                   Int                    @default(24)
+  agentTemperature                     Float                  @default(0.3)
+  knowledgeTopK                        Int                    @default(6)
+  autoReplyDelayMs                     Int                    @default(4000)
+  botReplyDelayMinMs                   Int                    @default(4000)
+  botReplyDelayMaxMs                   Int                    @default(8000)
+  operationCountry                     String                 @default("MX")
+  phoneDefaultCountry                  String                 @default("MX")
+  businessHoursStart                   String                 @default("09:00")
+  businessHoursEnd                     String                 @default("18:00")
+  businessTimeZone                     String                 @default("America/Mexico_City")
+  businessWeeklySchedule               Json?
+  appointmentDurationMinutes           Int                    @default(30)
+  brandName                            String?                @default("Zen CRM Oftalmo")
+  brandLogoUrl                         String?
+  brandFaviconUrl                      String?
+  clinicName                           String?                @default("Zen CRM Oftalmo")
+  clinicSubtitle                       String?                @default("Clinica oftalmologica")
+  clinicAddress                        String?                @default("Direccion de la clinica")
+  clinicLogoUrl                        String?
+  clinicLogoScale                      Int                    @default(100)
+  doctorName                           String?                @default("Joel Venegas")
+  doctorTitle                          String?                @default("Medico Oftalmologo")
+  doctorProfessionalLicense            String?
+  googleClientId                       String?
+  googleClientSecret                   String?
+  googleCalendarId                     String?                @default("primary")
+  googleAccessToken                    String?
+  googleRefreshToken                   String?
+  googleTokenExpiresAt                 DateTime?
+  googleConnectedEmail                 String?
+  googleSyncToken                      String?
+  googleLastSyncedAt                   DateTime?
+  googleCalendars                      GoogleCalendarSource[]
+  portalEnabled                        Boolean                @default(true)
+  portalSlug                           String?                @default("oftalmo")
+  portalClinicName                     String?                @default("Zen CRM Oftalmo")
+  portalIntro                          String?
+  portalPrimaryColor                   String?                @default("#4B5F25")
+  portalPaymentInstructions            String?
+  paymentDefaultCurrency               String?                @default("MXN")
+  paymentEnabledCurrencies             Json                   @default("[\"MXN\"]")
+  posTaxEnabled                         Boolean                @default(false)
+  posTaxRate                            Float                  @default(16)
+  posTicketEnabled                      Boolean                @default(true)
+  posTicketShowUnitPrice                Boolean                @default(true)
+  posTicketFullDescription              Boolean                @default(false)
+  posTicketHeader                       String?                @default("Zen CRM Oftalmo\nClinica oftalmologica\nDireccion de la clinica")
+  posTicketFooter                       String?                @default("Gracias por su compra\nRegrese pronto")
+  mercadoPagoAccessToken               String?
+  googleMeetEnabled                    Boolean                @default(true)
+  googleMeetDefaultVirtual             Boolean                @default(false)
+  reminderWhatsAppEnabled              Boolean                @default(true)
+  reminderEmailEnabled                 Boolean                @default(false)
+  reminderHoursBefore                  Int                    @default(24)
+  appointmentRemindersEnabled          Boolean                @default(true)
+  appointmentReminderOffsets           Json                   @default("[1440,240]")
+  appointmentReminderProvider          String                 @default("wuzapi")
+  appointmentReminderSendOnlyConfirmed Boolean                @default(true)
+  appointmentReminderWuzapiTemplate    String?
+  appointmentReminderMetaTemplate24h   String?
+  appointmentReminderMetaTemplate4h    String?
+  appointmentReminderMetaLanguage      String?                @default("es")
+  confirmationLinkEnabled              Boolean                @default(true)
+  waitingRoomEnabled                   Boolean                @default(true)
+  leadScoringEnabled                   Boolean                @default(true)
+  captureLeadName                      Boolean                @default(false)
+  captureLeadEmail                     Boolean                @default(false)
+  leadInterestThreshold                Int                    @default(45)
+  escalationEnabled                    Boolean                @default(false)
+  escalationPhone                      String?
+  catalogOfferImages                   Boolean                @default(true)
+  catalogOfferPdf                      Boolean                @default(true)
+  catalogAskBeforeSending              Boolean                @default(true)
+  catalogMaxImagesToSend               Int                    @default(10)
+  catalogIncludeLink                   Boolean                @default(true)
+  updatedAt                            DateTime               @updatedAt
+}
+
+model GoogleCalendarSource {
+  id                 String         @id @default(cuid())
+  systemSettingsId   String
+  systemSettings     SystemSettings @relation(fields: [systemSettingsId], references: [id], onDelete: Cascade)
+  calendarId         String
+  summary            String
+  description        String?
+  backgroundColor    String?
+  foregroundColor    String?
+  accessRole         String?
+  isPrimary          Boolean        @default(false)
+  isSelected         Boolean        @default(false)
+  blocksAvailability Boolean        @default(false)
+  importToCrm        Boolean        @default(false)
+  isWriteTarget      Boolean        @default(false)
+  isSpecialist       Boolean        @default(false)
+  specialistName     String?
+  specialist         Specialist?
+  sortOrder          Int            @default(0)
+  syncToken          String?
+  lastSyncedAt       DateTime?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  @@unique([systemSettingsId, calendarId])
+  @@index([systemSettingsId, sortOrder])
+  @@index([systemSettingsId, isSpecialist])
+}

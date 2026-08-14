@@ -1,0 +1,174 @@
+services:
+  belleza-crm:
+    image: ghcr.io/joel110311/zen_crm_belleza:latest
+    environment:
+      - DATABASE_URL=postgresql://zencrm:${POSTGRES_PASSWORD}@belleza-crm-db:5432/zencrm
+      - WHATSAPP_GATEWAY_URL=http://belleza-whatsapp-gateway:8080
+      - WUZAPI_ADMIN_TOKEN=${WUZAPI_ADMIN_TOKEN}
+      - WUZAPI_USER_TOKEN=${WUZAPI_USER_TOKEN}
+      - WHATSAPP_INSTANCE_NAME=${WHATSAPP_INSTANCE_NAME:-zen-crm-belleza}
+      - WUZAPI_GLOBAL_ENCRYPTION_KEY=${WUZAPI_GLOBAL_ENCRYPTION_KEY}
+      - WUZAPI_GLOBAL_HMAC_KEY=${WUZAPI_GLOBAL_HMAC_KEY}
+      - ALLOW_ENV_AI_FALLBACK=${ALLOW_ENV_AI_FALLBACK:-false}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - INITIAL_ADMIN_EMAIL=${INITIAL_ADMIN_EMAIL}
+      - INITIAL_ADMIN_PASSWORD=${INITIAL_ADMIN_PASSWORD}
+      - INITIAL_ADMIN_NAME=${INITIAL_ADMIN_NAME:-Admin Belleza}
+      - AUTH_SECRET=${AUTH_SECRET}
+      - AUTH_URL=https://${APP_DOMAIN}
+      - APP_BASE_URL=https://${APP_DOMAIN}
+      - WHATSAPP_WEBHOOK_BASE_URL=https://${APP_DOMAIN}
+      - META_APP_ID=${META_APP_ID:-}
+      - META_APP_SECRET=${META_APP_SECRET:-}
+      - META_EMBEDDED_SIGNUP_CONFIG_ID=${META_EMBEDDED_SIGNUP_CONFIG_ID:-}
+      - META_TECH_PROVIDER_SOLUTION_ID=${META_TECH_PROVIDER_SOLUTION_ID:-}
+      - META_GRAPH_API_VERSION=${META_GRAPH_API_VERSION:-v26.0}
+      - META_WHATSAPP_REGISTRATION_PIN=${META_WHATSAPP_REGISTRATION_PIN:-}
+      - META_WEBHOOK_VERIFY_TOKEN=${META_WEBHOOK_VERIFY_TOKEN:-}
+      - META_WEBHOOK_BASE_URL=https://${APP_DOMAIN}
+      - TZ=${TZ:-America/Mexico_City}
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+      - STARTUP_DB_MAX_ATTEMPTS=${STARTUP_DB_MAX_ATTEMPTS:-20}
+      - STARTUP_DB_RETRY_MS=${STARTUP_DB_RETRY_MS:-5000}
+    networks:
+      SociosNet:
+        aliases:
+          - zencrm-belleza-app
+    volumes:
+      - belleza_crm_uploads:/app/public/uploads
+    depends_on:
+      - belleza-crm-db
+      - belleza-whatsapp-gateway
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/api/health').then((res)=>process.exit(res.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      restart_policy:
+        condition: on-failure
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.zencrm-belleza.rule=Host(`${APP_DOMAIN}`)"
+        - "traefik.http.routers.zencrm-belleza.entrypoints=websecure"
+        - "traefik.http.routers.zencrm-belleza.tls=true"
+        - "traefik.http.routers.zencrm-belleza.tls.certresolver=letsencryptresolver"
+        - "traefik.http.services.zencrm-belleza.loadbalancer.server.port=3000"
+        - "traefik.docker.network=SociosNet"
+
+  belleza-whatsapp-gateway:
+    image: asternic/wuzapi:sha-e6d58f8
+    environment:
+      - WUZAPI_ADMIN_TOKEN=${WUZAPI_ADMIN_TOKEN}
+      - WUZAPI_GLOBAL_ENCRYPTION_KEY=${WUZAPI_GLOBAL_ENCRYPTION_KEY}
+      - WUZAPI_GLOBAL_HMAC_KEY=${WUZAPI_GLOBAL_HMAC_KEY}
+      - DB_USER=wuzapi
+      - DB_PASSWORD=${WUZAPI_DB_PASSWORD}
+      - DB_NAME=wuzapi
+      - DB_HOST=belleza-whatsapp-db
+      - DB_PORT=5432
+      - DB_SSLMODE=false
+      - TZ=${TZ:-America/Mexico_City}
+      - WEBHOOK_FORMAT=json
+      - SESSION_DEVICE_NAME=${SESSION_DEVICE_NAME:-Zen CRM Belleza}
+    networks:
+      SociosNet:
+        aliases:
+          - belleza-whatsapp-gateway
+    depends_on:
+      - belleza-whatsapp-db
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      restart_policy:
+        condition: on-failure
+
+  belleza-whatsapp-db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=wuzapi
+      - POSTGRES_PASSWORD=${WUZAPI_DB_PASSWORD}
+      - POSTGRES_DB=wuzapi
+      - TZ=${TZ:-America/Mexico_City}
+    volumes:
+      - belleza_wuzapi_db_data:/var/lib/postgresql/data
+    networks:
+      SociosNet:
+        aliases:
+          - belleza-whatsapp-db
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wuzapi -d wuzapi"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      restart_policy:
+        condition: on-failure
+
+  belleza-crm-db:
+    image: ghcr.io/joel110311/zen_crm_belleza_db:latest
+    environment:
+      - POSTGRES_USER=zencrm
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=zencrm
+      - TZ=${TZ:-America/Mexico_City}
+    volumes:
+      - belleza_crm_db_data:/var/lib/postgresql/data
+    networks:
+      SociosNet:
+        aliases:
+          - belleza-crm-db
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zencrm -d zencrm"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      restart_policy:
+        condition: on-failure
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+
+volumes:
+  belleza_crm_db_data:
+    name: belleza_zen_crm_db_data_v1
+  belleza_crm_uploads:
+    name: belleza_zen_crm_uploads_v1
+  belleza_wuzapi_db_data:
+    name: belleza_wuzapi_db_data_v1
+
+networks:
+  SociosNet:
+    external: true
+    name: SociosNet

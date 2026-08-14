@@ -1,0 +1,4 @@
+FROM pgvector/pgvector:pg16
+
+# Clean SaaS-ready database image.
+# The application startup script creates the baseline schema and seed data on first boot.

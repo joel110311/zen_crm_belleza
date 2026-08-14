@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 420" role="img" aria-labelledby="title desc">
+  <title id="title">Perfil oftalmologico default</title>
+  <desc id="desc">Ilustracion limpia de un ojo para perfil de especialista sin foto.</desc>
+  <defs>
+    <linearGradient id="blue" x1="130" x2="420" y1="300" y2="95" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#31A7FF"/>
+      <stop offset="1" stop-color="#1D5EBA"/>
+    </linearGradient>
+    <linearGradient id="gray" x1="60" x2="620" y1="250" y2="135" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#A8ADB4"/>
+      <stop offset=".5" stop-color="#7F858D"/>
+      <stop offset="1" stop-color="#B7BCC2"/>
+    </linearGradient>
+  </defs>
+  <rect width="640" height="420" rx="44" fill="#F8FAFC"/>
+  <path d="M32 253c83-8 148 8 212 36 86 38 173 31 255-9" fill="none" stroke="url(#gray)" stroke-width="16" stroke-linecap="round"/>
+  <path d="M146 136c90-38 190-43 287-12 70 22 118 72 173 96" fill="none" stroke="url(#gray)" stroke-width="16" stroke-linecap="round"/>
+  <path d="M166 303c-36-97-10-203 67-260 53-39 122-45 181-12-82-3-153 37-190 102-33 58-38 121-15 180-17-7-31-10-43-10Z" fill="url(#blue)"/>
+  <circle cx="330" cy="202" r="45" fill="#0B0F19"/>
+  <circle cx="344" cy="207" r="35" fill="#F8FAFC"/>
+  <circle cx="315" cy="184" r="7" fill="#FFFFFF" opacity=".92"/>
+</svg>
