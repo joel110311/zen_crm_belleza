@@ -554,7 +554,9 @@ export function PortalBooking({ data }: Props) {
                                     <div className="space-y-2">
                                         <Label>WhatsApp</Label>
                                         <PhonePrefixInput value={phone} onChange={setPhone} placeholder="10 dígitos" required />
-                                        <p className="text-[11px] leading-4 text-muted-foreground">Si ya tienes registro, usaremos tus datos existentes sin cambiar tu nombre.</p>
+                                        <p className="text-[11px] leading-4 text-muted-foreground">
+                                            Si ya tienes registro, lo vincularemos por tu numero; si el nombre era generico, lo actualizaremos.
+                                        </p>
                                     </div>
                                     <div className="space-y-2">
                                         <Label>Forma de pago</Label>

@@ -43,7 +43,7 @@ import {
     getOperationDateKey,
     getOperationTodayKey,
 } from "@/lib/operation-dates";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 type ReceptionAppointment = Awaited<ReturnType<typeof getReceptionAppointments>>[number];
 type AppointmentReminderRow = Awaited<ReturnType<typeof getAppointmentRemindersByDate>>[number];
@@ -107,10 +107,16 @@ function reminderClientPhone(reminder: AppointmentReminderRow) {
 export default function ReceptionPage() {
     const { toast } = useToast();
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const requestedDate = /^\d{4}-\d{2}-\d{2}$/.test(searchParams.get("date") || "")
+        ? searchParams.get("date") || ""
+        : "";
+    const requestedFinishId = searchParams.get("finish") || "";
     const [isPending, startTransition] = useTransition();
-    const selectedDateTouchedRef = useRef(false);
+    const selectedDateTouchedRef = useRef(Boolean(requestedDate));
+    const finishHandledRef = useRef("");
     const [appointments, setAppointments] = useState<ReceptionAppointment[]>([]);
-    const [selectedDate, setSelectedDate] = useState(getOperationTodayKey());
+    const [selectedDate, setSelectedDate] = useState(requestedDate || getOperationTodayKey());
     const [operationContext, setOperationContext] = useState({
         locale: "es-MX",
         defaultCurrency: "MXN",
@@ -227,13 +233,23 @@ export default function ReceptionPage() {
         });
     };
 
-    const openFinishDialog = (appointment: ReceptionAppointment) => {
+    const openFinishDialog = useCallback((appointment: ReceptionAppointment) => {
         setClosingAppointment(appointment);
         setClosingAmount(appointment.paymentAmount ? String(appointment.paymentAmount) : "");
         setClosingPaymentMethod("efectivo");
         setClosingPaidWith(appointment.paymentAmount ? String(appointment.paymentAmount) : "");
         setClosingNotes("");
-    };
+    }, []);
+
+    useEffect(() => {
+        if (!requestedFinishId || finishHandledRef.current === requestedFinishId) return;
+        const appointment = appointments.find((entry) => entry.id === requestedFinishId);
+        if (!appointment) return;
+
+        finishHandledRef.current = requestedFinishId;
+        openFinishDialog(appointment);
+        router.replace(`/dashboard/reception?date=${encodeURIComponent(selectedDate)}`, { scroll: false });
+    }, [appointments, openFinishDialog, requestedFinishId, router, selectedDate]);
 
     const closeFinishDialog = () => {
         setClosingAppointment(null);

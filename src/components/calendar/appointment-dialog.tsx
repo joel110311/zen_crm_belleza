@@ -12,7 +12,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { cn } from "@/lib/utils";
-import { Bell, CalendarIcon, Check, ChevronsUpDown, Clock, CreditCard, Loader2, User } from "lucide-react";
+import { Bell, CalendarIcon, Check, ChevronsUpDown, Clock, Loader2, User } from "lucide-react";
 import { createAppointment, deleteAppointment, updateAppointment } from "@/app/actions/calendar";
 import { getPatientsForPicker, savePatient } from "@/app/actions/patients";
 import { getSpecialists } from "@/app/actions/specialists";
@@ -100,6 +100,27 @@ function nextOperationMinute(timeZone: string) {
     return timeToOperationInputValue(new Date(Date.now() + 60_000), timeZone);
 }
 
+const APPOINTMENT_STEP_MINUTES = 15;
+
+function minutesToTimeValue(totalMinutes: number) {
+    const bounded = Math.max(0, Math.min(24 * 60 - 1, totalMinutes));
+    return `${String(Math.floor(bounded / 60)).padStart(2, "0")}:${String(bounded % 60).padStart(2, "0")}`;
+}
+
+function alignTimeToStep(value: string) {
+    return minutesToTimeValue(Math.ceil(timeToMinutes(value) / APPOINTMENT_STEP_MINUTES) * APPOINTMENT_STEP_MINUTES);
+}
+
+function buildQuarterHourOptions(start: string, end: string) {
+    const first = Math.ceil(timeToMinutes(start) / APPOINTMENT_STEP_MINUTES) * APPOINTMENT_STEP_MINUTES;
+    const last = timeToMinutes(end);
+    const options: string[] = [];
+    for (let minute = first; minute < last; minute += APPOINTMENT_STEP_MINUTES) {
+        options.push(minutesToTimeValue(minute));
+    }
+    return options;
+}
+
 export function AppointmentDialog({
     open,
     onOpenChange,
@@ -135,7 +156,7 @@ export function AppointmentDialog({
     const [paymentAmount, setPaymentAmount] = useState("");
     const [paymentCurrency, setPaymentCurrency] = useState("MXN");
     const [remindersGloballyEnabled, setRemindersGloballyEnabled] = useState(false);
-    const [sendReminders, setSendReminders] = useState(false);
+    const [sendReminders, setSendReminders] = useState(true);
     const [operationContext, setOperationContext] = useState({
         phoneDefaultCountry: "MX",
         currencies: ["MXN"],
@@ -201,15 +222,15 @@ export function AppointmentDialog({
             return businessHours.start;
         }
 
-        const minutes = timeToMinutes(value);
-        const minimumTime = targetDateKey === getOperationTodayKey(businessHours.timeZone)
+        const minutes = timeToMinutes(alignTimeToStep(value));
+        const minimumTime = alignTimeToStep(targetDateKey === getOperationTodayKey(businessHours.timeZone)
             ? maxTimeInput(schedule.start, nextOperationMinute(businessHours.timeZone))
-            : schedule.start;
+            : schedule.start);
         if (minutes < timeToMinutes(minimumTime) || minutes >= timeToMinutes(schedule.end)) {
             return minimumTime;
         }
 
-        return value;
+        return minutesToTimeValue(minutes);
     }, [businessHours]);
 
     useEffect(() => {
@@ -357,7 +378,7 @@ export function AppointmentDialog({
                         setSelectedSpecialistId(defaultRow.id);
                         return;
                     }
-                    if (rows.length === 1) {
+                    if (rows.length > 0) {
                         setSelectedSpecialistId(rows[0].id);
                     }
                 }
@@ -403,8 +424,10 @@ export function AppointmentDialog({
     const selectedDayMinimumTime = selectedDateKey === todayKey
         ? maxTimeInput(selectedDayStart, currentOperationTime)
         : selectedDayStart;
+    const timeOptions = selectedDaySchedule?.enabled
+        ? buildQuarterHourOptions(selectedDayMinimumTime, selectedDayEnd)
+        : [];
     const writableSources = calendarSources.filter((source) => source.writable);
-    const specialistSources = writableSources.filter((source) => source.isSpecialist);
     const selectedCalendar =
         writableSources.find((source) => source.calendarId === selectedCalendarId) ||
         writableSources.find((source) => source.isWriteTarget) ||
@@ -428,8 +451,18 @@ export function AppointmentDialog({
             return;
         }
 
-        if (!date || !time || !title) {
-            toast({ title: "Faltan datos", description: "Completa fecha, hora y motivo.", variant: "destructive" });
+        if (!selectedEvent && selectedServiceId === "none") {
+            toast({ title: "Servicio requerido", description: "Selecciona el servicio de la cita.", variant: "destructive" });
+            return;
+        }
+
+        if (selectedSpecialistId === "none") {
+            toast({ title: "Profesional requerido", description: "Selecciona quién atenderá la cita.", variant: "destructive" });
+            return;
+        }
+
+        if (!date || !time) {
+            toast({ title: "Faltan datos", description: "Completa la fecha y la hora.", variant: "destructive" });
             return;
         }
 
@@ -467,18 +500,20 @@ export function AppointmentDialog({
             : selectedCalendar?.isSpecialist
                 ? (selectedCalendar.specialistName || selectedCalendar.summary)
                 : undefined;
+        const resolvedTitle = selectedService?.name || title.trim() || `Servicio para ${patientName(selectedPatient)}`;
+        const resolvedAppointmentType = selectedService?.name || appointmentType || "Servicio";
 
         startTransition(async () => {
             try {
                 const payload = {
-                    title,
+                    title: resolvedTitle,
                     startTime,
                     endTime,
                     notes,
                     patientId,
                     specialistId: selectedSpecialistId !== "none" ? selectedSpecialistId : undefined,
                     serviceId: selectedServiceId !== "none" ? selectedServiceId : undefined,
-                    appointmentType,
+                    appointmentType: resolvedAppointmentType,
                     isFirstVisit,
                     isOverbook,
                     visitMode,
@@ -577,14 +612,14 @@ export function AppointmentDialog({
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="max-h-[90vh] overflow-y-auto bg-card sm:max-w-[720px]">
+            <DialogContent className="max-h-[92vh] overflow-y-auto bg-card sm:max-w-[820px]">
                 <DialogHeader className="border-b pb-4">
                     <DialogTitle className="text-xl font-semibold text-foreground">
                         {selectedEvent ? "Editar Cita" : "Nueva Cita"}
                     </DialogTitle>
                 </DialogHeader>
 
-                <div className="grid gap-6 py-4">
+                <div className="grid gap-4 py-3">
                     <div className="space-y-2">
                         <Label>Cliente *</Label>
                         <Popover open={openCombobox} onOpenChange={setOpenCombobox}>
@@ -691,8 +726,9 @@ export function AppointmentDialog({
                         </div>
                     ) : null}
 
-                    <div className="space-y-2">
-                        <Label>Servicio</Label>
+                    <div className="grid gap-3 md:grid-cols-[minmax(0,1.45fr)_minmax(190px,0.9fr)_minmax(180px,0.8fr)] md:items-end">
+                        <div className="space-y-2">
+                        <Label>Servicio *</Label>
                         <Select value={selectedServiceId} onValueChange={(value) => {
                             setSelectedServiceId(value);
                             const service = services.find((entry) => entry.id === value);
@@ -711,7 +747,7 @@ export function AppointmentDialog({
                         }}>
                             <SelectTrigger className="h-11 bg-background"><SelectValue placeholder="Selecciona un servicio" /></SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="none">Servicio personalizado</SelectItem>
+                                <SelectItem value="none">{selectedEvent ? "Servicio personalizado" : "Selecciona un servicio"}</SelectItem>
                                 {services.map((service) => (
                                     <SelectItem key={service.id} value={service.id}>
                                         {service.name} · {service.durationMinutes} min · {new Intl.NumberFormat("es-MX", { style: "currency", currency: service.currency, maximumFractionDigits: 0 }).format(service.price)}
@@ -719,54 +755,44 @@ export function AppointmentDialog({
                                 ))}
                             </SelectContent>
                         </Select>
-                        {selectedService && eligibleSpecialistIds.length > 0 ? <p className="text-xs text-muted-foreground">Solo se muestran los profesionales asignados a este servicio.</p> : null}
-                    </div>
-
-                    <div className="space-y-2">
-                        <Label>Titulo / Motivo</Label>
-                        <Input
-                            value={title}
-                            onChange={(event) => setTitle(event.target.value)}
-                            className="h-11 bg-background"
-                            placeholder="Ej. Corte, color, tratamiento..."
-                        />
-                    </div>
-
-                    {writableSources.length > 0 ? (
-                        <div className="space-y-2">
-                            <Label>Calendario / Especialista</Label>
-                            <Select value={selectedCalendarId} onValueChange={setSelectedCalendarId}>
-                                <SelectTrigger className="h-11 bg-background">
-                                    <SelectValue placeholder="Selecciona donde guardar la cita" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {writableSources.map((source) => (
-                                        <SelectItem key={source.calendarId} value={source.calendarId}>
-                                            {source.isSpecialist
-                                                ? `${source.specialistName || source.summary} · Especialista`
-                                                : source.summary}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                            <p className="text-xs text-muted-foreground">
-                                {specialistSources.length > 0
-                                    ? `Especialistas activos: ${specialistSources.map((source) => source.specialistName || source.summary).join(", ")}.`
-                                    : "Si eliges un calendario de escritura, la cita se sincronizara directamente ahi."}
-                            </p>
                         </div>
-                    ) : null}
 
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-[minmax(18rem,1fr)_170px]">
+                        <label
+                            className={cn(
+                                "flex h-11 items-center gap-2.5 rounded-lg border px-3",
+                                remindersGloballyEnabled ? "cursor-pointer bg-muted/20" : "bg-muted/30 text-muted-foreground",
+                            )}
+                        >
+                            <Checkbox
+                                checked={sendReminders}
+                                onCheckedChange={(checked) => setSendReminders(Boolean(checked))}
+                                disabled={!remindersGloballyEnabled}
+                            />
+                            <Bell className="h-4 w-4 shrink-0 text-primary" />
+                            <span className="text-sm font-medium leading-tight">Enviar recordatorio</span>
+                        </label>
+
+                        <div className="flex h-11 items-center justify-between gap-3 rounded-lg border bg-muted/20 px-3">
+                            <div className="min-w-0">
+                                <p className="text-sm font-medium">Sobreturno</p>
+                                <p className="truncate text-[11px] text-muted-foreground">Permite solapar.</p>
+                            </div>
+                            <Switch checked={isOverbook} onCheckedChange={setIsOverbook} />
+                        </div>
+                    </div>
+
+                    {selectedService && eligibleSpecialistIds.length > 0 ? <p className="-mt-2 text-xs text-muted-foreground">Solo se muestran los profesionales asignados a este servicio.</p> : null}
+
+                    <div className="grid gap-3 sm:grid-cols-[minmax(0,1.5fr)_150px_110px]">
                         <div className="space-y-2">
-                            <Label>Profesional</Label>
+                            <Label>Profesional *</Label>
                             <Select value={selectedSpecialistId} onValueChange={(value) => {
                                 setSelectedSpecialistId(value);
                                 const row = specialists.find((entry) => entry.id === value);
                                 if (row?.googleCalendarSource?.calendarId) {
                                     setSelectedCalendarId(row.googleCalendarSource.calendarId);
                                 }
-                                if (row?.defaultDurationMinutes) {
+                                if (!selectedService && row?.defaultDurationMinutes) {
                                     setDuration(String(row.defaultDurationMinutes));
                                 }
                             }}>
@@ -774,7 +800,6 @@ export function AppointmentDialog({
                                     <SelectValue placeholder="Selecciona especialista" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="none">Sin especialista</SelectItem>
                                     {availableSpecialists.map((specialist) => (
                                         <SelectItem key={specialist.id} value={specialist.id}>
                                             {specialist.displayName || specialist.name}
@@ -785,109 +810,32 @@ export function AppointmentDialog({
                         </div>
 
                         <div className="space-y-2">
-                            <Label>Modalidad</Label>
-                            <Select value={visitMode} onValueChange={setVisitMode}>
+                            <Label>Costo</Label>
+                            <Input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={paymentAmount}
+                                onChange={(event) => setPaymentAmount(event.target.value)}
+                                className="h-11 bg-background"
+                                placeholder="0.00"
+                            />
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label>Moneda</Label>
+                            <Select value={paymentCurrency} onValueChange={setPaymentCurrency}>
                                 <SelectTrigger className="h-11 bg-background">
                                     <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="presencial">Presencial</SelectItem>
-                                    <SelectItem value="virtual">Virtual</SelectItem>
-                                    <SelectItem value="hibrida">Hibrida</SelectItem>
+                                    {operationContext.currencies.map((currency) => (
+                                        <SelectItem key={currency} value={currency}>
+                                            {currency}
+                                        </SelectItem>
+                                    ))}
                                 </SelectContent>
                             </Select>
-                        </div>
-                    </div>
-
-                    <div className="grid gap-3">
-                        <div className="flex min-h-[76px] items-center justify-between rounded-lg border bg-muted/20 px-3 py-3">
-                            <div>
-                                <p className="text-sm font-medium">Sobreturno</p>
-                                <p className="text-xs text-muted-foreground">Permite solapar con otra cita.</p>
-                            </div>
-                            <Switch checked={isOverbook} onCheckedChange={setIsOverbook} />
-                        </div>
-                    </div>
-
-                    <label
-                        className={cn(
-                            "flex items-start gap-3 rounded-lg border px-4 py-3",
-                            remindersGloballyEnabled ? "cursor-pointer bg-muted/20" : "bg-muted/30 text-muted-foreground",
-                        )}
-                    >
-                        <Checkbox
-                            checked={sendReminders}
-                            onCheckedChange={(checked) => setSendReminders(Boolean(checked))}
-                            disabled={!remindersGloballyEnabled}
-                            className="mt-1"
-                        />
-                        <span className="min-w-0">
-                            <span className="flex items-center gap-2 text-sm font-medium text-foreground">
-                                <Bell className="h-4 w-4 text-primary" />
-                                Enviar recordatorios automaticos
-                            </span>
-                            <span className="mt-1 block text-xs leading-5 text-muted-foreground">
-                                {remindersGloballyEnabled
-                                    ? "Se programaran los recordatorios configurados en Settings > Calendario al confirmar la cita."
-                                    : "Activa los recordatorios en Settings > Calendario para usar esta opcion."}
-                            </span>
-                        </span>
-                    </label>
-
-                    {["virtual", "hibrida"].includes(visitMode) ? (
-                        <div className="grid gap-3 rounded-lg border bg-muted/20 p-3 sm:grid-cols-[220px_minmax(0,1fr)] sm:items-end">
-                            <div className="flex items-center justify-between rounded-lg border bg-background px-3 py-3">
-                                <div>
-                                    <p className="text-sm font-medium">Google Meet</p>
-                                    <p className="text-xs text-muted-foreground">Crear link al sincronizar.</p>
-                                </div>
-                                <Switch checked={requestGoogleMeet} onCheckedChange={setRequestGoogleMeet} disabled={Boolean(meetLink.trim())} />
-                            </div>
-                            <div className="space-y-2">
-                                <Label>Link de videollamada</Label>
-                                <Input
-                                    value={meetLink}
-                                    onChange={(event) => setMeetLink(event.target.value)}
-                                    className="h-11 bg-background"
-                                    placeholder="https://meet.google.com/..."
-                                />
-                            </div>
-                        </div>
-                    ) : null}
-
-                    <div className="grid gap-4 rounded-lg border bg-muted/20 p-4">
-                        <div className="flex items-center gap-2">
-                            <CreditCard className="h-4 w-4 text-primary" />
-                            <p className="text-sm font-medium">Cobro de la cita</p>
-                        </div>
-                        <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_120px]">
-                            <div className="space-y-2">
-                                <Label>Monto esperado</Label>
-                                <Input
-                                    type="number"
-                                    min="0"
-                                    step="0.01"
-                                    value={paymentAmount}
-                                    onChange={(event) => setPaymentAmount(event.target.value)}
-                                    className="h-11 bg-background"
-                                    placeholder="0.00"
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <Label>Moneda</Label>
-                                <Select value={paymentCurrency} onValueChange={setPaymentCurrency}>
-                                    <SelectTrigger className="h-11 bg-background">
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {operationContext.currencies.map((currency) => (
-                                            <SelectItem key={currency} value={currency}>
-                                                {currency}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
                         </div>
                     </div>
 
@@ -927,18 +875,19 @@ export function AppointmentDialog({
                         </div>
                         <div className="space-y-2">
                             <Label>Hora *</Label>
-                            <div className="relative">
-                                <Clock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                                <Input
-                                    type="time"
-                                    value={time}
-                                    onChange={(event) => setTime(event.target.value)}
-                                    className="h-11 bg-background pl-9"
-                                    min={selectedDayMinimumTime}
-                                    max={selectedDayEnd}
-                                    disabled={!selectedDaySchedule?.enabled}
-                                />
-                            </div>
+                            <Select value={time} onValueChange={setTime} disabled={!selectedDaySchedule?.enabled || timeOptions.length === 0}>
+                                <SelectTrigger className="h-11 bg-background">
+                                    <Clock className="mr-2 h-4 w-4 text-muted-foreground" />
+                                    <SelectValue placeholder="Selecciona la hora" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {timeOptions.map((option) => (
+                                        <SelectItem key={option} value={option}>
+                                            {formatTimeLabel(option)}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
                             {selectedDaySchedule?.enabled ? (
                                 <p className="text-xs text-muted-foreground">
                                     Disponible entre {formatTimeLabel(selectedDayStart)} y {formatTimeLabel(selectedDayEnd)}.
@@ -968,15 +917,6 @@ export function AppointmentDialog({
                         </div>
                     </div>
 
-                    <div className="space-y-2">
-                        <Label>Notas / Descripcion</Label>
-                        <Input
-                            value={notes}
-                            onChange={(event) => setNotes(event.target.value)}
-                            className="h-11 bg-background"
-                            placeholder="Detalles adicionales..."
-                        />
-                    </div>
                 </div>
 
                 <DialogFooter className="-mx-6 -mb-6 mt-4 flex items-center justify-between border-t bg-card p-4 sm:justify-between">

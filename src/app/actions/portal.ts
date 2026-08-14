@@ -38,8 +38,15 @@ function makePublicToken() {
     return crypto.randomUUID().replace(/-/g, "");
 }
 
+const DEFAULT_PORTAL_SLUG = "belleza";
+
 function portalSlugMatches(expected?: string | null, requested?: string) {
-    return (expected || "oftalmo").trim().toLowerCase() === (requested || "oftalmo").trim().toLowerCase();
+    return (expected || DEFAULT_PORTAL_SLUG).trim().toLowerCase() === (requested || DEFAULT_PORTAL_SLUG).trim().toLowerCase();
+}
+
+function isGenericPersonName(value?: string | null) {
+    const normalized = cleanText(value).toLocaleLowerCase("es-MX");
+    return !normalized || ["cliente", "contacto", "usuario", "sin nombre"].includes(normalized);
 }
 
 function resolvePortalColor(value?: string | null) {
@@ -72,7 +79,7 @@ async function ensurePortalEnabled(slug: string) {
     return settings;
 }
 
-export async function getPortalData(slug = "oftalmo") {
+export async function getPortalData(slug = DEFAULT_PORTAL_SLUG) {
     const settings = await getSystemSettingsOrDefaults();
     if (!portalSlugMatches(settings.portalSlug, slug)) return null;
 
@@ -86,7 +93,7 @@ export async function getPortalData(slug = "oftalmo") {
         logoScale: settings.clinicLogoScale || 100,
         subtitle: resolveBusinessSubtitle(settings.clinicSubtitle),
         address: settings.clinicAddress || null,
-        slug: settings.portalSlug || "oftalmo",
+        slug: settings.portalSlug || DEFAULT_PORTAL_SLUG,
         defaultDurationMinutes: settings.appointmentDurationMinutes || 30,
         remindersEnabled: Boolean(settings.appointmentRemindersEnabled && settings.reminderWhatsAppEnabled),
         operationContext: buildOperationContext(settings),
@@ -301,8 +308,10 @@ export async function bookPortalAppointment(input: PortalBookingInput) {
                 ? await tx.contact.update({
                     where: { id: existingContact.id },
                     data: {
-                        name: existingContact.name?.trim() ? undefined : firstName,
-                        lastName: existingContact.lastName?.trim() ? undefined : lastName || undefined,
+                        name: isGenericPersonName(existingContact.name) ? firstName : undefined,
+                        lastName: isGenericPersonName(existingContact.name) || !existingContact.lastName?.trim()
+                            ? lastName || undefined
+                            : undefined,
                         email: existingContact.email?.trim() ? undefined : cleanText(input.email) || undefined,
                         status: "customer",
                     },
@@ -335,8 +344,10 @@ export async function bookPortalAppointment(input: PortalBookingInput) {
                 ? await tx.patient.update({
                     where: { id: existingPatient.id },
                     data: {
-                        firstName: existingPatient.firstName?.trim() ? undefined : firstName,
-                        lastName: existingPatient.lastName?.trim() ? undefined : lastName,
+                        firstName: isGenericPersonName(existingPatient.firstName) ? firstName : undefined,
+                        lastName: isGenericPersonName(existingPatient.firstName) || !existingPatient.lastName?.trim()
+                            ? lastName
+                            : undefined,
                         email: cleanText(input.email) || existingPatient.email,
                         contactId: contact.id,
                     },

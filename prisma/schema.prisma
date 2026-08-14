@@ -901,16 +901,16 @@ model SystemSettings {
   businessTimeZone                     String                 @default("America/Mexico_City")
   businessWeeklySchedule               Json?
   appointmentDurationMinutes           Int                    @default(30)
-  brandName                            String?                @default("Zen CRM Oftalmo")
+  brandName                            String?                @default("Zen CRM Belleza")
   brandLogoUrl                         String?
   brandFaviconUrl                      String?
-  clinicName                           String?                @default("Zen CRM Oftalmo")
-  clinicSubtitle                       String?                @default("Clinica oftalmologica")
-  clinicAddress                        String?                @default("Direccion de la clinica")
+  clinicName                           String?                @default("Zen CRM Belleza")
+  clinicSubtitle                       String?                @default("Servicios de belleza")
+  clinicAddress                        String?                @default("Direccion del negocio")
   clinicLogoUrl                        String?
   clinicLogoScale                      Int                    @default(100)
   doctorName                           String?                @default("Joel Venegas")
-  doctorTitle                          String?                @default("Medico Oftalmologo")
+  doctorTitle                          String?                @default("Profesional de belleza")
   doctorProfessionalLicense            String?
   googleClientId                       String?
   googleClientSecret                   String?
@@ -923,9 +923,9 @@ model SystemSettings {
   googleLastSyncedAt                   DateTime?
   googleCalendars                      GoogleCalendarSource[]
   portalEnabled                        Boolean                @default(true)
-  portalSlug                           String?                @default("oftalmo")
-  portalClinicName                     String?                @default("Zen CRM Oftalmo")
-  portalIntro                          String?
+  portalSlug                           String?                @default("belleza")
+  portalClinicName                     String?                @default("Zen CRM Belleza")
+  portalIntro                          String?                @default("Aparta el horario para tu proximo servicio.")
   portalPrimaryColor                   String?                @default("#4B5F25")
   portalPaymentInstructions            String?
   paymentDefaultCurrency               String?                @default("MXN")
@@ -935,7 +935,7 @@ model SystemSettings {
   posTicketEnabled                      Boolean                @default(true)
   posTicketShowUnitPrice                Boolean                @default(true)
   posTicketFullDescription              Boolean                @default(false)
-  posTicketHeader                       String?                @default("Zen CRM Oftalmo\nClinica oftalmologica\nDireccion de la clinica")
+  posTicketHeader                       String?                @default("Zen CRM Belleza\nServicios de belleza\nDireccion del negocio")
   posTicketFooter                       String?                @default("Gracias por su compra\nRegrese pronto")
   mercadoPagoAccessToken               String?
   googleMeetEnabled                    Boolean                @default(true)

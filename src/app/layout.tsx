@@ -17,7 +17,7 @@ export async function generateMetadata(): Promise<Metadata> {
 
     return {
       title: branding.brandName,
-      description: "CRM oftalmologico para WhatsApp con IA",
+      description: "CRM de belleza para WhatsApp con IA",
       icons: {
         icon: branding.brandFaviconUrl,
         shortcut: branding.brandFaviconUrl,
@@ -29,7 +29,7 @@ export async function generateMetadata(): Promise<Metadata> {
 
     return {
       title: branding.brandName,
-      description: "CRM oftalmologico para WhatsApp con IA",
+      description: "CRM de belleza para WhatsApp con IA",
       icons: {
         icon: branding.brandFaviconUrl,
         shortcut: branding.brandFaviconUrl,
@@ -43,7 +43,7 @@ const colorThemeInitScript = `
 (() => {
   try {
     const stored = window.localStorage.getItem("${COLOR_THEME_STORAGE_KEY}");
-    const nextTheme = stored === "black" || stored === "green" ? stored : "${DEFAULT_COLOR_THEME}";
+    const nextTheme = stored === "clinic" || stored === "green" ? stored : "${DEFAULT_COLOR_THEME}";
     document.documentElement.setAttribute("data-color-theme", nextTheme);
   } catch {
     document.documentElement.setAttribute("data-color-theme", "${DEFAULT_COLOR_THEME}");

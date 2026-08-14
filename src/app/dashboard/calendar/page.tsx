@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useSession } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
 import { deleteAppointment, getAppointments } from "@/app/actions/calendar";
@@ -63,9 +63,47 @@ function parseCalendarDate(value: string | null) {
     return Number.isNaN(date.getTime()) ? undefined : date;
 }
 
+type CalendarAppointment = Awaited<ReturnType<typeof getAppointments>>[number];
+
+function appointmentToSelectedEvent(appointment: CalendarAppointment) {
+    return {
+        id: appointment.id,
+        title: appointment.title,
+        start: new Date(appointment.startTime),
+        end: new Date(appointment.endTime),
+        notes: appointment.notes,
+        resource: {
+            contact: appointment.contact,
+            patient: appointment.patient,
+            specialist: appointment.specialist,
+            specialistId: appointment.specialistId,
+            serviceId: appointment.serviceId,
+            appointmentType: appointment.appointmentType,
+            source: appointment.source,
+            isFirstVisit: appointment.isFirstVisit,
+            isOverbook: appointment.isOverbook,
+            confirmationStatus: appointment.confirmationStatus,
+            googleCalendarId: appointment.googleCalendarId,
+            googleCalendarName: appointment.googleCalendarName,
+            googleCalendarColor: appointment.googleCalendarColor,
+            specialistName: appointment.specialistName,
+            visitMode: appointment.visitMode,
+            meetStatus: appointment.meetStatus,
+            meetLink: appointment.meetLink,
+            paymentStatus: appointment.paymentStatus,
+            paymentAmount: appointment.paymentAmount,
+            paymentCurrency: appointment.paymentCurrency,
+            paymentLinkUrl: appointment.paymentLinkUrl,
+            remindersOptOut: appointment.remindersOptOut,
+        },
+    };
+}
+
 export default function CalendarPage() {
     const searchParams = useSearchParams();
     const initialCalendarDate = useMemo(() => parseCalendarDate(searchParams.get("date")), [searchParams]);
+    const requestedAppointmentId = searchParams.get("appointmentId") || "";
+    const openedAppointmentRef = useRef("");
     const { data: session, status: sessionStatus } = useSession();
     const sessionUser = session?.user as { id?: string; role?: string | null } | undefined;
     const currentUserId = sessionUser?.id || null;
@@ -195,40 +233,24 @@ export default function CalendarPage() {
     }, [businessHours.timeZone, filteredAppointments]);
 
     const handleEdit = (appointment: any) => {
-        setSelectedEvent({
-            id: appointment.id,
-            title: appointment.title,
-            start: new Date(appointment.startTime),
-            end: new Date(appointment.endTime),
-            notes: appointment.notes,
-            resource: {
-                contact: appointment.contact,
-                patient: appointment.patient,
-                specialist: appointment.specialist,
-                specialistId: appointment.specialistId,
-                serviceId: appointment.serviceId,
-                appointmentType: appointment.appointmentType,
-                source: appointment.source,
-                isFirstVisit: appointment.isFirstVisit,
-                isOverbook: appointment.isOverbook,
-                confirmationStatus: appointment.confirmationStatus,
-                googleCalendarId: appointment.googleCalendarId,
-                googleCalendarName: appointment.googleCalendarName,
-                googleCalendarColor: appointment.googleCalendarColor,
-                specialistName: appointment.specialistName,
-                visitMode: appointment.visitMode,
-                meetStatus: appointment.meetStatus,
-                meetLink: appointment.meetLink,
-                paymentStatus: appointment.paymentStatus,
-                paymentAmount: appointment.paymentAmount,
-                paymentCurrency: appointment.paymentCurrency,
-                paymentLinkUrl: appointment.paymentLinkUrl,
-                remindersOptOut: appointment.remindersOptOut,
-            },
-        });
+        setSelectedEvent(appointmentToSelectedEvent(appointment));
         setSelectedSlot(null);
         setIsDialogOpen(true);
     };
+
+    useEffect(() => {
+        if (!requestedAppointmentId || openedAppointmentRef.current === requestedAppointmentId) return;
+        const appointment = appointments.find((entry) => entry.id === requestedAppointmentId);
+        if (!appointment) return;
+
+        openedAppointmentRef.current = requestedAppointmentId;
+        const timer = window.setTimeout(() => {
+            setSelectedEvent(appointmentToSelectedEvent(appointment));
+            setSelectedSlot(null);
+            setIsDialogOpen(true);
+        }, 0);
+        return () => window.clearTimeout(timer);
+    }, [appointments, requestedAppointmentId]);
 
     const handleSelectSlot = (slot: { start: Date; end: Date }) => {
         setSelectedSlot(slot);

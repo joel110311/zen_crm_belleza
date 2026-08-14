@@ -18,16 +18,16 @@ const COLOR_THEME_OPTIONS: Array<{
     gradient: string;
 }> = [
     {
-        id: "green",
-        name: "Green",
-        description: "Tema principal en verdes naturales",
-        gradient: "from-[#6f843d] to-[#263116]",
+        id: "clinic",
+        name: "Azul clínica",
+        description: "Tema principal con azul clínico y sidebar negra",
+        gradient: "from-[#3A88A8] to-[#080b10]",
     },
     {
-        id: "black",
-        name: "Black",
-        description: "Tema secundario con sidebar negra y azul clínico",
-        gradient: "from-[#3A88A8] to-[#080b10]",
+        id: "green",
+        name: "Green",
+        description: "Tema secundario en verdes naturales",
+        gradient: "from-[#6f843d] to-[#263116]",
     },
 ];
 

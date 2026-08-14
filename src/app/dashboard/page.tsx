@@ -3,16 +3,13 @@ import type { ComponentType } from "react";
 import type { Prisma } from "@prisma/client";
 import {
     ArrowUpRight,
-    ArrowRight,
     Building2,
     CalendarCheck2,
     CalendarDays,
     ChevronLeft,
     ChevronRight,
     Clock,
-    MessageCircle,
     MapPin,
-    Phone,
     Plus,
     Search,
     Scissors,
@@ -24,6 +21,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { DirectChatUnreadBadge } from "@/components/dashboard/direct-chat-unread-badge";
+import { AppointmentQuickActions } from "@/components/dashboard/appointment-quick-actions";
 import { WhatsAppIcon } from "@/components/icons/whatsapp-icon";
 import { prisma } from "@/lib/db";
 import { auth } from "@/lib/auth";
@@ -31,6 +29,7 @@ import { getContactFullName } from "@/lib/contact-name";
 import { getSystemSettingsOrDefaults } from "@/lib/system-settings";
 import { buildOperationContext } from "@/lib/operation-context";
 import { businessBoundsForDate, businessDayBounds, formatTimeLabel, normalizeBusinessHours, zonedDateTimeToUtc } from "@/lib/calendar/business-hours";
+import { getOperationDateKey } from "@/lib/operation-dates";
 import { normalizeRole } from "@/lib/permissions";
 
 export const dynamic = "force-dynamic";
@@ -1121,9 +1120,9 @@ function AppointmentsPanel({
     };
 
     return (
-        <Card className="h-[clamp(340px,36vh,560px)] rounded-3xl border border-border/70 bg-card shadow-sm">
+        <Card className="h-[620px] rounded-3xl border border-border/70 bg-card shadow-sm sm:h-[clamp(500px,60vh,680px)] xl:h-[clamp(340px,36vh,560px)]">
             <CardContent className="flex h-full min-h-0 flex-col p-0">
-                <div className="flex shrink-0 flex-col gap-4 border-b border-border/70 p-5 xl:flex-row xl:items-center xl:justify-between">
+                <div className="flex shrink-0 flex-col gap-3 border-b border-border/70 p-4 sm:gap-4 sm:p-5 xl:flex-row xl:items-center xl:justify-between">
                     <div>
                         <p className="text-xs font-bold uppercase tracking-[0.15em] text-muted-foreground">Seguimiento</p>
                         <h2 className="mt-1 text-2xl font-black tracking-tight text-foreground">Actividad de clientes</h2>
@@ -1174,7 +1173,7 @@ function AppointmentsPanel({
                     </div>
                 </div>
 
-                <div className="portal-scrollbar min-h-0 flex-1 space-y-2 overflow-y-auto p-5 pr-3 [scrollbar-gutter:stable]">
+                <div className="portal-scrollbar min-h-0 flex-1 space-y-2 overflow-y-auto p-3 pr-2 sm:p-5 sm:pr-3 [scrollbar-gutter:stable]">
                     {appointments.length === 0 ? (
                         <div className="flex min-h-full flex-col items-center justify-center rounded-2xl border border-dashed px-4 py-14 text-center">
                             <Users className="mx-auto h-8 w-8 text-muted-foreground/60" />
@@ -1189,11 +1188,12 @@ function AppointmentsPanel({
                         const specialistName = appointment.specialist?.displayName || appointment.specialist?.name || appointment.specialistName || "Sin asignar";
                         const appointmentCount = appointment.patient?._count.appointments || 1;
                         const contactHref = appointment.contactId ? `/dashboard/contacts/${appointment.contactId}` : "/dashboard/contacts";
+                        const appointmentDate = getOperationDateKey(appointment.startTime, operationContext.timeZone);
 
                         return (
                             <article
                                 key={appointment.id}
-                                className="grid gap-4 rounded-2xl border border-border/70 bg-background p-4 transition hover:border-primary/30 hover:shadow-sm xl:grid-cols-[minmax(220px,1.35fr)_minmax(180px,1fr)_minmax(150px,.8fr)_auto] xl:items-center"
+                                className="grid gap-3 rounded-2xl border border-border/70 bg-background p-3 transition hover:border-primary/30 hover:shadow-sm sm:p-4 xl:grid-cols-[minmax(220px,1.35fr)_minmax(180px,1fr)_minmax(150px,.8fr)_auto] xl:items-center"
                             >
                                 <div className="flex min-w-0 items-center gap-3">
                                     <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-sm font-black text-primary">
@@ -1232,26 +1232,16 @@ function AppointmentsPanel({
                                     </div>
                                 </div>
 
-                                <div className="flex items-center gap-2 xl:justify-end">
-                                    {phone ? (
-                                        <Button variant="outline" size="icon" className="h-9 w-9 rounded-xl" asChild>
-                                            <a href={`tel:${phone}`} aria-label={`Llamar a ${displayName}`}>
-                                                <Phone className="h-4 w-4" />
-                                            </a>
-                                        </Button>
-                                    ) : null}
-                                    {appointment.contactId ? (
-                                        <Button variant="outline" size="icon" className="h-9 w-9 rounded-xl text-primary" asChild>
-                                            <Link href={`/dashboard/inbox?contactId=${appointment.contactId}`} aria-label={`Enviar mensaje a ${displayName}`}>
-                                                <MessageCircle className="h-4 w-4" />
-                                            </Link>
-                                        </Button>
-                                    ) : null}
-                                    <Button variant="ghost" size="sm" className="rounded-xl text-primary" asChild>
-                                        <Link href={contactHref}>
-                                            Ver <ArrowRight className="ml-1 h-4 w-4" />
-                                        </Link>
-                                    </Button>
+                                <div className="flex items-center xl:justify-end">
+                                    <AppointmentQuickActions
+                                        appointmentId={appointment.id}
+                                        appointmentDate={appointmentDate}
+                                        clientName={displayName}
+                                        contactId={appointment.contactId}
+                                        status={appointment.status}
+                                        confirmationStatus={appointment.confirmationStatus}
+                                        paymentStatus={appointment.paymentStatus}
+                                    />
                                 </div>
                             </article>
                         );

@@ -344,7 +344,7 @@ export async function getContacts(query?: string) {
         await synchronizeClientRecords();
         const contacts = await prisma.contact.findMany({
             where: buildContactSearchWhere(query),
-            orderBy: { createdAt: "desc" },
+            orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
             include: CONTACT_LIST_INCLUDE,
         });
 

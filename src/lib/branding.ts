@@ -1,4 +1,4 @@
-export const DEFAULT_BRAND_NAME = "Zen CRM Oftalmo";
+export const DEFAULT_BRAND_NAME = "Zen CRM Belleza";
 export const DEFAULT_BRAND_FAVICON_URL = "/brand/zen-favicon.svg";
 
 export type BrandingSettings = {

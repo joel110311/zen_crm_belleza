@@ -542,8 +542,7 @@ body {
   display: none !important;
 }
 
-/* Color themes: green (default) and black */
-:root,
+/* Color themes: clinic blue (default) and green */
 :root[data-color-theme="green"] {
   --background: hsl(42 31% 96%);
   --foreground: hsl(72 25% 16%);
@@ -597,7 +596,6 @@ body {
   --scrollbar-thumb-border: hsl(43 20% 92%);
 }
 
-:root.dark,
 :root.dark[data-color-theme="green"] {
   --background: hsl(142 20% 8%);
   --foreground: hsl(142 15% 92%);
@@ -650,6 +648,8 @@ body {
   --scrollbar-thumb-border: hsl(146 16% 13%);
 }
 
+:root,
+:root[data-color-theme="clinic"],
 :root[data-color-theme="black"] {
   --background: hsl(220 20% 96%);
   --foreground: hsl(222 47% 11%);
@@ -699,6 +699,8 @@ body {
   --scrollbar-thumb-border: hsl(220 16% 90%);
 }
 
+:root.dark,
+:root.dark[data-color-theme="clinic"],
 :root.dark[data-color-theme="black"] {
   --background: hsl(228 21% 7%);
   --foreground: hsl(210 40% 96%);
@@ -784,16 +786,24 @@ body {
   }
 }
 
-:root.dark body {
-  background-image: radial-gradient(circle at 0% 0%, hsl(141 28% 11%) 0%, hsl(142 20% 8%) 44%, hsl(146 18% 7%) 100%);
-}
-
+:root body,
+:root[data-color-theme="clinic"] body,
 :root[data-color-theme="black"] body {
   background-image: radial-gradient(circle at 0% 0%, hsl(221 32% 97%) 0%, hsl(220 20% 96%) 44%, hsl(220 16% 92%) 100%);
 }
 
+:root[data-color-theme="green"] body {
+  background-image: linear-gradient(135deg, hsl(45 38% 98%) 0%, hsl(42 31% 96%) 52%, hsl(72 15% 94%) 100%);
+}
+
+:root.dark body,
+:root.dark[data-color-theme="clinic"] body,
 :root.dark[data-color-theme="black"] body {
   background-image: radial-gradient(circle at 0% 0%, hsl(222 42% 13%) 0%, hsl(228 21% 7%) 45%, hsl(228 24% 6%) 100%);
+}
+
+:root.dark[data-color-theme="green"] body {
+  background-image: radial-gradient(circle at 0% 0%, hsl(141 28% 11%) 0%, hsl(142 20% 8%) 44%, hsl(146 18% 7%) 100%);
 }
 
 @media (min-width: 768px) {

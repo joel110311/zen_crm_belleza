@@ -36,6 +36,7 @@ import { ContactsBulkDeleteDialog } from "@/components/contacts/contacts-bulk-de
 import { useToast } from "@/components/ui/use-toast";
 import { getContactFullName } from "@/lib/contact-name";
 import { normalizeBusinessHours } from "@/lib/calendar/business-hours";
+import { getOperationDateKey } from "@/lib/operation-dates";
 import { hasAnyPermission, hasPermission } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
 
@@ -291,22 +292,10 @@ export function ContactsTable({ contacts }: ContactsPageProps) {
             setConfirmingAppointmentId(null);
         }
     };
-    const handleCompleteAppointment = async (appointmentId: string) => {
-        setCompletingAppointmentId(appointmentId);
-        try {
-            const result = await updateAppointmentStatus(appointmentId, "completed");
-            if (!result.success) throw new Error(result.error || "No se pudo marcar como atendido.");
-            toast({ title: "Cliente atendido", description: "La cita quedó registrada como completada." });
-            router.refresh();
-        } catch (error) {
-            toast({
-                title: "No se pudo marcar como atendido",
-                description: error instanceof Error ? error.message : "Inténtalo nuevamente.",
-                variant: "destructive",
-            });
-        } finally {
-            setCompletingAppointmentId(null);
-        }
+    const handleCompleteAppointment = (appointment: ClientAppointment) => {
+        setCompletingAppointmentId(appointment.id);
+        const appointmentDate = getOperationDateKey(appointment.startTime, businessHours.timeZone);
+        router.push(`/dashboard/reception?date=${encodeURIComponent(appointmentDate)}&finish=${encodeURIComponent(appointment.id)}`);
     };
     const openAppointmentDialog = (contact: ContactTableItem) => {
         setAppointmentClient(contact);
@@ -474,8 +463,12 @@ export function ContactsTable({ contacts }: ContactsPageProps) {
                                         <span className="inline-flex items-center gap-2 text-sm text-foreground"><Sparkles className="h-4 w-4 text-gold" />{metrics.favoriteService}</span>
                                     </TableCell>
                                     <TableCell className="text-right">
-                                        {contact.phone ? (
-                                            <Link href={`/dashboard/inbox?contactId=${encodeURIComponent(contact.id)}`} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-primary/20 bg-primary/5 px-3 text-xs font-medium text-primary hover:bg-primary/10">
+                                        {contact.id ? (
+                                            <Link
+                                                href={`/dashboard/inbox?contactId=${encodeURIComponent(contact.id)}`}
+                                                aria-label={`Abrir conversación de ${fullName}`}
+                                                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-primary/20 bg-primary/5 px-3 text-xs font-medium text-primary hover:bg-primary/10"
+                                            >
                                                 <WhatsAppIcon className="h-3.5 w-3.5" /> Ir al chat
                                             </Link>
                                         ) : <span className="text-xs text-muted-foreground">—</span>}
@@ -497,13 +490,12 @@ export function ContactsTable({ contacts }: ContactsPageProps) {
                                             <Button
                                                 type="button"
                                                 className={cn("h-9 gap-2 rounded-full px-3", isAttended && "bg-emerald-600 hover:bg-emerald-600")}
-                                                disabled={!canConfirmAppointments || !actionAppointment || isAttended || completingAppointmentId === actionAppointment.id}
-                                                onClick={() => actionAppointment && void handleCompleteAppointment(actionAppointment.id)}
+                                                disabled={!canConfirmAppointments || !actionAppointment || actionAppointment.paymentStatus === "paid" || completingAppointmentId === actionAppointment.id}
+                                                onClick={() => actionAppointment && handleCompleteAppointment(actionAppointment)}
                                             >
                                                 <CheckCircle2 className="h-4 w-4" /> Atendido
                                             </Button>
                                             <ContactActions
-                                                contactId={contact.id}
                                                 clientName={fullName}
                                                 hasAppointment={Boolean(actionAppointment)}
                                                 disabled={!canManageCalendar}

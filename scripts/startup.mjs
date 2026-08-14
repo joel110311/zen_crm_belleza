@@ -129,6 +129,23 @@ async function migrateLegacyOfficialWhatsAppData(pool) {
     await runSafeQuery(pool, 'UPDATE "SystemSettings" SET "appointmentReminderProvider" = \'meta\' WHERE "appointmentReminderProvider" = \'ycloud\'');
 }
 
+async function migrateLegacyBeautyBranding(pool) {
+    console.log("[Startup] Migrating legacy ophthalmology branding to beauty defaults...");
+    await pool.query(`
+        UPDATE "SystemSettings"
+        SET
+            "brandName" = CASE WHEN "brandName" = 'Zen CRM Oftalmo' THEN 'Zen CRM Belleza' ELSE "brandName" END,
+            "clinicName" = CASE WHEN "clinicName" = 'Zen CRM Oftalmo' THEN 'Zen CRM Belleza' ELSE "clinicName" END,
+            "clinicSubtitle" = CASE WHEN "clinicSubtitle" = 'Clinica oftalmologica' THEN 'Servicios de belleza' ELSE "clinicSubtitle" END,
+            "clinicAddress" = CASE WHEN "clinicAddress" = 'Direccion de la clinica' THEN 'Direccion del negocio' ELSE "clinicAddress" END,
+            "doctorTitle" = CASE WHEN "doctorTitle" = 'Medico Oftalmologo' THEN 'Profesional de belleza' ELSE "doctorTitle" END,
+            "portalSlug" = CASE WHEN LOWER(COALESCE("portalSlug", '')) = 'oftalmo' THEN 'belleza' ELSE "portalSlug" END,
+            "portalClinicName" = CASE WHEN "portalClinicName" = 'Zen CRM Oftalmo' THEN 'Zen CRM Belleza' ELSE "portalClinicName" END,
+            "portalIntro" = CASE WHEN "portalIntro" = 'Agenda tu consulta oftalmologica y recibe confirmacion por WhatsApp.' THEN 'Aparta el horario para tu proximo servicio.' ELSE "portalIntro" END,
+            "posTicketHeader" = CASE WHEN "posTicketHeader" = E'Zen CRM Oftalmo\\nClinica oftalmologica\\nDireccion de la clinica' THEN E'Zen CRM Belleza\\nServicios de belleza\\nDireccion del negocio' ELSE "posTicketHeader" END
+    `);
+}
+
 async function startup() {
     if (!DATABASE_URL) {
         console.warn("[Startup] No DATABASE_URL, skipping DB setup.");
@@ -141,6 +158,7 @@ async function startup() {
         await waitForDatabase(pool);
         await migrateLegacyOfficialWhatsAppData(pool);
         await runPrismaDbPush();
+        await migrateLegacyBeautyBranding(pool);
         console.log("[Startup] Checking schema...");
 
         await runSafeQuery(
