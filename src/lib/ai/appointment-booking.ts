@@ -88,6 +88,13 @@ const EVENT_OR_QUOTE_CONTEXT_PATTERNS = [
 const DATE_OR_TIME_ANSWER_PATTERN =
     /\b(hoy|mañana|manana|pasado mañana|pasado manana|lunes|martes|miercoles|miércoles|jueves|viernes|sabado|sábado|domingo|enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre|\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?|\d{1,2}:\d{2}|\d{1,2}\s*(?:am|pm|a\.m\.|p\.m\.))\b/i;
 
+const APPOINTMENT_LOOKUP_PATTERNS = [
+    /\b(no\s+(?:veo|aparece|encuentro)|no\s+esta|no\s+está)\b.{0,80}\b(?:mi|la)\s+(?:cita|reserva)\b/i,
+    /\b(verifica|verificar|revisa|revisar|consulta|consultar)\b.{0,80}\b(?:mi|la)\s+(?:cita|reserva)\b/i,
+    /\b(?:mi|la)\s+(?:cita|reserva)\b.{0,80}\b(estado|sistema|calendario|registrada|agendada|confirmada|aparece)\b/i,
+    /\b(ya\s+quedo|ya\s+quedó|si\s+quedo|sí\s+quedó)\b.{0,60}\b(?:mi|la)\s+(?:cita|reserva)\b/i,
+];
+
 const AMBIGUOUS_RELATIVE_WEEKDAY_PATTERN =
     /\b(?:el\s+)?(?:(proximo|próximo|siguiente)\s+(lunes|martes|miercoles|miércoles|jueves|viernes|sabado|sábado|domingo)|(lunes|martes|miercoles|miércoles|jueves|viernes|sabado|sábado|domingo)\s+(proximo|próximo|siguiente))\b/i;
 
@@ -173,6 +180,86 @@ function hasAppointmentContext(
     // ("si", "ese horario" o una transcripcion de audio como "a la una").
     // El planificador decide despues si realmente contienen una confirmacion.
     return looksLikeDateOrTimeAnswer(latestUserMessage) || latestUserMessage.trim().length <= 160;
+}
+
+function hasAppointmentLookupIntent(text: string) {
+    return APPOINTMENT_LOOKUP_PATTERNS.some((pattern) => pattern.test(text));
+}
+
+function formatAppointmentStatus(status: string, confirmationStatus: string) {
+    if (status === "completed") return "Atendida";
+    if (confirmationStatus === "confirmed") return "Confirmada";
+    if (confirmationStatus === "declined") return "Rechazada";
+    return "Registrada, pendiente de confirmación";
+}
+
+async function buildAppointmentLookupReply(
+    conversationId: string,
+    latestUserMessage: string,
+) {
+    if (!hasAppointmentLookupIntent(latestUserMessage)) return null;
+
+    const [conversation, config] = await Promise.all([
+        prisma.conversation.findUnique({
+            where: { id: conversationId },
+            select: { contactId: true },
+        }),
+        getBusinessHoursConfig(),
+    ]);
+
+    if (!conversation?.contactId) return null;
+
+    const appointments = await prisma.appointment.findMany({
+        where: {
+            contactId: conversation.contactId,
+            status: { notIn: ["cancelled", "no_show"] },
+            endTime: { gte: new Date() },
+        },
+        orderBy: { startTime: "asc" },
+        take: 3,
+    });
+
+    if (appointments.length === 0) {
+        return [
+            "*No encuentro una cita registrada en el calendario.*",
+            "",
+            "La conversación anterior no bloqueó ningún horario. Para hacerlo correctamente, confírmame la fecha completa con día, mes y año que deseas; enseguida revisaré la disponibilidad real antes de registrarla.",
+        ].join("\n");
+    }
+
+    const appointmentLines = appointments.flatMap((appointment, index) => {
+        const durationMinutes = Math.max(
+            15,
+            Math.round((appointment.endTime.getTime() - appointment.startTime.getTime()) / 60000),
+        );
+
+        return [
+            ...(appointments.length > 1 ? [`*Cita ${index + 1}*`] : []),
+            `*Servicio:* ${appointment.title}`,
+            `*Fecha:* ${formatDateTimeInZone(appointment.startTime, config.timeZone, "es-MX", {
+                weekday: "long",
+                day: "numeric",
+                month: "long",
+                year: "numeric",
+            })}`,
+            `*Hora:* ${formatDateTimeInZone(appointment.startTime, config.timeZone, "es-MX", {
+                hour: "numeric",
+                minute: "2-digit",
+            })}`,
+            `*Duración aproximada:* ${durationMinutes} minutos`,
+            ...(appointment.specialistName ? [`*Profesional:* ${appointment.specialistName}`] : []),
+            `*Estado:* ${formatAppointmentStatus(appointment.status, appointment.confirmationStatus)}`,
+            ...(appointments.length > 1 && index < appointments.length - 1 ? [""] : []),
+        ];
+    });
+
+    return [
+        appointments.length === 1
+            ? "*Sí encontré tu cita en el calendario.*"
+            : `*Encontré ${appointments.length} citas próximas en el calendario.*`,
+        "",
+        ...appointmentLines,
+    ].join("\n");
 }
 
 function getUnresolvedAmbiguousDate(
@@ -538,6 +625,14 @@ export async function maybeHandleAppointmentBooking(
     },
 ): Promise<AppointmentHandlingResult> {
     const mode = options?.mode || "create";
+    const appointmentLookupReply = await buildAppointmentLookupReply(
+        conversationId,
+        latestUserMessage,
+    );
+    if (appointmentLookupReply) {
+        return { kind: "missing", reply: appointmentLookupReply };
+    }
+
     const planned = await planAppointmentFromConversation(conversationId, latestUserMessage);
 
     if (!planned?.planner || planned.planner.intent !== "schedule") {
