@@ -70,6 +70,45 @@ function normalizeWhatsAppReply(text: string) {
     return paragraphs.join("\n\n");
 }
 
+const UNVERIFIED_APPOINTMENT_MUTATION_PATTERNS = [
+    /\b(?:he|hemos)\s+(?:registrado|agendado|confirmado|actualizado|modificado|reprogramado|cancelado)\s+(?:tu|la)\s+cita\b/i,
+    /\btu\s+cita\s+(?:queda|qued[oó]|est[aá]|ha\s+quedado|fue)\s+(?:agendada|confirmada|registrada|actualizada|modificada|reprogramada|cancelada)\b/i,
+    /\b(?:la\s+)?(?:cita|reserva)\s+(?:queda|qued[oó]|est[aá])\s+confirmada\b/i,
+];
+
+function guardUnverifiedAppointmentMutationClaim(text: string) {
+    if (!UNVERIFIED_APPOINTMENT_MUTATION_PATTERNS.some((pattern) => pattern.test(text))) {
+        return text;
+    }
+
+    return [
+        "*La cita todavia no esta confirmada en el calendario.*",
+        "",
+        "Para apartar el horario necesito validar y registrar la fecha y la hora exactas.",
+        "",
+        "Dime la fecha completa (dia, mes y año) y la hora que deseas.",
+    ].join("\n");
+}
+
+const UNVERIFIED_AVAILABILITY_PATTERN = /\b(disponibles?|disponibilidad|libres?)\b/i;
+const APPOINTMENT_TIME_MENTION_PATTERN =
+    /\b(?:[01]?\d|2[0-3])(?::[0-5]\d)?\s*(?:a\.?\s*m\.?|p\.?\s*m\.?)\b/i;
+
+function guardUnverifiedAvailabilityClaim(text: string) {
+    if (
+        !UNVERIFIED_AVAILABILITY_PATTERN.test(text) ||
+        !APPOINTMENT_TIME_MENTION_PATTERN.test(text)
+    ) {
+        return text;
+    }
+
+    return [
+        "*Necesito consultar la disponibilidad real antes de ofrecerte horarios.*",
+        "",
+        "Dime el servicio y la fecha completa que te interesa para revisar el calendario de la profesional.",
+    ].join("\n");
+}
+
 function stripUnverifiedAdvisorLines(
     text: string,
     verifiedAdvisor?: {
@@ -318,6 +357,11 @@ REGLAS DE RESPUESTA
 - No respondas mas de lo que el cliente pregunto si no hace falta.
 - Si no tienes informacion fiable o suficiente para responder, dilo con honestidad y avisa brevemente que vas a canalizar la conversacion con un asesor humano.
 - Si el usuario quiere una cita, ayuda a concretarla dentro del horario comercial del negocio.
+- Nunca afirmes que una cita fue registrada, agendada, confirmada, actualizada, reprogramada o cancelada. Esas confirmaciones solo las envia el modulo operativo despues de escribir el cambio en el calendario.
+- Al hablar de una cita usa siempre la fecha completa con dia, mes y año; no confirmes usando solamente expresiones relativas como "el proximo martes".
+- Nunca inventes ni calcules horarios libres a partir del horario comercial. Solo el modulo operativo puede ofrecer horas despues de consultar citas, bloqueos y retenciones vigentes en el calendario de la profesional elegida.
+- Si hay varias profesionales, pregunta con cual desea la cita y consulta unicamente la agenda de esa profesional.
+- Si solo existe una profesional activa, seleccionala automaticamente y no preguntes con quien desea atenderse.
 - Nunca inventes nombres, telefonos ni correos de asesores, ejecutivos o responsables.
 - Solo puedes mencionar un responsable humano si aparece en los DATOS VERIFICADOS DEL CRM.
 - Nunca inventes telefonos de personas del equipo. Si no existe un dato verificado, omitelo.
@@ -352,7 +396,9 @@ ${[automationInstruction, recentSalesFactsInstruction].filter(Boolean).join("\n\
     );
 
     const normalized = normalizeWhatsAppReply(response || "");
-    return stripUnverifiedAdvisorLines(normalized, conversation.assignedUser);
+    const withoutUnverifiedAppointmentClaim = guardUnverifiedAppointmentMutationClaim(normalized);
+    const withoutUnverifiedAvailability = guardUnverifiedAvailabilityClaim(withoutUnverifiedAppointmentClaim);
+    return stripUnverifiedAdvisorLines(withoutUnverifiedAvailability, conversation.assignedUser);
 }
 
 export async function processBotResponse(contactId: string, userMessage: string) {

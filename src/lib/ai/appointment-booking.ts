@@ -18,6 +18,7 @@ import {
     formatDateTimeInZone,
     getBusinessDateKey,
     formatTimeLabel,
+    shiftDateKey,
     zonedDateTimeToUtc,
 } from "@/lib/calendar/business-hours";
 import { getContactFullName } from "@/lib/contact-name";
@@ -70,6 +71,12 @@ const APPOINTMENT_FOLLOW_UP_PROMPTS = [
     /\b(cita|agendar|calendario|horarios libres|disponibilidad real)\b.{0,80}\b(que|qué)\s+d[ií]a\b/i,
     /\b(horario|hora)\s+que\s+prefieras\b/i,
     /\bresponde\s+con\s+el\s+horario\b/i,
+    /\b(confirmar|apartar|reservar)\b.{0,70}\b(cita|horario)\b/i,
+    /\b(cita|horario)\b.{0,70}\b(confirmar|apartar|reservar|mantener)\b/i,
+    /\b(te parece bien|te queda bien)\b.{0,90}\b(horario|hora|cita|lunes|martes|miercoles|miércoles|jueves|viernes|sabado|sábado|domingo)\b/i,
+    /\b(horarios?)\b.{0,60}\b(disponibles?|libres?)\b/i,
+    /\b(mañana|manana|tarde)\b.{0,80}\b(disponibilidad|agenda|horario)\b/i,
+    /\b(confirmar|confirma|confirmame|confírmame)\b.{0,60}\b(fecha exacta|fecha|dia|día)\b/i,
 ];
 
 const EVENT_OR_QUOTE_CONTEXT_PATTERNS = [
@@ -80,6 +87,24 @@ const EVENT_OR_QUOTE_CONTEXT_PATTERNS = [
 
 const DATE_OR_TIME_ANSWER_PATTERN =
     /\b(hoy|mañana|manana|pasado mañana|pasado manana|lunes|martes|miercoles|miércoles|jueves|viernes|sabado|sábado|domingo|enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre|\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?|\d{1,2}:\d{2}|\d{1,2}\s*(?:am|pm|a\.m\.|p\.m\.))\b/i;
+
+const AMBIGUOUS_RELATIVE_WEEKDAY_PATTERN =
+    /\b(?:el\s+)?(?:(proximo|próximo|siguiente)\s+(lunes|martes|miercoles|miércoles|jueves|viernes|sabado|sábado|domingo)|(lunes|martes|miercoles|miércoles|jueves|viernes|sabado|sábado|domingo)\s+(proximo|próximo|siguiente))\b/i;
+
+const EXPLICIT_CALENDAR_DATE_PATTERN =
+    /\b\d{1,2}\s+de\s+(?:enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre)(?:\s+de\s+\d{4})?\b|\b\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?\b/i;
+
+const WEEKDAY_INDEX: Record<string, number> = {
+    domingo: 0,
+    lunes: 1,
+    martes: 2,
+    miercoles: 3,
+    miércoles: 3,
+    jueves: 4,
+    viernes: 5,
+    sabado: 6,
+    sábado: 6,
+};
 
 function stripCodeFences(value: string) {
     const fenced = value.match(/```(?:json)?\s*([\s\S]*?)```/i);
@@ -140,10 +165,82 @@ function hasAppointmentContext(
         return false;
     }
 
-    return (
-        looksLikeDateOrTimeAnswer(latestUserMessage) &&
-        assistantRequestedAppointmentDetail(lastAssistantMessage)
+    if (!assistantRequestedAppointmentDetail(lastAssistantMessage)) {
+        return false;
+    }
+
+    // Las respuestas a una pregunta operativa de agenda suelen ser muy cortas
+    // ("si", "ese horario" o una transcripcion de audio como "a la una").
+    // El planificador decide despues si realmente contienen una confirmacion.
+    return looksLikeDateOrTimeAnswer(latestUserMessage) || latestUserMessage.trim().length <= 160;
+}
+
+function getUnresolvedAmbiguousDate(
+    messages: Array<{ content: string; direction: string; senderType: string | null }>,
+    latestUserMessage: string,
+) {
+    const inboundMessages = messages
+        .filter((message) => message.direction === "inbound" && message.senderType !== "bot")
+        .map((message) => message.content?.trim())
+        .filter((message): message is string => Boolean(message));
+
+    if (inboundMessages[inboundMessages.length - 1] !== latestUserMessage.trim()) {
+        inboundMessages.push(latestUserMessage.trim());
+    }
+
+    let ambiguousIndex = -1;
+    let ambiguousMatch: RegExpMatchArray | null = null;
+
+    for (let index = 0; index < inboundMessages.length; index += 1) {
+        const message = inboundMessages[index];
+        const match = message.match(AMBIGUOUS_RELATIVE_WEEKDAY_PATTERN);
+        if (match) {
+            ambiguousIndex = index;
+            ambiguousMatch = match;
+        }
+    }
+
+    if (ambiguousIndex === -1 || !ambiguousMatch) return null;
+
+    const wasClarified = inboundMessages
+        .slice(ambiguousIndex + 1)
+        .some((message) => EXPLICIT_CALENDAR_DATE_PATTERN.test(message));
+
+    if (wasClarified) return null;
+
+    const weekday = (ambiguousMatch[2] || ambiguousMatch[3] || "").toLowerCase();
+    return {
+        phrase: ambiguousMatch[0],
+        weekday,
+    };
+}
+
+function buildAmbiguousDateReply(
+    phrase: string,
+    weekday: string,
+    config: Awaited<ReturnType<typeof getBusinessHoursConfig>>,
+) {
+    const todayKey = getBusinessDateKey(new Date(), config.timeZone);
+    const [year, month, day] = todayKey.split("-").map(Number);
+    const currentWeekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+    const targetWeekday = WEEKDAY_INDEX[weekday];
+    const firstOffset = ((targetWeekday - currentWeekday + 7) % 7) || 7;
+    const firstDateKey = shiftDateKey(todayKey, firstOffset);
+    const secondDateKey = shiftDateKey(firstDateKey, 7);
+    const formatCandidate = (dateKey: string) => formatDateTimeInZone(
+        zonedDateTimeToUtc(dateKey, "12:00", config.timeZone),
+        config.timeZone,
+        "es-MX",
+        { weekday: "long", day: "numeric", month: "long", year: "numeric" },
     );
+
+    return [
+        "*Antes de apartar el horario necesito confirmar la fecha exacta.*",
+        "",
+        `Cuando dices *${phrase}*, te refieres al *${formatCandidate(firstDateKey)}* o al *${formatCandidate(secondDateKey)}*?`,
+        "",
+        "Respondeme con el dia, mes y año para evitar cualquier confusion.",
+    ].join("\n");
 }
 
 function buildConversationTranscript(
@@ -208,6 +305,7 @@ function buildDateAvailabilityReply(
         weekday: "long",
         day: "numeric",
         month: "long",
+        year: "numeric",
     });
 
     if (!availability.isOpen) {
@@ -320,6 +418,7 @@ function buildValidatedSlotLabel(
         weekday: "long",
         day: "numeric",
         month: "long",
+        year: "numeric",
     });
     const timeLabel = formatDateTimeInZone(startTime, timeZone, "es-MX", {
         hour: "numeric",
@@ -363,6 +462,14 @@ async function planAppointmentFromConversation(
             senderType: message.senderType,
         })),
     );
+    const ambiguousDate = getUnresolvedAmbiguousDate(
+        [...conversation.messages].reverse().map((message) => ({
+            content: message.content,
+            direction: message.direction,
+            senderType: message.senderType,
+        })),
+        latestUserMessage,
+    );
 
     const parserPrompt = `
 Analiza la conversacion y decide si el cliente quiere *agendar una cita nueva*.
@@ -388,6 +495,7 @@ ${formatBusinessScheduleLines(config)}
 
 REGLAS
 - Usa el historial para resolver mensajes como "manana a las 3" o "si, a esa hora".
+- Si aparece una fecha relativa ambigua como "proximo martes" o "martes siguiente", no la confirmes ni la conviertas silenciosamente en una cita. El sistema pedira primero una fecha exacta.
 - Solo marca intent = "schedule" si realmente quiere una cita, reunion, llamada, demo o consulta.
 - Si pregunta por horarios o disponibilidad para una cita, tambien es intent = "schedule".
 - Si la fecha es del evento, entrega, pedido o cotizacion, NO es una cita del CRM: usa intent = "other" y action = "ignore".
@@ -418,6 +526,7 @@ Cliente: ${latestUserMessage}
         conversation,
         config,
         planner: parsePlannerResult(raw || ""),
+        ambiguousDate,
     };
 }
 
@@ -436,6 +545,16 @@ export async function maybeHandleAppointmentBooking(
     }
 
     const { planner, conversation, config } = planned;
+    if (planned.ambiguousDate) {
+        return {
+            kind: "missing",
+            reply: buildAmbiguousDateReply(
+                planned.ambiguousDate.phrase,
+                planned.ambiguousDate.weekday,
+                config,
+            ),
+        };
+    }
     const durationMinutes = Math.min(
         Math.max(planner.durationMinutes || config.defaultDurationMinutes, 15),
         180,
@@ -473,6 +592,7 @@ export async function maybeHandleAppointmentBooking(
                 {
                     calendarIds: blockingCalendarIds,
                     limit: 6,
+                    slotHoldOwnerKey: conversation.id,
                 },
             );
 
@@ -505,6 +625,7 @@ export async function maybeHandleAppointmentBooking(
                 endTime,
                 googleCalendarId: targetCalendar?.calendarId || undefined,
                 blockingCalendarIds,
+                slotHoldOwnerKey: conversation.id,
             });
 
             return {
@@ -534,6 +655,7 @@ export async function maybeHandleAppointmentBooking(
             googleCalendarColor: targetCalendar?.backgroundColor || undefined,
             specialistName: selectedSpecialist?.specialistName || selectedSpecialist?.summary || undefined,
             blockingCalendarIds,
+            slotHoldOwnerKey: conversation.id,
         });
 
         revalidatePath("/dashboard/calendar");

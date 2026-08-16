@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { randomUUID } from "crypto";
 import { getSystemSettingsOrDefaults } from "@/lib/system-settings";
 import {
     deleteAppointmentFromGoogleCalendar,
@@ -48,6 +49,7 @@ type AppointmentInput = {
     googleCalendarColor?: string | null;
     specialistName?: string | null;
     blockingCalendarIds?: string[];
+    slotHoldOwnerKey?: string;
 };
 
 type ConflictCheckInput = {
@@ -58,6 +60,7 @@ type ConflictCheckInput = {
     googleCalendarId?: string | null;
     allowOverbook?: boolean;
     blockingCalendarIds?: string[];
+    slotHoldOwnerKey?: string;
 };
 
 type AvailableSlotOptions = {
@@ -66,7 +69,143 @@ type AvailableSlotOptions = {
     excludeAppointmentId?: string;
     specialistId?: string | null;
     calendarIds?: string[];
+    slotHoldOwnerKey?: string;
 };
+
+const APPOINTMENT_SLOT_HOLD_TTL_MS = 5 * 60 * 1000;
+const APPOINTMENT_SLOT_STEP_MS = 15 * 60 * 1000;
+
+function getSlotHoldCalendarKeys(input: {
+    specialistId?: string | null;
+    googleCalendarId?: string | null;
+    calendarIds?: string[];
+}) {
+    if (input.specialistId) return [`specialist:${input.specialistId}`];
+
+    const calendarIds = [
+        ...(input.calendarIds || []),
+        ...(input.googleCalendarId ? [input.googleCalendarId] : []),
+    ].filter(Boolean);
+
+    return calendarIds.length > 0
+        ? [...new Set(calendarIds)].map((calendarId) => `calendar:${calendarId}`)
+        : ["calendar:default"];
+}
+
+function getSlotHoldSegments(startTime: Date, endTime: Date) {
+    const firstSegment = Math.floor(startTime.getTime() / APPOINTMENT_SLOT_STEP_MS) * APPOINTMENT_SLOT_STEP_MS;
+    const segments: Date[] = [];
+
+    for (let cursor = firstSegment; cursor < endTime.getTime(); cursor += APPOINTMENT_SLOT_STEP_MS) {
+        segments.push(new Date(cursor));
+    }
+
+    return segments;
+}
+
+async function findConflictingSlotHolds({
+    startTime,
+    endTime,
+    specialistId,
+    googleCalendarId,
+    blockingCalendarIds,
+    slotHoldOwnerKey,
+}: ConflictCheckInput) {
+    const calendarKeys = getSlotHoldCalendarKeys({
+        specialistId,
+        googleCalendarId,
+        calendarIds: blockingCalendarIds,
+    });
+    const segments = getSlotHoldSegments(startTime, endTime);
+
+    if (segments.length === 0) return [];
+
+    return prisma.appointmentSlotHold.findMany({
+        where: {
+            calendarKey: { in: calendarKeys },
+            slotStart: { in: segments },
+            expiresAt: { gt: new Date() },
+            ...(slotHoldOwnerKey ? { ownerKey: { not: slotHoldOwnerKey } } : {}),
+        },
+    });
+}
+
+export async function releaseAppointmentSlotHold(ownerKey: string) {
+    await prisma.appointmentSlotHold.deleteMany({ where: { ownerKey } });
+}
+
+export async function acquireAppointmentSlotHold(input: ConflictCheckInput & { ownerKey: string }) {
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + APPOINTMENT_SLOT_HOLD_TTL_MS);
+    const calendarKeys = getSlotHoldCalendarKeys({
+        specialistId: input.specialistId,
+        googleCalendarId: input.googleCalendarId,
+        calendarIds: input.blockingCalendarIds,
+    });
+    const segments = getSlotHoldSegments(input.startTime, input.endTime);
+
+    try {
+        await prisma.$transaction(async (tx) => {
+            await tx.appointmentSlotHold.deleteMany({
+                where: {
+                    OR: [
+                        { expiresAt: { lte: now } },
+                        { ownerKey: input.ownerKey },
+                    ],
+                },
+            });
+
+            const appointmentConflict = await tx.appointment.findFirst({
+                where: {
+                    status: { notIn: ["cancelled", "no_show"] },
+                    ...(input.specialistId
+                        ? { specialistId: input.specialistId }
+                        : input.blockingCalendarIds && input.blockingCalendarIds.length > 0
+                            ? { googleCalendarId: { in: input.blockingCalendarIds } }
+                            : input.googleCalendarId
+                                ? { googleCalendarId: input.googleCalendarId }
+                                : {}),
+                    startTime: { lt: input.endTime },
+                    endTime: { gt: input.startTime },
+                },
+                select: { id: true },
+            });
+
+            if (appointmentConflict) {
+                throw new AppointmentSchedulingError(
+                    "TIME_CONFLICT",
+                    "Ya existe otra cita ocupando ese horario.",
+                );
+            }
+
+            await tx.appointmentSlotHold.createMany({
+                data: calendarKeys.flatMap((calendarKey) =>
+                    segments.map((slotStart) => ({
+                        ownerKey: input.ownerKey,
+                        calendarKey,
+                        slotStart,
+                        expiresAt,
+                    })),
+                ),
+            });
+        }, { isolationLevel: "Serializable" });
+    } catch (error) {
+        if (error instanceof AppointmentSchedulingError) throw error;
+
+        const prismaCode = typeof error === "object" && error && "code" in error
+            ? String(error.code)
+            : "";
+        if (prismaCode === "P2002" || prismaCode === "P2034") {
+            throw new AppointmentSchedulingError(
+                "TIME_CONFLICT",
+                "Otra persona esta apartando ese horario en este momento.",
+            );
+        }
+        throw error;
+    }
+
+    return { expiresAt };
+}
 
 export class AppointmentSchedulingError extends Error {
     code: "INVALID_RANGE" | "PAST_DATE" | "OUTSIDE_BUSINESS_HOURS" | "TIME_CONFLICT";
@@ -144,6 +283,7 @@ export function formatAppointmentSuggestions(
             weekday: "long",
             day: "numeric",
             month: "long",
+            year: "numeric",
             hour: "numeric",
             minute: "2-digit",
         })}`,
@@ -158,6 +298,7 @@ async function ensureAppointmentIsSchedulable(
     blockingCalendarIds?: string[],
     specialistId?: string | null,
     allowOverbook = false,
+    slotHoldOwnerKey?: string,
 ) {
     if (!(startTime instanceof Date) || Number.isNaN(startTime.getTime()) || !(endTime instanceof Date) || Number.isNaN(endTime.getTime())) {
         throw new AppointmentSchedulingError("INVALID_RANGE", "La fecha u hora de la cita no son validas.");
@@ -223,7 +364,18 @@ async function ensureAppointmentIsSchedulable(
             specialistId,
         });
 
-    if (conflicts.length > 0 || blockConflicts.length > 0) {
+    const holdConflicts = allowOverbook
+        ? []
+        : await findConflictingSlotHolds({
+            startTime,
+            endTime,
+            specialistId,
+            googleCalendarId: blockingCalendarIds?.[0],
+            blockingCalendarIds,
+            slotHoldOwnerKey,
+        });
+
+    if (conflicts.length > 0 || blockConflicts.length > 0 || holdConflicts.length > 0) {
         const suggestions = await suggestAvailableSlots(startTime, endTime.getTime() - startTime.getTime(), config, {
             from: startTime,
             limit: 3,
@@ -235,6 +387,8 @@ async function ensureAppointmentIsSchedulable(
             "TIME_CONFLICT",
             blockConflicts.length > 0
                 ? "Ese horario esta bloqueado para el especialista."
+                : holdConflicts.length > 0
+                    ? "Otra persona esta apartando ese horario en este momento."
                 : "Ya existe otra cita ocupando ese horario.",
             suggestions,
         );
@@ -265,7 +419,15 @@ export async function validateManagedAppointment(
         blockingCalendarIds,
         input.specialistId,
         input.allowOverbook,
+        input.slotHoldOwnerKey,
     );
+
+    if (input.slotHoldOwnerKey && !input.allowOverbook) {
+        await acquireAppointmentSlotHold({
+            ...input,
+            ownerKey: input.slotHoldOwnerKey,
+        });
+    }
 
     return config;
 }
@@ -309,7 +471,8 @@ export async function suggestAvailableSlots(
             },
             orderBy: { startTime: "asc" },
         });
-        const dayBlocks = await prisma.specialistAvailabilityBlock.findMany({
+        const [dayBlocks, dayHolds] = await Promise.all([
+            prisma.specialistAvailabilityBlock.findMany({
             where: {
                 OR: [
                     { specialistId: options.specialistId || null },
@@ -319,7 +482,19 @@ export async function suggestAvailableSlots(
                 endTime: { gt: dayStart },
             },
             orderBy: { startTime: "asc" },
-        });
+            }),
+            prisma.appointmentSlotHold.findMany({
+                where: {
+                    calendarKey: { in: getSlotHoldCalendarKeys({
+                        specialistId: options.specialistId,
+                        calendarIds: options.calendarIds,
+                    }) },
+                    expiresAt: { gt: new Date() },
+                    ...(options.slotHoldOwnerKey ? { ownerKey: { not: options.slotHoldOwnerKey } } : {}),
+                    slotStart: { gte: dayStart, lt: dayEnd },
+                },
+            }),
+        ]);
 
         const firstCursor = options.from && dayOffset === 0 && options.from > dayStart
             ? new Date(Math.ceil(options.from.getTime() / stepMs) * stepMs)
@@ -333,6 +508,9 @@ export async function suggestAvailableSlots(
                 appointment.startTime < slotEnd && appointment.endTime > slotStart,
             ) || dayBlocks.some((block) =>
                 block.startTime < slotEnd && block.endTime > slotStart,
+            ) || dayHolds.some((hold) =>
+                hold.slotStart >= new Date(Math.floor(slotStart.getTime() / APPOINTMENT_SLOT_STEP_MS) * APPOINTMENT_SLOT_STEP_MS) &&
+                hold.slotStart < slotEnd,
             );
 
             if (!conflict) {
@@ -390,17 +568,30 @@ export async function getAvailableSlotsForDate(
         },
         orderBy: { startTime: "asc" },
     });
-    const dayBlocks = await prisma.specialistAvailabilityBlock.findMany({
-        where: {
+    const [dayBlocks, dayHolds] = await Promise.all([
+        prisma.specialistAvailabilityBlock.findMany({
+            where: {
             OR: [
                 { specialistId: options.specialistId || null },
                 ...(options.specialistId ? [{ specialistId: null }] : []),
             ],
             startTime: { lt: dayBounds.end },
             endTime: { gt: dayBounds.start },
-        },
-        orderBy: { startTime: "asc" },
-    });
+            },
+            orderBy: { startTime: "asc" },
+        }),
+        prisma.appointmentSlotHold.findMany({
+            where: {
+                calendarKey: { in: getSlotHoldCalendarKeys({
+                    specialistId: options.specialistId,
+                    calendarIds: options.calendarIds,
+                }) },
+                expiresAt: { gt: new Date() },
+                ...(options.slotHoldOwnerKey ? { ownerKey: { not: options.slotHoldOwnerKey } } : {}),
+                slotStart: { gte: dayBounds.start, lt: dayBounds.end },
+            },
+        }),
+    ]);
 
     const now = new Date();
     const todayKey = getBusinessDateKey(now, config.timeZone);
@@ -422,6 +613,9 @@ export async function getAvailableSlotsForDate(
             appointment.startTime < slotEnd && appointment.endTime > slotStart,
         ) || dayBlocks.some((block) =>
             block.startTime < slotEnd && block.endTime > slotStart,
+        ) || dayHolds.some((hold) =>
+            hold.slotStart >= new Date(Math.floor(slotStart.getTime() / APPOINTMENT_SLOT_STEP_MS) * APPOINTMENT_SLOT_STEP_MS) &&
+            hold.slotStart < slotEnd,
         );
 
         if (!conflict) {
@@ -474,17 +668,32 @@ export async function createManagedAppointment(input: AppointmentInput) {
                 ? [resolvedWriteTarget.calendarId]
                 : undefined;
 
-    await ensureAppointmentIsSchedulable(
-        input.startTime,
-        input.endTime,
-        config,
-        undefined,
-        blockingCalendarIds,
-        input.specialistId,
-        Boolean(input.isOverbook),
-    );
+    const slotHoldOwnerKey = input.slotHoldOwnerKey || `appointment-create:${randomUUID()}`;
+    if (!input.isOverbook) {
+        await acquireAppointmentSlotHold({
+            startTime: input.startTime,
+            endTime: input.endTime,
+            specialistId: input.specialistId,
+            googleCalendarId: input.googleCalendarId,
+            blockingCalendarIds,
+            ownerKey: slotHoldOwnerKey,
+        });
+    }
 
-    const appointment = await prisma.appointment.create({
+    let appointment;
+    try {
+        await ensureAppointmentIsSchedulable(
+            input.startTime,
+            input.endTime,
+            config,
+            undefined,
+            blockingCalendarIds,
+            input.specialistId,
+            Boolean(input.isOverbook),
+            slotHoldOwnerKey,
+        );
+
+        appointment = await prisma.appointment.create({
         data: {
             title: input.title,
             startTime: input.startTime,
@@ -522,7 +731,10 @@ export async function createManagedAppointment(input: AppointmentInput) {
             specialist: true,
             user: true,
         },
-    });
+        });
+    } finally {
+        await releaseAppointmentSlotHold(slotHoldOwnerKey);
+    }
 
     try {
         await syncAppointmentToGoogleCalendar(appointment.id);
