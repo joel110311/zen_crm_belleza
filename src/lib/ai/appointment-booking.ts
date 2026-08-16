@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { generateCompletion } from "@/lib/ai/openai";
 import {
     AppointmentSchedulingError,
+    cancelManagedAppointment,
     createManagedAppointment,
     formatAppointmentSuggestions,
     getAvailableSlotsForDate,
@@ -108,6 +109,17 @@ const APPOINTMENT_RESCHEDULE_FOLLOW_UP_PATTERN =
 const APPOINTMENT_RESCHEDULE_COMPLETED_PATTERN =
     /\b(cita|reserva)\b.{0,50}\b(qued[oó]|est[aá])\b.{0,30}\b(reprogramada|movida|cambiada)\b/i;
 
+const APPOINTMENT_CANCEL_PATTERNS = [
+    /\b(canc[eé]l(?:ar|arla|arlo|arme|ame|o)?|anul(?:ar|arla|arlo|arme|ame|o)?)\b.{0,100}\b(cita|reserva|horario)\b/i,
+    /\b(cita|reserva|horario)\b.{0,100}\b(canc[eé]l(?:ar|arla|arlo|arme|ame|o)?|anul(?:ar|arla|arlo|arme|ame|o)?)\b/i,
+];
+
+const APPOINTMENT_CANCEL_CONFIRMATION_PATTERN =
+    /\b(s[ií]|confirmo|correcto|correcta|solo\s+(?:esta|esa)|únicamente\s+(?:esta|esa)|unicamente\s+(?:esta|esa)|canc[eé]lala|canc[eé]lalo)\b/i;
+
+const APPOINTMENT_CANCEL_COMPLETED_PATTERN =
+    /\b(cita|reserva)\b.{0,50}\b(qued[oó]|est[aá])\b.{0,30}\b(cancelada|anulada)\b/i;
+
 const AMBIGUOUS_RELATIVE_WEEKDAY_PATTERN =
     /\b(?:el\s+)?(?:(proximo|próximo|siguiente)\s+(lunes|martes|miercoles|miércoles|jueves|viernes|sabado|sábado|domingo)|(lunes|martes|miercoles|miércoles|jueves|viernes|sabado|sábado|domingo)\s+(proximo|próximo|siguiente))\b/i;
 
@@ -197,6 +209,165 @@ function hasAppointmentContext(
 
 function hasAppointmentRescheduleIntent(text: string) {
     return APPOINTMENT_RESCHEDULE_PATTERNS.some((pattern) => pattern.test(text));
+}
+
+function hasAppointmentCancelIntent(text: string) {
+    return APPOINTMENT_CANCEL_PATTERNS.some((pattern) => pattern.test(text));
+}
+
+async function maybeHandleAppointmentCancellation(
+    conversationId: string,
+    latestUserMessage: string,
+): Promise<AppointmentHandlingResult | null> {
+    const couldBeFollowUp =
+        APPOINTMENT_CANCEL_CONFIRMATION_PATTERN.test(latestUserMessage) ||
+        /^\s*[1-3]\s*$/.test(latestUserMessage);
+    if (!hasAppointmentCancelIntent(latestUserMessage) && !couldBeFollowUp) {
+        return null;
+    }
+
+    const [conversation, config] = await Promise.all([
+        prisma.conversation.findUnique({
+            where: { id: conversationId },
+            include: {
+                contact: true,
+                messages: {
+                    where: { type: { not: "system" } },
+                    orderBy: { createdAt: "desc" },
+                    take: 16,
+                },
+            },
+        }),
+        getBusinessHoursConfig(),
+    ]);
+
+    if (!conversation?.contactId) return null;
+
+    const latestInboundCancellation = conversation.messages.find((message) =>
+        message.direction === "inbound" && hasAppointmentCancelIntent(message.content),
+    );
+    const latestCompletedCancellation = conversation.messages.find((message) =>
+        message.direction === "outbound" && APPOINTMENT_CANCEL_COMPLETED_PATTERN.test(message.content),
+    );
+    const hasPendingCancellation = Boolean(
+        latestInboundCancellation &&
+        (
+            !latestCompletedCancellation ||
+            latestInboundCancellation.createdAt > latestCompletedCancellation.createdAt
+        ),
+    );
+    if (!hasAppointmentCancelIntent(latestUserMessage) && !hasPendingCancellation) {
+        return null;
+    }
+
+    const appointments = await prisma.appointment.findMany({
+        where: {
+            contactId: conversation.contactId,
+            status: { notIn: ["cancelled", "no_show", "completed"] },
+            endTime: { gte: new Date() },
+        },
+        orderBy: { startTime: "asc" },
+        take: 3,
+    });
+
+    if (appointments.length === 0) {
+        return {
+            kind: "missing",
+            reply: "No encuentro una cita próxima vinculada a este número para cancelar.",
+        };
+    }
+
+    const latestSelection = conversation.messages.find((message) =>
+        message.direction === "inbound" &&
+        /^\s*[1-3]\s*$/.test(message.content) &&
+        Boolean(
+            latestInboundCancellation &&
+            message.createdAt > latestInboundCancellation.createdAt
+        ),
+    );
+    const selectionText = latestUserMessage.match(/^\s*[1-3]\s*$/)
+        ? latestUserMessage
+        : latestSelection?.content || "";
+    const appointmentSelection = selectionText.match(/^\s*([1-3])\s*$/);
+    const selectedAppointmentIndex = appointmentSelection
+        ? Number(appointmentSelection[1]) - 1
+        : -1;
+
+    if (
+        appointments.length > 1 &&
+        (selectedAppointmentIndex < 0 || selectedAppointmentIndex >= appointments.length)
+    ) {
+        return {
+            kind: "missing",
+            reply: [
+                "Veo más de una cita próxima. ¿Cuál quieres cancelar?",
+                "",
+                ...appointments.map((appointment, index) =>
+                    `${index + 1}. *${appointment.title}* — ${formatDateTimeInZone(appointment.startTime, config.timeZone, "es-MX", {
+                        weekday: "long",
+                        day: "numeric",
+                        month: "long",
+                        year: "numeric",
+                        hour: "numeric",
+                        minute: "2-digit",
+                    })}`,
+                ),
+            ].join("\n"),
+        };
+    }
+
+    const appointment = appointments.length > 1
+        ? appointments[selectedAppointmentIndex]
+        : appointments[0];
+    const appointmentLabel = formatDateTimeInZone(
+        appointment.startTime,
+        config.timeZone,
+        "es-MX",
+        {
+            weekday: "long",
+            day: "numeric",
+            month: "long",
+            year: "numeric",
+            hour: "numeric",
+            minute: "2-digit",
+        },
+    );
+    const isConfirmedFollowUp =
+        !hasAppointmentCancelIntent(latestUserMessage) &&
+        APPOINTMENT_CANCEL_CONFIRMATION_PATTERN.test(latestUserMessage) &&
+        !/^\s*[1-3]\s*$/.test(latestUserMessage);
+
+    if (!isConfirmedFollowUp) {
+        return {
+            kind: "missing",
+            reply: `¿Confirmas que deseas cancelar la cita de *${appointment.title}* del *${appointmentLabel}*?`,
+        };
+    }
+
+    try {
+        const cancelled = await cancelManagedAppointment(
+            appointment.id,
+            "Cancelada por el cliente mediante WhatsApp.",
+        );
+        revalidatePath("/dashboard/calendar");
+        revalidatePath("/dashboard/contacts");
+
+        return {
+            kind: "created",
+            reply: [
+                "Tu cita quedó cancelada.",
+                "",
+                `*Servicio:* ${cancelled.title}`,
+                `*Fecha cancelada:* ${appointmentLabel}`,
+            ].join("\n"),
+        };
+    } catch (error) {
+        console.error("[Appointments] Failed to cancel appointment from conversation:", error);
+        return {
+            kind: "unavailable",
+            reply: "No fue posible cancelar la cita de forma segura. La cita continúa activa y necesitas atención humana para revisarla.",
+        };
+    }
 }
 
 async function maybeHandleAppointmentReschedule(
@@ -833,6 +1004,14 @@ export async function maybeHandleAppointmentBooking(
     },
 ): Promise<AppointmentHandlingResult> {
     const mode = options?.mode || "create";
+    const cancellationResult = await maybeHandleAppointmentCancellation(
+        conversationId,
+        latestUserMessage,
+    );
+    if (cancellationResult) {
+        return cancellationResult;
+    }
+
     const rescheduleResult = await maybeHandleAppointmentReschedule(
         conversationId,
         latestUserMessage,

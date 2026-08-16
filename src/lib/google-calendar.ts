@@ -415,6 +415,9 @@ async function applyGoogleEventToCrm(
 
     if (event.status === "cancelled") {
         if (existing) {
+            if (existing.status === "cancelled") {
+                return;
+            }
             await prisma.appointment.delete({ where: { id: existing.id } });
         }
         return;

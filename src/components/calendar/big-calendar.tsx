@@ -91,7 +91,7 @@ export function BigCalendar({
     onMutationSettled,
 }: BigCalendarProps) {
     const [events, setEvents] = useState<CalendarEvent[]>(() => normalizeEvents(initialEvents, businessHours.timeZone));
-    const [view, setView] = useState<View>(Views.DAY);
+    const [view, setView] = useState<View>(Views.WEEK);
     const [date, setDate] = useState(() => initialDate || new Date());
     const { toast } = useToast();
 

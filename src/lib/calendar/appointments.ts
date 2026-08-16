@@ -7,6 +7,7 @@ import {
     syncAppointmentToGoogleCalendar,
     syncGoogleCalendarToCrm,
 } from "@/lib/google-calendar";
+import { cancelAppointmentReminders } from "@/lib/appointment-reminders";
 import {
     BusinessHoursConfig,
     businessBoundsForDate,
@@ -857,6 +858,41 @@ export async function updateManagedAppointment(id: string, input: Partial<Appoin
     } catch (syncError) {
         console.error("[Google Calendar] Push failed after update:", syncError);
     }
+    return appointment;
+}
+
+export async function cancelManagedAppointment(
+    id: string,
+    reason = "Cancelada por el cliente mediante WhatsApp.",
+) {
+    const existing = await prisma.appointment.findUnique({
+        where: { id },
+    });
+
+    if (!existing) {
+        throw new Error("La cita no existe.");
+    }
+
+    if (existing.status === "cancelled") {
+        return existing;
+    }
+
+    await deleteAppointmentFromGoogleCalendar(id);
+
+    const appointment = await prisma.appointment.update({
+        where: { id },
+        data: {
+            status: "cancelled",
+            confirmationStatus: "declined",
+            cancelledAt: new Date(),
+            cancellationReason: reason,
+            googleEventId: null,
+            googleEventUpdatedAt: null,
+            updatedAt: new Date(),
+        },
+    });
+
+    await cancelAppointmentReminders(id, reason);
     return appointment;
 }
 
