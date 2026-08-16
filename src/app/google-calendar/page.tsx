@@ -1,15 +1,25 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRight, CalendarDays, LockKeyhole, RefreshCw } from "lucide-react";
 import { GoogleOAuthPublicShell } from "@/components/public/google-oauth-public-shell";
 
+export const metadata: Metadata = {
+    title: "Zen CRM",
+    description:
+        "Zen CRM es una plataforma de gestión de clientes y citas que integra Google Calendar para consultar disponibilidad y sincronizar eventos.",
+};
+
 export default function GoogleCalendarIntegrationPage() {
     return (
         <GoogleOAuthPublicShell
-            title="Google Calendar en Zen CRM"
-            description="Conecta la agenda de tu negocio para sincronizar citas, consultar disponibilidad y evitar cruces de horario desde un solo lugar."
+            title="Zen CRM"
+            description="Zen CRM es una plataforma de gestión de clientes, conversaciones y citas para negocios. Su integración con Google Calendar permite consultar la disponibilidad real del equipo y sincronizar las citas administradas en el CRM."
         >
             <section>
-                <h2 className="text-xl font-semibold">Que hace la integracion</h2>
+                <h2 className="text-xl font-semibold">Integración con Google Calendar</h2>
+                <p className="mt-2 text-muted-foreground">
+                    Cuando el administrador conecta voluntariamente la cuenta Google del negocio, Zen CRM utiliza el acceso autorizado exclusivamente para estas funciones:
+                </p>
                 <div className="mt-4 grid gap-4 sm:grid-cols-3">
                     {[
                         [CalendarDays, "Sincroniza citas", "Crea y actualiza eventos de las citas administradas en Zen CRM."],
@@ -29,9 +39,9 @@ export default function GoogleCalendarIntegrationPage() {
             </section>
 
             <section>
-                <h2 className="text-xl font-semibold">Tu decides cuando conectar o desconectar</h2>
+                <h2 className="text-xl font-semibold">Tú controlas la conexión</h2>
                 <p className="mt-2 text-muted-foreground">
-                    La autorizacion se realiza en Google. Puedes retirar el acceso desde Zen CRM o desde la configuracion de seguridad de tu cuenta de Google.
+                    Zen CRM no solicita la contraseña de Google. La autorización se realiza directamente en Google y el administrador elige la cuenta que desea enlazar. El acceso puede retirarse en cualquier momento desde Zen CRM o desde la configuración de seguridad de la cuenta de Google.
                 </p>
             </section>
 
