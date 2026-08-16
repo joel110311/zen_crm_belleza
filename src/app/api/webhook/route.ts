@@ -1502,10 +1502,36 @@ export async function GET() {
     return NextResponse.json({ ok: true, channel: "whatsapp-webhook" });
 }
 
+function parseWebhookBody(rawBody: string, contentType: string | null) {
+    if (contentType?.includes("application/x-www-form-urlencoded")) {
+        return Object.fromEntries(new URLSearchParams(rawBody));
+    }
+
+    try {
+        return JSON.parse(rawBody) as unknown;
+    } catch {
+        return Object.fromEntries(new URLSearchParams(rawBody));
+    }
+}
+
+function hasValidWuzapiSignature(rawBody: string, headers: Headers) {
+    const hmacKey = (process.env.WUZAPI_GLOBAL_HMAC_KEY || "").trim();
+    const receivedSignature = (headers.get("x-hmac-signature") || "")
+        .trim()
+        .replace(/^sha256=/i, "")
+        .toLowerCase();
+    if (!hmacKey || !/^[a-f0-9]{64}$/.test(receivedSignature)) return false;
+
+    const expectedSignature = crypto.createHmac("sha256", hmacKey).update(rawBody).digest("hex");
+    return safeSecretEqual(receivedSignature, expectedSignature);
+}
+
 export async function POST(req: NextRequest) {
     try {
-        const rawPayload = await req.json();
+        const rawBody = await req.text();
+        const rawPayload = parseWebhookBody(rawBody, req.headers.get("content-type"));
         const payload = normalizeIncomingPayload(rawPayload);
+        const hasValidSignature = hasValidWuzapiSignature(rawBody, req.headers);
         let settings: Awaited<ReturnType<typeof getSystemSettingsOrDefaults>> | null = null;
         let expectedToken = process.env.WUZAPI_USER_TOKEN || "";
         if (!expectedToken) {
@@ -1514,10 +1540,10 @@ export async function POST(req: NextRequest) {
         }
         const receivedToken = payload.token || getBearerToken(req.headers) || req.headers.get("x-api-token") || "";
 
-        if (!expectedToken) {
+        if (!hasValidSignature && !expectedToken) {
             return new NextResponse("Webhook not configured", { status: 503 });
         }
-        if (!safeSecretEqual(receivedToken, expectedToken)) {
+        if (!hasValidSignature && !safeSecretEqual(receivedToken, expectedToken)) {
             return new NextResponse("Unauthorized", { status: 401 });
         }
 

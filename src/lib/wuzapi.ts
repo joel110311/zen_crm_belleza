@@ -374,9 +374,22 @@ export async function provisionWuzapiInstance(appBaseUrl?: string) {
         }),
     });
 
+    // WuzAPI 1.0.8 no longer includes the user token in JSON webhook bodies.
+    // Configure a per-user HMAC so the CRM can still authenticate every event.
+    const webhookHmacKey = (process.env.WUZAPI_GLOBAL_HMAC_KEY || "").trim();
+    if (webhookHmacKey) {
+        await requestWuzapi<unknown>("user", "/session/hmac/config", {
+            method: "POST",
+            body: JSON.stringify({
+                hmac_key: webhookHmacKey,
+            }),
+        });
+    }
+
     return {
         instanceName: config.instanceName,
         webhookUrl,
+        hmacConfigured: Boolean(webhookHmacKey),
     };
 }
 
