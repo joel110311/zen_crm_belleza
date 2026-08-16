@@ -109,19 +109,6 @@ function guardUnverifiedAvailabilityClaim(text: string) {
     ].join("\n");
 }
 
-const DEFERRED_RESPONSE_PATTERN =
-    /\b(permit(?:e|eme)|perm[ií]teme|d[eé]jame|voy\s+a|procedo\s+a)\b.{0,60}\b(verificar|revisar|consultar|confirmar|comprobar)\b/i;
-
-function guardDeferredResponse(text: string) {
-    if (!DEFERRED_RESPONSE_PATTERN.test(text)) return text;
-
-    return [
-        "*No pude completar esa verificación automáticamente en este momento.*",
-        "",
-        "No dejaré tu solicitud pendiente: dime exactamente qué dato necesitas revisar y te responderé con el resultado disponible o te canalizaré con atención humana.",
-    ].join("\n");
-}
-
 function stripUnverifiedAdvisorLines(
     text: string,
     verifiedAdvisor?: {
@@ -375,8 +362,6 @@ REGLAS DE RESPUESTA
 - Nunca inventes ni calcules horarios libres a partir del horario comercial. Solo el modulo operativo puede ofrecer horas despues de consultar citas, bloqueos y retenciones vigentes en el calendario de la profesional elegida.
 - Si hay varias profesionales, pregunta con cual desea la cita y consulta unicamente la agenda de esa profesional.
 - Si solo existe una profesional activa, seleccionala automaticamente y no preguntes con quien desea atenderse.
-- Resuelve cada solicitud en el mismo mensaje. Nunca respondas solamente "permiteme verificar", "dejame revisar" o "te confirmo en un momento", porque no existe una segunda respuesta automatica pendiente.
-- Si no puedes completar una verificacion en ese turno, dilo claramente y termina con una accion concreta para el cliente o con escalacion humana; no prometas responder despues.
 - Nunca inventes nombres, telefonos ni correos de asesores, ejecutivos o responsables.
 - Solo puedes mencionar un responsable humano si aparece en los DATOS VERIFICADOS DEL CRM.
 - Nunca inventes telefonos de personas del equipo. Si no existe un dato verificado, omitelo.
@@ -413,8 +398,7 @@ ${[automationInstruction, recentSalesFactsInstruction].filter(Boolean).join("\n\
     const normalized = normalizeWhatsAppReply(response || "");
     const withoutUnverifiedAppointmentClaim = guardUnverifiedAppointmentMutationClaim(normalized);
     const withoutUnverifiedAvailability = guardUnverifiedAvailabilityClaim(withoutUnverifiedAppointmentClaim);
-    const withoutDeferredPromise = guardDeferredResponse(withoutUnverifiedAvailability);
-    return stripUnverifiedAdvisorLines(withoutDeferredPromise, conversation.assignedUser);
+    return stripUnverifiedAdvisorLines(withoutUnverifiedAvailability, conversation.assignedUser);
 }
 
 export async function processBotResponse(contactId: string, userMessage: string) {
