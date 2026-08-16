@@ -70,45 +70,6 @@ function normalizeWhatsAppReply(text: string) {
     return paragraphs.join("\n\n");
 }
 
-const UNVERIFIED_APPOINTMENT_MUTATION_PATTERNS = [
-    /\b(?:he|hemos)\s+(?:registrado|agendado|confirmado|actualizado|modificado|reprogramado|cancelado)\s+(?:tu|la)\s+cita\b/i,
-    /\btu\s+cita\s+(?:queda|qued[oó]|est[aá]|ha\s+quedado|fue)\s+(?:agendada|confirmada|registrada|actualizada|modificada|reprogramada|cancelada)\b/i,
-    /\b(?:la\s+)?(?:cita|reserva)\s+(?:queda|qued[oó]|est[aá])\s+confirmada\b/i,
-];
-
-function guardUnverifiedAppointmentMutationClaim(text: string) {
-    if (!UNVERIFIED_APPOINTMENT_MUTATION_PATTERNS.some((pattern) => pattern.test(text))) {
-        return text;
-    }
-
-    return [
-        "*La cita todavia no esta confirmada en el calendario.*",
-        "",
-        "Para apartar el horario necesito validar y registrar la fecha y la hora exactas.",
-        "",
-        "Dime la fecha completa (dia, mes y año) y la hora que deseas.",
-    ].join("\n");
-}
-
-const UNVERIFIED_AVAILABILITY_PATTERN = /\b(disponibles?|disponibilidad|libres?)\b/i;
-const APPOINTMENT_TIME_MENTION_PATTERN =
-    /\b(?:[01]?\d|2[0-3])(?::[0-5]\d)?\s*(?:a\.?\s*m\.?|p\.?\s*m\.?)\b/i;
-
-function guardUnverifiedAvailabilityClaim(text: string) {
-    if (
-        !UNVERIFIED_AVAILABILITY_PATTERN.test(text) ||
-        !APPOINTMENT_TIME_MENTION_PATTERN.test(text)
-    ) {
-        return text;
-    }
-
-    return [
-        "*Necesito consultar la disponibilidad real antes de ofrecerte horarios.*",
-        "",
-        "Dime el servicio y la fecha completa que te interesa para revisar el calendario de la profesional.",
-    ].join("\n");
-}
-
 function stripUnverifiedAdvisorLines(
     text: string,
     verifiedAdvisor?: {
@@ -396,9 +357,7 @@ ${[automationInstruction, recentSalesFactsInstruction].filter(Boolean).join("\n\
     );
 
     const normalized = normalizeWhatsAppReply(response || "");
-    const withoutUnverifiedAppointmentClaim = guardUnverifiedAppointmentMutationClaim(normalized);
-    const withoutUnverifiedAvailability = guardUnverifiedAvailabilityClaim(withoutUnverifiedAppointmentClaim);
-    return stripUnverifiedAdvisorLines(withoutUnverifiedAvailability, conversation.assignedUser);
+    return stripUnverifiedAdvisorLines(normalized, conversation.assignedUser);
 }
 
 export async function processBotResponse(contactId: string, userMessage: string) {
