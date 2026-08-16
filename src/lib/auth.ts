@@ -7,7 +7,8 @@ import { consumeRateLimit, getRequestIp, resetRateLimit } from "@/lib/security";
 
 const AUTH_RATE_LIMIT = { limit: 8, windowMs: 15 * 60 * 1000 };
 
-export const { handlers, signIn, signOut, auth } = NextAuth({
+export const { handlers, signIn, signOut, auth } = NextAuth(() => ({
+    secret: process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET,
     trustHost: true,
     providers: [
         Credentials({
@@ -114,4 +115,4 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     session: {
         strategy: "jwt",
     },
-});
+}));
