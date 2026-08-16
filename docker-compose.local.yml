@@ -56,7 +56,7 @@ services:
     restart: unless-stopped
 
   whatsapp-gateway:
-    image: asternic/wuzapi:sha-e6d58f8
+    image: asternic/wuzapi:sha-9487eca
     environment:
       - WUZAPI_ADMIN_TOKEN=${WUZAPI_ADMIN_TOKEN:?Define WUZAPI_ADMIN_TOKEN}
       - WUZAPI_GLOBAL_ENCRYPTION_KEY=${WUZAPI_GLOBAL_ENCRYPTION_KEY:?Define WUZAPI_GLOBAL_ENCRYPTION_KEY}
