@@ -157,6 +157,9 @@ export async function acquireAppointmentSlotHold(input: ConflictCheckInput & { o
 
             const appointmentConflict = await tx.appointment.findFirst({
                 where: {
+                    ...(input.excludeAppointmentId
+                        ? { id: { not: input.excludeAppointmentId } }
+                        : {}),
                     status: { notIn: ["cancelled", "no_show"] },
                     ...(input.specialistId
                         ? { specialistId: input.specialistId }
@@ -786,6 +789,7 @@ export async function updateManagedAppointment(id: string, input: Partial<Appoin
             blockingCalendarIds,
             specialistId,
             Boolean(input.isOverbook ?? existing.isOverbook),
+            input.slotHoldOwnerKey,
         );
     }
 

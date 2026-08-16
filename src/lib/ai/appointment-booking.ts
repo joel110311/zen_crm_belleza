@@ -7,6 +7,8 @@ import {
     formatAppointmentSuggestions,
     getAvailableSlotsForDate,
     getBusinessHoursConfig,
+    releaseAppointmentSlotHold,
+    updateManagedAppointment,
     validateManagedAppointment,
 } from "@/lib/calendar/appointments";
 import {
@@ -31,6 +33,13 @@ type PlannerResult = {
     localDate?: string | null;
     localTime?: string | null;
     durationMinutes?: number | null;
+    missingFields?: string[];
+};
+
+type ReschedulePlannerResult = {
+    intent: "reschedule" | "other";
+    localDate?: string | null;
+    localTime?: string | null;
     missingFields?: string[];
 };
 
@@ -87,6 +96,17 @@ const EVENT_OR_QUOTE_CONTEXT_PATTERNS = [
 
 const DATE_OR_TIME_ANSWER_PATTERN =
     /\b(hoy|mañana|manana|pasado mañana|pasado manana|lunes|martes|miercoles|miércoles|jueves|viernes|sabado|sábado|domingo|enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre|\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?|\d{1,2}:\d{2}|\d{1,2}\s*(?:am|pm|a\.m\.|p\.m\.))\b/i;
+
+const APPOINTMENT_RESCHEDULE_PATTERNS = [
+    /\b(reprogram(?:ar|arla|arlo|ame)?|cambi(?:ar|arla|arlo|ame|o)|mov(?:er|erla|erlo|eme)|recorr(?:er|erla|erlo|eme))\b.{0,100}\b(cita|reserva|fecha|d[ií]a|hora|horario|lunes|martes|miercoles|miércoles|jueves|viernes|sabado|sábado|domingo)\b/i,
+    /\b(cita|reserva)\b.{0,100}\b(reprogram(?:ar|arla|arlo)?|cambiar|mover|recorrer)\b/i,
+];
+
+const APPOINTMENT_RESCHEDULE_FOLLOW_UP_PATTERN =
+    /\b(s[ií]|correct[oa]|confirmo|misma?|mismo|esa?|ese|fecha|servicio|hora|horario)\b/i;
+
+const APPOINTMENT_RESCHEDULE_COMPLETED_PATTERN =
+    /\b(cita|reserva)\b.{0,50}\b(qued[oó]|est[aá])\b.{0,30}\b(reprogramada|movida|cambiada)\b/i;
 
 const AMBIGUOUS_RELATIVE_WEEKDAY_PATTERN =
     /\b(?:el\s+)?(?:(proximo|próximo|siguiente)\s+(lunes|martes|miercoles|miércoles|jueves|viernes|sabado|sábado|domingo)|(lunes|martes|miercoles|miércoles|jueves|viernes|sabado|sábado|domingo)\s+(proximo|próximo|siguiente))\b/i;
@@ -173,6 +193,281 @@ function hasAppointmentContext(
     // ("si", "ese horario" o una transcripcion de audio como "a la una").
     // El planificador decide despues si realmente contienen una confirmacion.
     return looksLikeDateOrTimeAnswer(latestUserMessage) || latestUserMessage.trim().length <= 160;
+}
+
+function hasAppointmentRescheduleIntent(text: string) {
+    return APPOINTMENT_RESCHEDULE_PATTERNS.some((pattern) => pattern.test(text));
+}
+
+async function maybeHandleAppointmentReschedule(
+    conversationId: string,
+    latestUserMessage: string,
+): Promise<AppointmentHandlingResult | null> {
+    const couldBeFollowUp =
+        APPOINTMENT_RESCHEDULE_FOLLOW_UP_PATTERN.test(latestUserMessage) ||
+        /^\s*[1-3]\s*$/.test(latestUserMessage);
+    if (!hasAppointmentRescheduleIntent(latestUserMessage) && !couldBeFollowUp) {
+        return null;
+    }
+
+    const [conversation, config] = await Promise.all([
+        prisma.conversation.findUnique({
+            where: { id: conversationId },
+            include: {
+                contact: true,
+                messages: {
+                    where: { type: { not: "system" } },
+                    orderBy: { createdAt: "desc" },
+                    take: 16,
+                },
+            },
+        }),
+        getBusinessHoursConfig(),
+    ]);
+
+    if (!conversation?.contactId) return null;
+
+    const latestInboundReschedule = conversation.messages.find((message) =>
+        message.direction === "inbound" && hasAppointmentRescheduleIntent(message.content),
+    );
+    const latestCompletedReschedule = conversation.messages.find((message) =>
+        message.direction === "outbound" && APPOINTMENT_RESCHEDULE_COMPLETED_PATTERN.test(message.content),
+    );
+    const hasRecentRescheduleContext = Boolean(
+        latestInboundReschedule &&
+        (
+            !latestCompletedReschedule ||
+            latestInboundReschedule.createdAt > latestCompletedReschedule.createdAt
+        ),
+    );
+    if (!hasAppointmentRescheduleIntent(latestUserMessage) && !hasRecentRescheduleContext) {
+        return null;
+    }
+
+    const appointments = await prisma.appointment.findMany({
+        where: {
+            contactId: conversation.contactId,
+            status: { notIn: ["cancelled", "no_show", "completed"] },
+            endTime: { gte: new Date() },
+        },
+        orderBy: { startTime: "asc" },
+        take: 3,
+    });
+
+    if (appointments.length === 0) {
+        return {
+            kind: "missing",
+            reply: "No encuentro una cita próxima vinculada a este número para poder moverla. Puedo ayudarte a crear una nueva o canalizarte con atención humana.",
+        };
+    }
+
+    const appointmentSelection = latestUserMessage.match(/^\s*([1-3])\s*$/);
+    const selectedAppointmentIndex = appointmentSelection
+        ? Number(appointmentSelection[1]) - 1
+        : -1;
+
+    if (
+        appointments.length > 1 &&
+        (selectedAppointmentIndex < 0 || selectedAppointmentIndex >= appointments.length)
+    ) {
+        return {
+            kind: "missing",
+            reply: [
+                "Veo más de una cita próxima. ¿Cuál quieres mover?",
+                "",
+                ...appointments.map((appointment, index) =>
+                    `${index + 1}. *${appointment.title}* — ${formatDateTimeInZone(appointment.startTime, config.timeZone, "es-MX", {
+                        weekday: "long",
+                        day: "numeric",
+                        month: "long",
+                        year: "numeric",
+                        hour: "numeric",
+                        minute: "2-digit",
+                    })}`,
+                ),
+            ].join("\n"),
+        };
+    }
+
+    const appointment = appointments.length > 1
+        ? appointments[selectedAppointmentIndex]
+        : appointments[0];
+    const durationMinutes = Math.max(
+        15,
+        Math.round((appointment.endTime.getTime() - appointment.startTime.getTime()) / 60000),
+    );
+    const currentDate = getBusinessDateKey(appointment.startTime, config.timeZone);
+    const currentTime = formatDateTimeInZone(appointment.startTime, config.timeZone, "en-GB", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hourCycle: "h23",
+    });
+    const transcript = buildConversationTranscript(
+        [...conversation.messages].reverse().map((message) => ({
+            content: message.content,
+            direction: message.direction,
+            senderType: message.senderType,
+        })),
+    );
+
+    const parserPrompt = `
+Analiza la conversación para mover una cita que ya existe. Devuelve SOLO JSON válido:
+{
+  "intent": "reschedule" | "other",
+  "localDate": "YYYY-MM-DD" | null,
+  "localTime": "HH:mm" | null,
+  "missingFields": string[]
+}
+
+CONTEXTO OPERATIVO
+- Fecha local actual: ${getBusinessDateKey(new Date(), config.timeZone)}
+- Zona horaria: ${config.timeZone}
+- Servicio de la cita existente: ${appointment.title}
+- Fecha actual de la cita: ${currentDate}
+- Hora actual de la cita: ${currentTime}
+
+REGLAS
+- Usa el historial completo para resolver referencias como "el miércoles", "mañana", "misma hora", "ese servicio" o una confirmación corta como "sí, es correcto".
+- Interpreta "misma hora" como ${currentTime} y "misma fecha" como ${currentDate}.
+- Si menciona un día de la semana sin número, usa la siguiente fecha futura que corresponda desde la fecha local actual.
+- Ignora cualquier afirmación previa del asistente sobre si el horario estaba libre u ocupado: la disponibilidad se validará después contra el calendario real.
+- Esta operación sólo mueve fecha y hora. Conserva el servicio, duración y profesional de la cita existente.
+- No inventes fecha ni hora. Si falta fecha, incluye "date" en missingFields; si falta hora, incluye "time".
+
+HISTORIAL
+${transcript || "Sin historial"}
+
+ÚLTIMO MENSAJE
+Cliente: ${latestUserMessage}
+    `.trim();
+
+    const raw = await generateCompletion([{ role: "system", content: parserPrompt }], 0);
+    let planner: ReschedulePlannerResult | null = null;
+    try {
+        const clean = stripCodeFences(raw || "");
+        const start = clean.indexOf("{");
+        const end = clean.lastIndexOf("}");
+        if (start !== -1 && end !== -1) {
+            planner = JSON.parse(clean.slice(start, end + 1)) as ReschedulePlannerResult;
+        }
+    } catch {
+        planner = null;
+    }
+
+    if (!planner || planner.intent !== "reschedule") {
+        return {
+            kind: "missing",
+            reply: "No pude identificar con seguridad el cambio solicitado. Dime únicamente la nueva fecha y hora para mover la cita.",
+        };
+    }
+
+    if (!planner.localDate) {
+        return {
+            kind: "missing",
+            reply: `Claro, puedo mover tu cita de *${appointment.title}*. ¿Para qué fecha la quieres?`,
+        };
+    }
+
+    if (!planner.localTime) {
+        const availability = await getAvailableSlotsForDate(
+            planner.localDate,
+            durationMinutes * 60 * 1000,
+            config,
+            {
+                excludeAppointmentId: appointment.id,
+                specialistId: appointment.specialistId,
+                calendarIds: appointment.googleCalendarId ? [appointment.googleCalendarId] : undefined,
+                limit: 6,
+                slotHoldOwnerKey: conversation.id,
+            },
+        );
+
+        return {
+            kind: "missing",
+            reply: buildDateAvailabilityReply(planner.localDate, availability, config),
+        };
+    }
+
+    const startTime = zonedDateTimeToUtc(planner.localDate, planner.localTime, config.timeZone);
+    const endTime = new Date(startTime.getTime() + durationMinutes * 60 * 1000);
+    if (
+        startTime.getTime() === appointment.startTime.getTime() &&
+        endTime.getTime() === appointment.endTime.getTime()
+    ) {
+        return {
+            kind: "created",
+            reply: `La cita ya está registrada para ${formatDateTimeInZone(startTime, config.timeZone, "es-MX", {
+                weekday: "long",
+                day: "numeric",
+                month: "long",
+                year: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+            })}.`,
+        };
+    }
+
+    const slotHoldOwnerKey = `reschedule:${conversation.id}`;
+    let slotHeld = false;
+    try {
+        await validateManagedAppointment({
+            startTime,
+            endTime,
+            excludeAppointmentId: appointment.id,
+            specialistId: appointment.specialistId,
+            googleCalendarId: appointment.googleCalendarId,
+            blockingCalendarIds: appointment.googleCalendarId
+                ? [appointment.googleCalendarId]
+                : undefined,
+            slotHoldOwnerKey,
+        });
+        slotHeld = true;
+
+        const updated = await updateManagedAppointment(appointment.id, {
+            startTime,
+            endTime,
+            blockingCalendarIds: appointment.googleCalendarId
+                ? [appointment.googleCalendarId]
+                : undefined,
+            slotHoldOwnerKey,
+        });
+
+        revalidatePath("/dashboard/calendar");
+        revalidatePath("/dashboard/contacts");
+
+        return {
+            kind: "created",
+            reply: [
+                "Listo, la cita quedó reprogramada.",
+                "",
+                `*Servicio:* ${updated.title}`,
+                `*Nueva fecha:* ${formatDateTimeInZone(updated.startTime, config.timeZone, "es-MX", {
+                    weekday: "long",
+                    day: "numeric",
+                    month: "long",
+                    year: "numeric",
+                })}`,
+                `*Hora:* ${formatDateTimeInZone(updated.startTime, config.timeZone, "es-MX", {
+                    hour: "numeric",
+                    minute: "2-digit",
+                })}`,
+                `*Duración aproximada:* ${durationMinutes} minutos`,
+                ...(updated.specialistName ? [`*Profesional:* ${updated.specialistName}`] : []),
+            ].join("\n"),
+        };
+    } catch (error) {
+        if (error instanceof AppointmentSchedulingError) {
+            return {
+                kind: "unavailable",
+                reply: buildUnavailableReply(error, config),
+            };
+        }
+        throw error;
+    } finally {
+        if (slotHeld) {
+            await releaseAppointmentSlotHold(slotHoldOwnerKey);
+        }
+    }
 }
 
 function getUnresolvedAmbiguousDate(
@@ -538,6 +833,14 @@ export async function maybeHandleAppointmentBooking(
     },
 ): Promise<AppointmentHandlingResult> {
     const mode = options?.mode || "create";
+    const rescheduleResult = await maybeHandleAppointmentReschedule(
+        conversationId,
+        latestUserMessage,
+    );
+    if (rescheduleResult) {
+        return rescheduleResult;
+    }
+
     const planned = await planAppointmentFromConversation(conversationId, latestUserMessage);
 
     if (!planned?.planner || planned.planner.intent !== "schedule") {
