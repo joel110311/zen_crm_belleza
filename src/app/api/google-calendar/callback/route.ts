@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
+import { getSessionAccessSubject } from "@/lib/authz";
+import { hasPermission } from "@/lib/permissions";
 import {
     completeGoogleCalendarOAuth,
     getGoogleCalendarRedirectUri,
@@ -11,6 +13,9 @@ export async function GET(request: NextRequest) {
     const session = await auth();
     if (!session?.user) {
         return NextResponse.redirect(new URL("/login", getPublicAppBaseUrl(request.nextUrl.origin)));
+    }
+    if (!hasPermission(getSessionAccessSubject(session), "integrations.manage")) {
+        return NextResponse.redirect(new URL("/dashboard", getPublicAppBaseUrl(request.nextUrl.origin)));
     }
 
     const code = request.nextUrl.searchParams.get("code");
@@ -33,7 +38,7 @@ export async function GET(request: NextRequest) {
 
     if (error) {
         settingsUrl.searchParams.set("google", "error");
-        settingsUrl.searchParams.set("reason", error);
+        settingsUrl.searchParams.set("reason", error === "access_denied" ? "access_denied" : "oauth_failed");
         return clearStateCookie(NextResponse.redirect(settingsUrl));
     }
 
@@ -53,9 +58,9 @@ export async function GET(request: NextRequest) {
         await syncGoogleCalendarToCrm(true);
         settingsUrl.searchParams.set("google", "connected");
         return clearStateCookie(NextResponse.redirect(settingsUrl));
-    } catch (oauthError) {
+    } catch {
         settingsUrl.searchParams.set("google", "error");
-        settingsUrl.searchParams.set("reason", oauthError instanceof Error ? oauthError.message : "oauth_failed");
+        settingsUrl.searchParams.set("reason", "oauth_failed");
         return clearStateCookie(NextResponse.redirect(settingsUrl));
     }
 }

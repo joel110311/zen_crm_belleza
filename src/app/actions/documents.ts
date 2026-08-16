@@ -2,6 +2,7 @@
 
 import { prisma } from "@/lib/db";
 import { revalidatePath } from "next/cache";
+import { requirePermission } from "@/lib/authz";
 
 import { generateEmbedding } from "@/lib/ai/openai";
 // Polyfill DOMMatrix for pdf-parse in Node environment
@@ -20,6 +21,7 @@ if (!global.DOMMatrix) {
 const pdf = require("pdf-parse");
 
 export async function uploadDocument(formData: FormData) {
+    await requirePermission("ai.manage");
     try {
         const file = formData.get("file") as File;
         if (!file) {
@@ -77,6 +79,7 @@ export async function uploadDocument(formData: FormData) {
 }
 
 export async function getDocuments() {
+    await requirePermission("ai.manage");
     try {
         return await prisma.document.findMany({
             orderBy: { createdAt: "desc" },
@@ -88,6 +91,7 @@ export async function getDocuments() {
 }
 
 export async function deleteDocument(id: string) {
+    await requirePermission("ai.manage");
     try {
         await prisma.document.delete({
             where: { id },

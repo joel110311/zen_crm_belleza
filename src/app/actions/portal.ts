@@ -2,12 +2,14 @@
 
 import crypto from "crypto";
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
 import { prisma } from "@/lib/db";
 import { getBusinessHoursConfig, getAvailableSlotsForDate, createManagedAppointment } from "@/lib/calendar/appointments";
 import { zonedDateTimeToUtc } from "@/lib/calendar/business-hours";
 import { buildOperationContext, normalizePhoneForOperation, parsePhoneByCountry } from "@/lib/operation-context";
 import { getSystemSettingsOrDefaults } from "@/lib/system-settings";
 import { getEducationArticles } from "@/app/actions/education";
+import { consumeRateLimit, getRequestIp } from "@/lib/security";
 
 type PortalBookingInput = {
     slug: string;
@@ -192,6 +194,15 @@ export async function getPortalData(slug = DEFAULT_PORTAL_SLUG) {
 }
 
 export async function getPortalAvailability(slug: string, specialistId: string, date: string, durationMinutes?: number) {
+    const requestHeaders = await headers();
+    const rateLimit = consumeRateLimit(`portal-availability:${getRequestIp(requestHeaders)}`, {
+        limit: 120,
+        windowMs: 60 * 1000,
+    });
+    if (!rateLimit.allowed) {
+        return { success: false, error: "Demasiadas consultas. Intenta de nuevo en un minuto.", slots: [] as string[] };
+    }
+
     const settings = await ensurePortalEnabled(slug);
     if (!settings) {
         return { success: false, error: "El portal no esta disponible.", slots: [] as string[] };
@@ -210,7 +221,8 @@ export async function getPortalAvailability(slug: string, specialistId: string, 
     }
 
     const config = await getBusinessHoursConfig();
-    const durationMs = Math.max(15, durationMinutes || specialist.defaultDurationMinutes || settings.appointmentDurationMinutes || 30) * 60 * 1000;
+    const safeDurationMinutes = Math.min(480, Math.max(15, durationMinutes || specialist.defaultDurationMinutes || settings.appointmentDurationMinutes || 30));
+    const durationMs = safeDurationMinutes * 60 * 1000;
     const result = await getAvailableSlotsForDate(date, durationMs, config, {
         specialistId: specialist.id,
         calendarIds: specialist.googleCalendarSource?.calendarId
@@ -228,6 +240,13 @@ export async function getPortalAvailability(slug: string, specialistId: string, 
 }
 
 export async function bookPortalAppointment(input: PortalBookingInput) {
+    const requestHeaders = await headers();
+    const ip = getRequestIp(requestHeaders);
+    const requestLimit = consumeRateLimit(`portal-booking:${ip}`, { limit: 8, windowMs: 10 * 60 * 1000 });
+    if (!requestLimit.allowed) {
+        return { success: false, error: "Has realizado demasiados intentos. Espera unos minutos antes de volver a reservar." };
+    }
+
     const settings = await ensurePortalEnabled(input.slug);
     if (!settings) {
         return { success: false, error: "El portal no esta disponible." };
@@ -253,6 +272,19 @@ export async function bookPortalAppointment(input: PortalBookingInput) {
     if (!firstName || !phone || !specialistId || !input.date || !input.time) {
         return { success: false, error: "Completa nombre, teléfono, profesional, fecha y hora." };
     }
+    if (firstName.length > 80 || lastName.length > 100 || cleanText(input.email).length > 254 || cleanText(input.reason).length > 500) {
+        return { success: false, error: "Uno de los datos ingresados supera la longitud permitida." };
+    }
+
+    const phoneDigits = phone.replace(/\D/g, "");
+    if (phoneDigits.length < 8 || phoneDigits.length > 15) {
+        return { success: false, error: "Ingresa un número de teléfono válido." };
+    }
+
+    const phoneLimit = consumeRateLimit(`portal-booking-phone:${phoneDigits}`, { limit: 4, windowMs: 30 * 60 * 1000 });
+    if (!phoneLimit.allowed) {
+        return { success: false, error: "Ese teléfono alcanzó el límite temporal de reservaciones. Intenta más tarde." };
+    }
 
     const specialist = await prisma.specialist.findFirst({
         where: {
@@ -276,7 +308,7 @@ export async function bookPortalAppointment(input: PortalBookingInput) {
         return { success: false, error: "La fecha u hora no son validas." };
     }
 
-    const durationMinutes = Math.max(15, selectedService?.durationMinutes || input.durationMinutes || specialist.defaultDurationMinutes || settings.appointmentDurationMinutes || 30);
+    const durationMinutes = Math.min(480, Math.max(15, selectedService?.durationMinutes || input.durationMinutes || specialist.defaultDurationMinutes || settings.appointmentDurationMinutes || 30));
     const endTime = new Date(startTime.getTime() + durationMinutes * 60 * 1000);
     const makeVirtual = Boolean(settings.googleMeetEnabled && settings.googleMeetDefaultVirtual);
     const remindersEnabled = Boolean(settings.appointmentRemindersEnabled && settings.reminderWhatsAppEnabled);

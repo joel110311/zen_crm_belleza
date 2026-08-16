@@ -1,9 +1,15 @@
 import { NextResponse } from "next/server";
 import { getPipelineData } from "@/app/actions/pipeline";
+import { auth } from "@/lib/auth";
+import { ensurePermissionResponse } from "@/lib/authz";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+    const session = await auth();
+    const denied = ensurePermissionResponse(session, "contacts.manage");
+    if (denied) return denied;
+
     try {
         const data = await getPipelineData();
 

@@ -4,6 +4,7 @@ import crypto from "crypto";
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
 import { prisma } from "@/lib/db";
+import { requirePermission } from "@/lib/authz";
 import { revalidatePath } from "next/cache";
 import { enrichContactFromMessage } from "@/lib/ai-enrichment";
 import { resolveMediaToDataUrl } from "@/lib/media-data-url";
@@ -2150,6 +2151,7 @@ async function waitForBotReplyPacing(params: {
 }
 
 export async function getConversations() {
+    await requirePermission("chats.manage");
     try {
         const conversations = await prisma.conversation.findMany({
             include: {
@@ -2175,6 +2177,7 @@ export async function getConversations() {
 }
 
 export async function getMessages(conversationId: string) {
+    await requirePermission("chats.manage");
     try {
         const messages = await prisma.message.findMany({
             where: { conversationId },
@@ -2191,6 +2194,7 @@ export async function getMessages(conversationId: string) {
 }
 
 export async function sendMessage(conversationId: string, content: string, direction: "inbound" | "outbound" = "outbound") {
+    await requirePermission("chats.manage");
     console.log("!!! [SendMessage] FUNCTION CALLED !!!", { conversationId, content, direction });
     try {
         // Get conversation with contact to get phone number
@@ -2282,6 +2286,7 @@ export async function sendMessage(conversationId: string, content: string, direc
 }
 
 export async function createConversation(contactId: string) {
+    await requirePermission("chats.manage");
     try {
         const settings = await getSystemSettingsOrDefaults();
         const conversation = await findOrCreateActiveConversationForContactSource({

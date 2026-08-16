@@ -39,8 +39,8 @@ async function persistMedia(mediaId: string, fileName: string) {
     const uploads = path.join(process.cwd(), "public", "uploads", "meta");
     await mkdir(uploads, { recursive: true });
     const safeBase = path.parse(fileName || "archivo").name.replace(/[^a-zA-Z0-9_-]+/g, "-").slice(0, 50) || "archivo";
-    const hash = crypto.createHash("sha1").update(mediaId).digest("hex").slice(0, 12);
-    const safeName = `${safeBase}-${hash}${path.extname(fileName) || extension(downloaded.mimeType)}`;
+    const hash = crypto.createHash("sha256").update(mediaId).digest("hex").slice(0, 32);
+    const safeName = `${safeBase}-${hash}${extension(downloaded.mimeType)}`;
     await writeFile(path.join(uploads, safeName), downloaded.buffer);
     return { mediaUrl: `/uploads/meta/${safeName}`, mediaType: downloaded.mimeType, mediaFileName: fileName || safeName };
 }

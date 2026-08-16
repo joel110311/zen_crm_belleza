@@ -113,8 +113,6 @@ export default function SettingsPage() {
     const [posTicketFullDescription, setPosTicketFullDescription] = useState(false);
     const [posTicketHeader, setPosTicketHeader] = useState("Zen CRM Belleza\nServicios de belleza\nDirección del negocio");
     const [posTicketFooter, setPosTicketFooter] = useState("Gracias por su compra\nRegrese pronto");
-    const [googleClientId, setGoogleClientId] = useState("");
-    const [googleClientSecret, setGoogleClientSecret] = useState("");
     const [reminderWhatsAppEnabled, setReminderWhatsAppEnabled] = useState(true);
     const [appointmentRemindersEnabled, setAppointmentRemindersEnabled] = useState(true);
     const [appointmentReminderOffsets, setAppointmentReminderOffsets] = useState<number[]>([1440, 240]);
@@ -189,8 +187,6 @@ export default function SettingsPage() {
                 setPosTicketFullDescription(Boolean(settings.posTicketFullDescription));
                 setPosTicketHeader(settings.posTicketHeader || "Zen CRM Belleza\nServicios de belleza\nDirección del negocio");
                 setPosTicketFooter(settings.posTicketFooter || "Gracias por su compra\nRegrese pronto");
-                setGoogleClientId(settings.googleClientId || "");
-                setGoogleClientSecret(settings.googleClientSecret || "");
                 setReminderWhatsAppEnabled(settings.reminderWhatsAppEnabled !== false);
                 setAppointmentRemindersEnabled(settings.appointmentRemindersEnabled !== false);
                 setAppointmentReminderOffsets(
@@ -299,12 +295,6 @@ export default function SettingsPage() {
                           }
                     : saveSection === "calendar"
                         ? {
-                              ...(canAccess("integrations.manage")
-                                  ? {
-                                        googleClientId,
-                                        googleClientSecret,
-                                    }
-                                  : {}),
                               ...(canAccess("calendar.manage")
                                   ? {
                                         reminderWhatsAppEnabled,
@@ -1094,16 +1084,7 @@ export default function SettingsPage() {
                         ) : null}
 
                         {canAccess("integrations.manage") ? (
-                            <GoogleCalendarPanel
-                                googleClientId={googleClientId}
-                                googleClientSecret={googleClientSecret}
-                                onChange={(field, value) => {
-                                    if (field === "googleClientId") setGoogleClientId(value);
-                                    if (field === "googleClientSecret") setGoogleClientSecret(value);
-                                }}
-                                onSave={handleSave}
-                                isSaving={isSaving}
-                            />
+                            <GoogleCalendarPanel />
                         ) : null}
                     </div>
                 )}

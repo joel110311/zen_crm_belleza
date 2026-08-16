@@ -7,6 +7,7 @@ import {
     extractTextFromFileBuffer,
     processKnowledgeSource,
 } from "@/lib/brain/knowledge";
+import { requirePermission } from "@/lib/authz";
 
 type CreateKnowledgeSourceInput = {
     title?: string;
@@ -61,6 +62,7 @@ function toKnowledgeActionErrorMessage(error: unknown) {
 }
 
 export async function getKnowledgeSources() {
+    await requirePermission("ai.manage");
     try {
         return await prisma.knowledgeSource.findMany({
             select: {
@@ -84,6 +86,7 @@ export async function getKnowledgeSources() {
 }
 
 export async function createKnowledgeSource(input: CreateKnowledgeSourceInput) {
+    await requirePermission("ai.manage");
     try {
         if (!input.type) {
             throw new Error("El tipo de fuente es requerido.");
@@ -126,6 +129,7 @@ export async function createKnowledgeSource(input: CreateKnowledgeSourceInput) {
 }
 
 export async function uploadKnowledgeFile(formData: FormData) {
+    await requirePermission("ai.manage");
     try {
         const file = formData.get("file") as File | null;
         if (!file) {
@@ -171,6 +175,7 @@ export async function uploadKnowledgeFile(formData: FormData) {
 }
 
 export async function reindexKnowledgeSource(sourceId: string) {
+    await requirePermission("ai.manage");
     try {
         await processKnowledgeSource(sourceId);
         revalidatePath("/dashboard/brain");
@@ -184,6 +189,7 @@ export async function reindexKnowledgeSource(sourceId: string) {
 }
 
 export async function deleteKnowledgeSource(sourceId: string) {
+    await requirePermission("ai.manage");
     try {
         await prisma.knowledgeSource.delete({
             where: { id: sourceId },
@@ -199,6 +205,7 @@ export async function deleteKnowledgeSource(sourceId: string) {
 }
 
 export async function downloadKnowledgeSourceText(sourceId: string) {
+    await requirePermission("ai.manage");
     try {
         const source = await prisma.knowledgeSource.findUnique({
             where: { id: sourceId },

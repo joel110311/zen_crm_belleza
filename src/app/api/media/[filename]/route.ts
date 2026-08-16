@@ -24,7 +24,6 @@ const MIME_TYPES: Record<string, string> = {
     ".jpg": "image/jpeg",
     ".jpeg": "image/jpeg",
     ".png": "image/png",
-    ".svg": "image/svg+xml",
     ".ico": "image/x-icon",
     ".gif": "image/gif",
     ".webp": "image/webp",
@@ -33,7 +32,12 @@ const MIME_TYPES: Record<string, string> = {
     ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 };
 
-const IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".svg", ".ico", ".gif", ".webp"]);
+const IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".ico", ".gif", ".webp"]);
+const INLINE_EXTENSIONS = new Set([
+    ...IMAGE_EXTENSIONS,
+    ".m4a", ".mp3", ".ogg", ".opus", ".wav", ".aac", ".amr", ".webm",
+    ".mp4", ".m4v", ".mov", ".3gp", ".3gpp", ".avi", ".mpeg", ".mpg",
+]);
 
 function buildMissingMediaPlaceholderSvg(label: string) {
     const safeLabel = label.replace(/[<>&"']/g, "");
@@ -54,7 +58,7 @@ function buildMissingMediaPlaceholderSvg(label: string) {
 async function buildMediaResponse(filename: string, includeBody: boolean) {
 
     // Security: only allow alphanumeric, dash, underscore, dot
-    if (!/^[\w\-\.]+$/.test(filename)) {
+    if (!/^[\w\-\.]+$/.test(filename) || filename === "." || filename === "..") {
         return new NextResponse(null, { status: 204 });
     }
 
@@ -70,7 +74,6 @@ async function buildMediaResponse(filename: string, includeBody: boolean) {
                 headers: {
                     "Content-Type": "image/svg+xml; charset=utf-8",
                     "Cache-Control": "public, max-age=300",
-                    "Access-Control-Allow-Origin": "*",
                 },
             });
         }
@@ -80,6 +83,7 @@ async function buildMediaResponse(filename: string, includeBody: boolean) {
 
     const fileBuffer = fs.readFileSync(filePath);
     const contentType = MIME_TYPES[ext] || "application/octet-stream";
+    const disposition = INLINE_EXTENSIONS.has(ext) ? "inline" : "attachment";
 
     console.log(`[MEDIA] Serving ${filename} as ${contentType} (${fileBuffer.length} bytes)`);
 
@@ -88,9 +92,10 @@ async function buildMediaResponse(filename: string, includeBody: boolean) {
         headers: {
             "Content-Type": contentType,
             "Content-Length": fileBuffer.length.toString(),
-            "Content-Disposition": `inline; filename="${filename}"`,
-            "Cache-Control": "public, max-age=86400",
-            "Access-Control-Allow-Origin": "*",
+            "Content-Disposition": `${disposition}; filename="${filename}"`,
+            "Cache-Control": "private, no-store",
+            "X-Content-Type-Options": "nosniff",
+            "Content-Security-Policy": "default-src 'none'; sandbox",
         },
     });
 }

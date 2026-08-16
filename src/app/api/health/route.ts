@@ -53,9 +53,7 @@ export async function GET(request: NextRequest) {
         {
             ok: status < 400,
             mode,
-            service: "zen-crm-go",
-            timestamp: new Date().toISOString(),
-            database,
+            database: { ok: database.ok },
         },
         { status },
     );

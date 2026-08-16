@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { normalizeMessageSourceType, resolveMessageSourceId } from "@/lib/message-source";
 import { findOrCreateActiveConversationForContactSource } from "@/lib/source-conversations";
 import { getSystemSettingsOrDefaults } from "@/lib/system-settings";
+import { consumeRateLimit, getBearerToken, getRequestIp, safeSecretEqual } from "@/lib/security";
 
 /**
  * POST /api/bot-message
@@ -20,6 +21,33 @@ import { getSystemSettingsOrDefaults } from "@/lib/system-settings";
  */
 export async function POST(request: NextRequest) {
     try {
+        let settings: Awaited<ReturnType<typeof getSystemSettingsOrDefaults>> | null = null;
+        let expectedSecret = process.env.BOT_MESSAGE_SECRET || process.env.WUZAPI_USER_TOKEN || "";
+        if (!expectedSecret) {
+            settings = await getSystemSettingsOrDefaults();
+            expectedSecret = settings.whatsappUserToken || "";
+        }
+        const receivedSecret = getBearerToken(request.headers) || request.headers.get("x-bot-secret") || "";
+
+        if (!expectedSecret) {
+            return NextResponse.json({ error: "Integracion no configurada" }, { status: 503 });
+        }
+        if (!safeSecretEqual(receivedSecret, expectedSecret)) {
+            return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+        }
+
+        const ip = getRequestIp(request.headers);
+        const rateLimit = consumeRateLimit(`bot-message:${ip}`, { limit: 120, windowMs: 60 * 1000 });
+        if (!rateLimit.allowed) {
+            return NextResponse.json(
+                { error: "Demasiadas solicitudes" },
+                {
+                    status: 429,
+                    headers: { "Retry-After": String(Math.max(1, Math.ceil((rateLimit.resetAt - Date.now()) / 1000))) },
+                },
+            );
+        }
+
         const body = await request.json();
         const { to, text, type = "text", mediaUrl, mediaType, mediaFileName, sourceType } = body;
         const textContent = typeof text === "string" ? text.trim() : "";
@@ -57,7 +85,7 @@ export async function POST(request: NextRequest) {
             console.log(`[Bot Message] Created contact ${contact.id} for phone ${phone}`);
         }
 
-        const settings = await getSystemSettingsOrDefaults();
+        settings ||= await getSystemSettingsOrDefaults();
         const normalizedSourceType = normalizeMessageSourceType(sourceType);
         const sourceId = resolveMessageSourceId(normalizedSourceType, settings);
         const conversation = await findOrCreateActiveConversationForContactSource({
@@ -114,10 +142,9 @@ export async function POST(request: NextRequest) {
         });
 
     } catch (error: unknown) {
-        const details = error instanceof Error ? error.message : "Unknown error";
         console.error("[Bot Message] Error:", error);
         return NextResponse.json(
-            { error: "Failed to store bot message", details },
+            { error: "Failed to store bot message" },
             { status: 500 }
         );
     }

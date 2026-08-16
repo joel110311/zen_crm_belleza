@@ -8,6 +8,7 @@ import { processInboundMessage, type InboundAttribution } from "@/app/actions/ch
 import { buildPhoneMatchClauses, normalizePhoneDigits, uniquePhoneCandidates } from "@/lib/phone";
 import { getSystemSettingsOrDefaults } from "@/lib/system-settings";
 import { MESSAGE_SOURCE_WUZAPI, resolveMessageSourceId } from "@/lib/message-source";
+import { getBearerToken, safeSecretEqual } from "@/lib/security";
 import { downloadWuzapiMedia } from "@/lib/wuzapi";
 import { refreshWhatsAppAvatarForContact } from "@/lib/whatsapp-avatar";
 import { findOrCreateActiveConversationForContactSource } from "@/lib/source-conversations";
@@ -1505,12 +1506,23 @@ export async function POST(req: NextRequest) {
     try {
         const rawPayload = await req.json();
         const payload = normalizeIncomingPayload(rawPayload);
-        const settings = await getSystemSettingsOrDefaults();
-        const wuzapiSourceId = resolveMessageSourceId(MESSAGE_SOURCE_WUZAPI, settings);
-
-        if (settings.whatsappUserToken && payload.token && payload.token !== settings.whatsappUserToken) {
-            return new NextResponse("Forbidden", { status: 403 });
+        let settings: Awaited<ReturnType<typeof getSystemSettingsOrDefaults>> | null = null;
+        let expectedToken = process.env.WUZAPI_USER_TOKEN || "";
+        if (!expectedToken) {
+            settings = await getSystemSettingsOrDefaults();
+            expectedToken = settings.whatsappUserToken || "";
         }
+        const receivedToken = payload.token || getBearerToken(req.headers) || req.headers.get("x-api-token") || "";
+
+        if (!expectedToken) {
+            return new NextResponse("Webhook not configured", { status: 503 });
+        }
+        if (!safeSecretEqual(receivedToken, expectedToken)) {
+            return new NextResponse("Unauthorized", { status: 401 });
+        }
+
+        settings ||= await getSystemSettingsOrDefaults();
+        const wuzapiSourceId = resolveMessageSourceId(MESSAGE_SOURCE_WUZAPI, settings);
 
         if (payload.type !== "Message" || !payload.event?.Info) {
             return new NextResponse("EVENT_RECEIVED", { status: 200 });

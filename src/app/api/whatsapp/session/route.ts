@@ -13,8 +13,27 @@ import {
 } from "@/lib/wuzapi";
 import { clearCrmChatHistory, importWhatsAppHistory } from "@/lib/whatsapp-history-import";
 import { getMetaSessionSnapshot } from "@/lib/meta-whatsapp";
+import { auth } from "@/lib/auth";
+import { getSessionAccessSubject, getSessionUserId } from "@/lib/authz";
+import { hasAnyPermission, hasPermission } from "@/lib/permissions";
+
+async function authorizeWhatsAppSession(write = false) {
+    const session = await auth();
+    if (!getSessionUserId(session)) {
+        return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+    }
+
+    const subject = getSessionAccessSubject(session);
+    const allowed = write
+        ? hasPermission(subject, "integrations.manage")
+        : hasAnyPermission(subject, ["integrations.manage", "chats.manage"]);
+    return allowed ? null : NextResponse.json({ error: "Sin permiso" }, { status: 403 });
+}
 
 export async function GET(request: NextRequest) {
+    const denied = await authorizeWhatsAppSession(false);
+    if (denied) return denied;
+
     let meta = { metaConfigured: false, metaConnected: false, phoneNumberId: null as string | null };
 
     try {
@@ -54,6 +73,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+    const denied = await authorizeWhatsAppSession(true);
+    if (denied) return denied;
+
     try {
         const { action, months, clearChats } = await request.json();
 

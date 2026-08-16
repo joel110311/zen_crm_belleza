@@ -2,13 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { sendWuzapiDeleteMessage } from "@/lib/wuzapi";
+import { ensurePermissionResponse } from "@/lib/authz";
 
 export async function DELETE(request: NextRequest) {
     try {
         const session = await auth();
-        if (!session?.user?.email) {
-            return NextResponse.json({ error: "No autorizado." }, { status: 401 });
-        }
+        const denied = ensurePermissionResponse(session, "chats.manage");
+        if (denied) return denied;
 
         const { messageId, conversationId } = await request.json();
 

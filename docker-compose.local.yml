@@ -6,20 +6,25 @@ services:
       context: .
       dockerfile: Dockerfile
     environment:
-      - DATABASE_URL=postgresql://zencrm:950b719a13e682e057b42c7b11dd2213@zen-crm-db:5432/zencrm
+      - DATABASE_URL=postgresql://zencrm:${LOCAL_POSTGRES_PASSWORD:?Define LOCAL_POSTGRES_PASSWORD}@zen-crm-db:5432/zencrm
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - ALLOW_ENV_AI_FALLBACK=${ALLOW_ENV_AI_FALLBACK:-true}
       - WHATSAPP_GATEWAY_URL=http://whatsapp-gateway:8080
-      - WUZAPI_ADMIN_TOKEN=${WUZAPI_ADMIN_TOKEN:-zencrm-local-admin-token}
-      - WUZAPI_USER_TOKEN=${WUZAPI_USER_TOKEN:-zencrm-local-user-token}
+      - WUZAPI_ADMIN_TOKEN=${WUZAPI_ADMIN_TOKEN:?Define WUZAPI_ADMIN_TOKEN}
+      - WUZAPI_USER_TOKEN=${WUZAPI_USER_TOKEN:?Define WUZAPI_USER_TOKEN}
+      - BOT_MESSAGE_SECRET=${BOT_MESSAGE_SECRET:-}
       - WHATSAPP_INSTANCE_NAME=${WHATSAPP_INSTANCE_NAME:-zen-crm-oftalmo-local}
-      - WUZAPI_GLOBAL_ENCRYPTION_KEY=${WUZAPI_GLOBAL_ENCRYPTION_KEY:-zencrm_local_encrypt_key_32abcde}
-      - WUZAPI_GLOBAL_HMAC_KEY=${WUZAPI_GLOBAL_HMAC_KEY:-zencrm_local_hmac_key_32abcdefghi}
+      - WUZAPI_GLOBAL_ENCRYPTION_KEY=${WUZAPI_GLOBAL_ENCRYPTION_KEY:?Define WUZAPI_GLOBAL_ENCRYPTION_KEY}
+      - WUZAPI_GLOBAL_HMAC_KEY=${WUZAPI_GLOBAL_HMAC_KEY:?Define WUZAPI_GLOBAL_HMAC_KEY}
       - INITIAL_ADMIN_EMAIL=${INITIAL_ADMIN_EMAIL:-superadmin@zencrm.local}
-      - INITIAL_ADMIN_PASSWORD=${INITIAL_ADMIN_PASSWORD:-super123}
+      - INITIAL_ADMIN_PASSWORD=${INITIAL_ADMIN_PASSWORD:?Define INITIAL_ADMIN_PASSWORD}
       - INITIAL_ADMIN_NAME=${INITIAL_ADMIN_NAME:-Super Admin}
-      - AUTH_SECRET=${AUTH_SECRET:-zencrm_local_auth_secret_2026}
+      - AUTH_SECRET=${AUTH_SECRET:?Define AUTH_SECRET}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
+      - GOOGLE_TOKEN_ENCRYPTION_KEY=${GOOGLE_TOKEN_ENCRYPTION_KEY:-}
+      - PUBLIC_SUPPORT_EMAIL=${PUBLIC_SUPPORT_EMAIL:-}
       - AUTH_URL=${AUTH_URL:-http://localhost:3008}
       - APP_BASE_URL=${APP_BASE_URL:-http://localhost:3008}
       - WHATSAPP_WEBHOOK_BASE_URL=${WHATSAPP_WEBHOOK_BASE_URL:-http://host.docker.internal:3008}
@@ -53,11 +58,11 @@ services:
   whatsapp-gateway:
     image: asternic/wuzapi:sha-e6d58f8
     environment:
-      - WUZAPI_ADMIN_TOKEN=${WUZAPI_ADMIN_TOKEN:-zencrm-local-admin-token}
-      - WUZAPI_GLOBAL_ENCRYPTION_KEY=${WUZAPI_GLOBAL_ENCRYPTION_KEY:-zencrm_local_encrypt_key_32abcde}
-      - WUZAPI_GLOBAL_HMAC_KEY=${WUZAPI_GLOBAL_HMAC_KEY:-zencrm_local_hmac_key_32abcdefghi}
+      - WUZAPI_ADMIN_TOKEN=${WUZAPI_ADMIN_TOKEN:?Define WUZAPI_ADMIN_TOKEN}
+      - WUZAPI_GLOBAL_ENCRYPTION_KEY=${WUZAPI_GLOBAL_ENCRYPTION_KEY:?Define WUZAPI_GLOBAL_ENCRYPTION_KEY}
+      - WUZAPI_GLOBAL_HMAC_KEY=${WUZAPI_GLOBAL_HMAC_KEY:?Define WUZAPI_GLOBAL_HMAC_KEY}
       - DB_USER=wuzapi
-      - DB_PASSWORD=${WUZAPI_DB_PASSWORD:-zencrm_wuzapi_local_password}
+      - DB_PASSWORD=${WUZAPI_DB_PASSWORD:?Define WUZAPI_DB_PASSWORD}
       - DB_NAME=wuzapi
       - DB_HOST=whatsapp-db
       - DB_PORT=5432
@@ -79,7 +84,7 @@ services:
     image: postgres:16-alpine
     environment:
       - POSTGRES_USER=wuzapi
-      - POSTGRES_PASSWORD=${WUZAPI_DB_PASSWORD:-zencrm_wuzapi_local_password}
+      - POSTGRES_PASSWORD=${WUZAPI_DB_PASSWORD:?Define WUZAPI_DB_PASSWORD}
       - POSTGRES_DB=wuzapi
       - TZ=${TZ:-America/Mexico_City}
     volumes:
@@ -101,7 +106,7 @@ services:
     image: ghcr.io/joel110311/zen_crm_oftalmo_db:latest
     environment:
       - POSTGRES_USER=zencrm
-      - POSTGRES_PASSWORD=950b719a13e682e057b42c7b11dd2213
+      - POSTGRES_PASSWORD=${LOCAL_POSTGRES_PASSWORD:?Define LOCAL_POSTGRES_PASSWORD}
       - POSTGRES_DB=zencrm
       - TZ=${TZ:-America/Mexico_City}
     volumes:

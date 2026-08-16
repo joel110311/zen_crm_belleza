@@ -19,6 +19,7 @@ services:
       - WHATSAPP_GATEWAY_URL=http://whatsapp-gateway:8080
       - WUZAPI_ADMIN_TOKEN=change_this_admin_token
       - WUZAPI_USER_TOKEN=change_this_user_token
+      - BOT_MESSAGE_SECRET=
       - WHATSAPP_INSTANCE_NAME=zen-crm
       - WUZAPI_GLOBAL_ENCRYPTION_KEY=change_this_32_char_encryption_key
       - WUZAPI_GLOBAL_HMAC_KEY=change_this_32_char_hmac_key
@@ -30,6 +31,10 @@ services:
       - INITIAL_ADMIN_PASSWORD=ChangeMe123!
       - INITIAL_ADMIN_NAME=Owner Cliente 1
       - AUTH_SECRET=change_this_auth_secret
+      - GOOGLE_CLIENT_ID=replace_with_google_oauth_client_id
+      - GOOGLE_CLIENT_SECRET=replace_with_google_oauth_client_secret
+      - GOOGLE_TOKEN_ENCRYPTION_KEY=replace_with_32_bytes_in_base64
+      - PUBLIC_SUPPORT_EMAIL=
       - AUTH_URL=https://crm.cliente1.tudominio.com
       - APP_BASE_URL=https://crm.cliente1.tudominio.com
       - WHATSAPP_WEBHOOK_BASE_URL=https://crm.cliente1.tudominio.com

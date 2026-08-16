@@ -68,8 +68,8 @@ export async function createUser(data: UserInput & { password: string }) {
         return { success: false, error: "Ya existe un usuario con ese correo." };
     }
 
-    if (data.password.length < 6) {
-        return { success: false, error: "La contraseña debe tener al menos 6 caracteres." };
+    if (data.password.length < 12) {
+        return { success: false, error: "La contraseña debe tener al menos 12 caracteres." };
     }
 
     const hashedPassword = await bcrypt.hash(data.password, 12);
@@ -119,8 +119,8 @@ export async function updateUser(userId: string, data: Partial<UserInput>) {
     }
 
     if (data.password && data.password.length > 0) {
-        if (data.password.length < 6) {
-            return { success: false, error: "La contraseña debe tener al menos 6 caracteres." };
+        if (data.password.length < 12) {
+            return { success: false, error: "La contraseña debe tener al menos 12 caracteres." };
         }
         updateData.password = await bcrypt.hash(data.password, 12);
     }

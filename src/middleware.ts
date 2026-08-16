@@ -1,4 +1,4 @@
-import { getToken } from "next-auth/jwt";
+import { getToken, type JWT } from "next-auth/jwt";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { hasPermission, type PermissionKey } from "@/lib/permissions";
@@ -19,7 +19,7 @@ export async function middleware(req: NextRequest) {
     const { pathname } = req.nextUrl;
 
     // Public paths that don't require authentication
-    const publicPaths = ["/login", "/portal", "/api/auth", "/api/branding", "/api/webhook", "/api/webhooks", "/api/bot-message", "/api/health", "/api/operation-context"];
+    const publicPaths = ["/login", "/portal", "/google-calendar", "/legal", "/api/auth", "/api/branding", "/api/webhook", "/api/webhooks", "/api/bot-message", "/api/health", "/api/operation-context"];
     const isPublicPath = publicPaths.some((path) => pathname.startsWith(path));
 
     if (isPublicPath) {
@@ -29,22 +29,27 @@ export async function middleware(req: NextRequest) {
     // Try both cookie names (HTTPS uses __Secure- prefix, HTTP uses plain)
     // Behind reverse proxies like Traefik, the internal request may be HTTP
     // but the cookie was set with __Secure- prefix because AUTH_URL is HTTPS
-    let token = await getToken({
-        req,
-        secret: process.env.AUTH_SECRET,
-        cookieName: "__Secure-authjs.session-token",
-    });
-
-    if (!token) {
+    let token: JWT | null = null;
+    try {
         token = await getToken({
             req,
             secret: process.env.AUTH_SECRET,
-            cookieName: "authjs.session-token",
+            cookieName: "__Secure-authjs.session-token",
         });
+
+        if (!token) {
+            token = await getToken({
+                req,
+                secret: process.env.AUTH_SECRET,
+                cookieName: "authjs.session-token",
+            });
+        }
+    } catch {
+        token = null;
     }
 
     // If not authenticated, redirect to login
-    if (!token) {
+    if (!token || typeof token.id !== "string" || !token.id) {
         const loginUrl = new URL("/login", req.url);
         loginUrl.searchParams.set("callbackUrl", pathname);
         return NextResponse.redirect(loginUrl);

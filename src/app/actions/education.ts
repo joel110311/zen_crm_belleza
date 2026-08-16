@@ -71,7 +71,7 @@ async function uniqueSlug(base: string, currentId?: string) {
     return `${slug}-${Date.now().toString(36)}`;
 }
 
-export async function ensureDefaultEducationArticles() {
+async function ensureDefaultEducationArticles() {
     const count = await prisma.patientEducationArticle.count();
     if (count > 0) return;
 

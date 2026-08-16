@@ -5,11 +5,30 @@ import path from "path";
 import { existsSync } from "fs";
 import { spawn } from "child_process";
 import ffmpegStaticPath from "ffmpeg-static";
+import crypto from "crypto";
+import { auth } from "@/lib/auth";
+import { getSessionAccessSubject, getSessionUserId } from "@/lib/authz";
+import { hasAnyPermission } from "@/lib/permissions";
 
 export const runtime = "nodejs";
 
 const MAX_WHATSAPP_VIDEO_BYTES = 16 * 1024 * 1024;
 const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
+const MAX_NON_VIDEO_BYTES = 25 * 1024 * 1024;
+const VIDEO_EXTENSIONS = new Set([".mp4", ".m4v", ".mov", ".webm", ".3gp"]);
+const ALLOWED_EXTENSIONS = new Set([
+    ".jpg", ".jpeg", ".png", ".webp", ".gif",
+    ".mp3", ".ogg", ".opus", ".wav", ".m4a", ".aac", ".amr",
+    ...VIDEO_EXTENSIONS,
+    ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".csv", ".txt",
+]);
+const BLOCKED_MIME_TYPES = new Set([
+    "text/html",
+    "image/svg+xml",
+    "application/javascript",
+    "text/javascript",
+    "application/xhtml+xml",
+]);
 
 function isMp4Video(fileName: string, mimeType: string) {
     return mimeType === "video/mp4" || path.extname(fileName).toLowerCase() === ".mp4";
@@ -27,7 +46,7 @@ async function transcodeVideoToMp4(inputPath: string, outputPath: string) {
     const ffmpegExecutable = ffmpegStaticPath || "ffmpeg";
 
     await new Promise<void>((resolve, reject) => {
-        const process = spawn(ffmpegExecutable, [
+        const process = spawn(/* turbopackIgnore: true */ ffmpegExecutable, [
             "-y",
             "-i",
             inputPath,
@@ -67,6 +86,23 @@ async function transcodeVideoToMp4(inputPath: string, outputPath: string) {
 
 export async function POST(request: NextRequest) {
     try {
+        const session = await auth();
+        if (!getSessionUserId(session)) {
+            return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+        }
+        if (!hasAnyPermission(getSessionAccessSubject(session), [
+            "chats.manage",
+            "services.manage",
+            "settings.manage",
+            "ai.manage",
+            "patients.manage",
+            "clinical.manage",
+            "campaigns.manage",
+            "specialists.manage",
+        ])) {
+            return NextResponse.json({ error: "Sin permiso para subir archivos" }, { status: 403 });
+        }
+
         const formData = await request.formData();
         const file = formData.get("file") as File;
 
@@ -81,19 +117,35 @@ export async function POST(request: NextRequest) {
             );
         }
 
+        const originalExt = path.extname(file.name).toLowerCase();
+        const normalizedMimeType = file.type.toLowerCase().split(";")[0].trim();
+        const isVideo = VIDEO_EXTENSIONS.has(originalExt) || normalizedMimeType.startsWith("video/");
+
+        if (!ALLOWED_EXTENSIONS.has(originalExt) || BLOCKED_MIME_TYPES.has(normalizedMimeType)) {
+            return NextResponse.json(
+                { error: "Tipo de archivo no permitido." },
+                { status: 415 },
+            );
+        }
+
+        if (!isVideo && file.size > MAX_NON_VIDEO_BYTES) {
+            return NextResponse.json(
+                { error: "El archivo supera el limite de 25MB." },
+                { status: 413 },
+            );
+        }
+
         // Create uploads directory if it doesn't exist
         const uploadsDir = path.join(process.cwd(), "public", "uploads");
         if (!existsSync(uploadsDir)) {
             await mkdir(uploadsDir, { recursive: true });
         }
 
-        const originalExt = path.extname(file.name);
-        const isVideo = file.type.startsWith("video/");
         const originalBuffer = Buffer.from(await file.arrayBuffer());
 
         // Generate unique filename
         const ext = isVideo ? ".mp4" : originalExt;
-        const uniqueName = `${Date.now()}-${Math.random().toString(36).substring(7)}${ext}`;
+        const uniqueName = `${crypto.randomUUID()}${ext}`;
         const filePath = path.join(uploadsDir, uniqueName);
 
         let returnedFileName = file.name;
@@ -103,7 +155,7 @@ export async function POST(request: NextRequest) {
             const shouldTranscode = !isMp4Video(file.name, file.type) || originalBuffer.length > MAX_WHATSAPP_VIDEO_BYTES;
             const inputPath = path.join(
                 uploadsDir,
-                `${Date.now()}-${Math.random().toString(36).substring(7)}-input${originalExt || ".video"}`,
+                `${crypto.randomUUID()}-input${originalExt || ".video"}`,
             );
 
             if (shouldTranscode) {

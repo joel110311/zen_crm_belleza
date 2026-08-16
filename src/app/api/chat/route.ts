@@ -4,6 +4,8 @@ import { prisma } from "@/lib/db";
 import { refreshWhatsAppAvatarForContactsInBackground } from "@/lib/whatsapp-avatar";
 import { formatPhoneForDisplay } from "@/lib/operation-context";
 import type { Prisma } from "@prisma/client";
+import { auth } from "@/lib/auth";
+import { ensurePermissionResponse } from "@/lib/authz";
 
 let lastAvatarRefreshKickAt = 0;
 const CHAT_AVATAR_REFRESH_KICK_INTERVAL_MS = 30 * 60 * 1000;
@@ -66,6 +68,10 @@ function getConversationContactName(contact: {
 
 // GET /api/chat - Get all conversations or messages for a specific conversation
 export async function GET(request: NextRequest) {
+    const session = await auth();
+    const denied = ensurePermissionResponse(session, "chats.manage");
+    if (denied) return denied;
+
     const { searchParams } = new URL(request.url);
     const conversationId = searchParams.get("conversationId");
 

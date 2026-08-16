@@ -9,6 +9,7 @@ import {
     previewCatalogEntryFromUrl,
     upsertCatalogEntry,
 } from "@/lib/catalog/catalog";
+import { requirePermission } from "@/lib/authz";
 
 type CreateCatalogEntryInput = {
     externalId?: string;
@@ -23,6 +24,7 @@ type CreateCatalogEntryInput = {
 };
 
 export async function getCatalogEntries() {
+    await requirePermission("ai.manage");
     try {
         return await getCatalogItems();
     } catch (error) {
@@ -32,6 +34,7 @@ export async function getCatalogEntries() {
 }
 
 export async function uploadCatalogCsv(formData: FormData) {
+    await requirePermission("ai.manage");
     try {
         const file = formData.get("file");
         if (!(file instanceof File)) {
@@ -63,6 +66,7 @@ export async function uploadCatalogCsv(formData: FormData) {
 }
 
 export async function createCatalogEntry(input: CreateCatalogEntryInput) {
+    await requirePermission("ai.manage");
     try {
         const result = await upsertCatalogEntry(input);
 
@@ -83,6 +87,7 @@ export async function createCatalogEntry(input: CreateCatalogEntryInput) {
 }
 
 export async function autofillCatalogEntryFromUrl(url: string) {
+    await requirePermission("ai.manage");
     try {
         const preview = await previewCatalogEntryFromUrl(url);
 
@@ -107,6 +112,7 @@ export async function importCatalogFromProtectedSource(input: {
     cookieHeader?: string;
     refererUrl?: string;
 }) {
+    await requirePermission("ai.manage");
     try {
         const result = await importCatalogEntriesFromIndex({
             indexUrl: input.indexUrl,
@@ -134,6 +140,7 @@ export async function importCatalogFromProtectedSource(input: {
 }
 
 export async function deleteCatalogEntries() {
+    await requirePermission("ai.manage");
     try {
         await clearCatalogItems();
         revalidatePath("/dashboard/brain");

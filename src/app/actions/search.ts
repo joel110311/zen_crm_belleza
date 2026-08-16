@@ -1,6 +1,7 @@
 "use server";
 
 import { prisma } from "@/lib/db";
+import { requireAuthenticated } from "@/lib/authz";
 
 export type SearchResult = {
     contacts: Array<{
@@ -20,6 +21,7 @@ export type SearchResult = {
 };
 
 export async function searchGlobal(term: string): Promise<SearchResult> {
+    await requireAuthenticated();
     if (!term || term.length < 2) {
         return { contacts: [], deals: [] };
     }

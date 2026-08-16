@@ -36,6 +36,14 @@ export async function requirePermission(permission: PermissionKey) {
     return session;
 }
 
+export async function requireAuthenticated() {
+    const session = await auth();
+    if (!getSessionUserId(session)) {
+        throw new Error("Unauthorized");
+    }
+    return session;
+}
+
 export async function requireAnyPermission(permissions: PermissionKey[]) {
     const session = await auth();
     if (!getSessionUserId(session) || !hasAnyPermission(getSessionAccessSubject(session), permissions)) {

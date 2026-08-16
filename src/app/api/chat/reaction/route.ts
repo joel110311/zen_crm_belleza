@@ -2,9 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { sendWuzapiReaction } from "@/lib/wuzapi";
 import { sendMetaReaction } from "@/lib/meta-whatsapp";
+import { auth } from "@/lib/auth";
+import { ensurePermissionResponse } from "@/lib/authz";
 
 export async function POST(request: NextRequest) {
     try {
+        const session = await auth();
+        const denied = ensurePermissionResponse(session, "chats.manage");
+        if (denied) return denied;
+
         const { messageId, reaction } = await request.json();
         if (!messageId) {
             return NextResponse.json({ error: "messageId required" }, { status: 400 });

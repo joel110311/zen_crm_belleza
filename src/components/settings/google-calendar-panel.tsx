@@ -24,22 +24,11 @@ import { useToast } from "@/components/ui/use-toast";
 import { useOperationContext } from "@/components/shared/use-operation-context";
 import type { GoogleCalendarSourceInput, GoogleCalendarSourceSummary, GoogleCalendarStatus } from "@/lib/google-calendar";
 
-type Props = {
-    googleClientId: string;
-    googleClientSecret: string;
-    onChange: (
-        field: "googleClientId" | "googleClientSecret",
-        value: string,
-    ) => void;
-    onSave: () => Promise<boolean>;
-    isSaving: boolean;
-};
-
 function sortSources(sources: GoogleCalendarSourceSummary[]) {
     return [...sources].sort((a, b) => a.sortOrder - b.sortOrder || a.summary.localeCompare(b.summary, "es"));
 }
 
-export function GoogleCalendarPanel(props: Props) {
+export function GoogleCalendarPanel() {
     const operationContext = useOperationContext();
     const { toast } = useToast();
     const [status, setStatus] = useState<GoogleCalendarStatus>({
@@ -51,7 +40,6 @@ export function GoogleCalendarPanel(props: Props) {
     });
     const [draftSources, setDraftSources] = useState<GoogleCalendarSourceSummary[]>([]);
     const [isWorking, setIsWorking] = useState(false);
-    const [redirectUri, setRedirectUri] = useState("https://tu-dominio/api/google-calendar/callback");
 
     const selectedSpecialists = useMemo(
         () => draftSources.filter((source) => source.isSelected && source.isSpecialist).length,
@@ -62,12 +50,9 @@ export function GoogleCalendarPanel(props: Props) {
         try {
             const response = await fetch("/api/google-calendar/status", { cache: "no-store" });
             if (!response.ok) throw new Error("No se pudo consultar el estado.");
-            const payload = (await response.json()) as GoogleCalendarStatus & { redirectUri?: string };
+            const payload = (await response.json()) as GoogleCalendarStatus;
             setStatus(payload);
             setDraftSources(sortSources(payload.sources || []));
-            if (payload.redirectUri) {
-                setRedirectUri(payload.redirectUri);
-            }
         } catch (error) {
             toast({
                 title: "No se pudo cargar Google Calendar",
@@ -90,8 +75,6 @@ export function GoogleCalendarPanel(props: Props) {
     const handleConnect = async () => {
         setIsWorking(true);
         try {
-            const saved = await props.onSave();
-            if (!saved) return;
             window.location.href = "/api/google-calendar/auth";
         } finally {
             setIsWorking(false);
@@ -219,41 +202,20 @@ export function GoogleCalendarPanel(props: Props) {
                 <div className="min-w-0 space-y-4">
                     <Card className="min-w-0">
                         <CardHeader className="min-w-0">
-                            <CardTitle>Credenciales OAuth</CardTitle>
+                            <CardTitle>Conexion segura con Google</CardTitle>
                             <CardDescription>
-                                Usa un cliente OAuth tipo Web Application creado en Google Cloud.
+                                El acceso se autoriza directamente en Google. Zen CRM nunca solicita ni muestra tus credenciales de desarrollador.
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
-                            <div className="space-y-2">
-                                <Label>Google Client ID</Label>
-                                <Input
-                                    value={props.googleClientId}
-                                    onChange={(event) => props.onChange("googleClientId", event.target.value)}
-                                    placeholder="Client ID del OAuth Web Application"
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <Label>Google Client Secret</Label>
-                                <Input
-                                    type="password"
-                                    value={props.googleClientSecret}
-                                    onChange={(event) => props.onChange("googleClientSecret", event.target.value)}
-                                    placeholder="Client Secret de Google"
-                                />
-                                <p className="text-xs text-muted-foreground">
-                                    Agrega esta URL de redireccion en Google Cloud:
-                                    <br />
-                                    <span className="font-mono break-all">{redirectUri}</span>
-                                </p>
+                            <div className="rounded-xl border bg-muted/35 p-4 text-sm text-muted-foreground">
+                                {status.configured
+                                    ? "Selecciona Conectar cuenta Google, elige la cuenta del negocio y concede los permisos de calendario."
+                                    : "La integracion central de Google Calendar aun no esta habilitada en este servidor."}
                             </div>
 
                             <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-                                <Button onClick={props.onSave} disabled={props.isSaving || isWorking} variant="outline" className="w-full justify-center sm:w-auto">
-                                    {props.isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                                    Guardar credenciales
-                                </Button>
-                                <Button onClick={handleConnect} disabled={props.isSaving || isWorking} className="w-full justify-center sm:w-auto">
+                                <Button onClick={handleConnect} disabled={!status.configured || isWorking} className="w-full justify-center sm:w-auto">
                                     {isWorking ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Link2 className="mr-2 h-4 w-4" />}
                                     Conectar cuenta Google
                                 </Button>
@@ -265,7 +227,7 @@ export function GoogleCalendarPanel(props: Props) {
                                     <CalendarSync className="mr-2 h-4 w-4" />
                                     Sincronizar ahora
                                 </Button>
-                                <Button onClick={handleDisconnect} disabled={isWorking} variant="ghost" className="w-full justify-center text-destructive hover:text-destructive sm:w-auto">
+                                <Button onClick={handleDisconnect} disabled={!status.connected || isWorking} variant="ghost" className="w-full justify-center text-destructive hover:text-destructive sm:w-auto">
                                     <Unlink className="mr-2 h-4 w-4" />
                                     Desconectar
                                 </Button>

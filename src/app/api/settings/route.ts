@@ -58,8 +58,6 @@ const SETTINGS_FIELD_PERMISSIONS: Record<string, PermissionKey> = {
     whatsappRegistrationPin: "integrations.manage",
     whatsappWebhookVerifyToken: "integrations.manage",
     whatsappWebhookBaseUrl: "integrations.manage",
-    googleClientId: "integrations.manage",
-    googleClientSecret: "integrations.manage",
     googleCalendarId: "integrations.manage",
     businessHoursStart: "settings.manage",
     businessHoursEnd: "settings.manage",
@@ -115,6 +113,17 @@ const META_CONNECTION_FIELDS = new Set([
     "whatsappConnectedAt",
 ]);
 
+const SERVER_MANAGED_GOOGLE_FIELDS = new Set([
+    "googleClientId",
+    "googleClientSecret",
+    "googleAccessToken",
+    "googleRefreshToken",
+    "googleTokenExpiresAt",
+    "googleConnectedEmail",
+    "googleSyncToken",
+    "googleLastSyncedAt",
+]);
+
 export async function GET() {
     console.log("[API] GET /api/settings called");
     try {
@@ -133,6 +142,11 @@ export async function GET() {
             whatsappMetaAppSecret: undefined,
             whatsappRegistrationPin: undefined,
             whatsappWebhookVerifyToken: undefined,
+            googleClientId: undefined,
+            googleClientSecret: undefined,
+            googleAccessToken: undefined,
+            googleRefreshToken: undefined,
+            googleSyncToken: undefined,
         });
     } catch (error) {
         console.error("[API] Failed to get settings:", error);
@@ -156,6 +170,12 @@ export async function POST(request: NextRequest) {
                 { status: 400 },
             );
         }
+        if (requestedFields.some((field) => SERVER_MANAGED_GOOGLE_FIELDS.has(field))) {
+            return NextResponse.json(
+                { error: "La conexion de Google Calendar solo se administra mediante OAuth." },
+                { status: 400 },
+            );
+        }
         const deniedField = requestedFields.find((field) => {
             const permission = SETTINGS_FIELD_PERMISSIONS[field] || "settings.manage";
             return !hasPermission(subject, permission);
@@ -176,7 +196,6 @@ export async function POST(request: NextRequest) {
             whatsappAdminToken: data.whatsappAdminToken ? "***" : undefined,
             whatsappUserToken: data.whatsappUserToken ? "***" : undefined,
             whatsappProxyUrl: data.whatsappProxyUrl ? "***" : undefined,
-            googleClientSecret: data.googleClientSecret ? "***" : undefined,
         });
 
         // Upsert the first record (we assume single tenant for now)
@@ -191,7 +210,6 @@ export async function POST(request: NextRequest) {
             "whatsappAdminToken",
             "whatsappUserToken",
             "whatsappProxyUrl",
-            "googleClientSecret",
         ] as const;
 
         for (const field of secretFields) {
@@ -200,14 +218,13 @@ export async function POST(request: NextRequest) {
             }
         }
 
-        let result;
         if (existing) {
-            result = await prisma.systemSettings.update({
+            await prisma.systemSettings.update({
                 where: { id: existing.id },
                 data,
             });
         } else {
-            result = await prisma.systemSettings.create({
+            await prisma.systemSettings.create({
                 data,
             });
         }
@@ -218,7 +235,7 @@ export async function POST(request: NextRequest) {
                 console.error("[API] Failed to resync appointment reminders after settings save:", syncError);
             });
         }
-        return NextResponse.json({ success: true, settings: result });
+        return NextResponse.json({ success: true });
     } catch (error) {
         console.error("[API] Failed to save settings:", error);
         return NextResponse.json({ error: "Failed to save settings" }, { status: 500 });

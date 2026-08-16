@@ -8,10 +8,16 @@ import {
     getDefaultStageColor,
 } from "@/lib/pipeline-presets";
 import { revalidatePath } from "next/cache";
+import { requirePermission } from "@/lib/authz";
+
+function requirePipelineAccess() {
+    return requirePermission("contacts.manage");
+}
 
 // ── Pipeline Stages ──
 
 export async function getPipelineStages() {
+    await requirePipelineAccess();
     try {
         const stages = await prisma.pipelineStage.findMany({
             orderBy: { order: "asc" },
@@ -24,6 +30,7 @@ export async function getPipelineStages() {
 }
 
 export async function getIncomingStage() {
+    await requirePipelineAccess();
     try {
         const stage = await prisma.pipelineStage.findFirst({
             where: { isIncoming: true },
@@ -36,6 +43,7 @@ export async function getIncomingStage() {
 }
 
 export async function getFirstRegularStage() {
+    await requirePipelineAccess();
     try {
         const stage = await prisma.pipelineStage.findFirst({
             where: { isIncoming: false, isClosedWon: false, isClosedLost: false },
@@ -51,6 +59,7 @@ export async function getFirstRegularStage() {
 // ── Deals ──
 
 export async function getDeals() {
+    await requirePipelineAccess();
     try {
         const deals = await prisma.deal.findMany({
             include: {
@@ -68,6 +77,7 @@ export async function getDeals() {
 }
 
 export async function getDealsByStage(stageId: string) {
+    await requirePipelineAccess();
     try {
         const deals = await prisma.deal.findMany({
             where: { stageId },
@@ -86,6 +96,7 @@ export async function getDealsByStage(stageId: string) {
 }
 
 export async function getDealWithContact(dealId: string) {
+    await requirePipelineAccess();
     try {
         const deal = await prisma.deal.findUnique({
             where: { id: dealId },
@@ -111,6 +122,7 @@ export async function createDeal(data: {
     notes?: string;
     priority?: string;
 }) {
+    await requirePipelineAccess();
     try {
         const deal = await prisma.deal.create({
             data: {
@@ -139,6 +151,7 @@ export async function updateDeal(id: string, data: {
     priority?: string;
     assignedTo?: string;
 }) {
+    await requirePipelineAccess();
     try {
         const deal = await prisma.deal.update({
             where: { id },
@@ -154,6 +167,7 @@ export async function updateDeal(id: string, data: {
 }
 
 export async function moveDealToStage(dealId: string, stageId: string) {
+    await requirePipelineAccess();
     try {
         await prisma.deal.update({
             where: { id: dealId },
@@ -172,6 +186,7 @@ export async function moveDealToStage(dealId: string, stageId: string) {
 }
 
 export async function acceptLead(dealId: string) {
+    await requirePipelineAccess();
     try {
         // Find the first regular stage (after incoming)
         const firstRegularStage = await prisma.pipelineStage.findFirst({
@@ -196,6 +211,7 @@ export async function acceptLead(dealId: string) {
 }
 
 export async function rejectLead(dealId: string) {
+    await requirePipelineAccess();
     try {
         // Find the "closed lost" stage
         const closedLostStage = await prisma.pipelineStage.findFirst({
@@ -221,6 +237,7 @@ export async function rejectLead(dealId: string) {
 }
 
 export async function deleteDeal(id: string) {
+    await requirePipelineAccess();
     try {
         // Delete related DealTags first, then the deal itself
         await prisma.$transaction([
@@ -238,6 +255,7 @@ export async function deleteDeal(id: string) {
 // ── Pipeline Data (all-in-one for the board) ──
 
 export async function getPipelineData() {
+    await requirePipelineAccess();
     try {
         const [stages, deals] = await Promise.all([
             prisma.pipelineStage.findMany({ orderBy: { order: "asc" } }),
@@ -294,6 +312,7 @@ export async function getPipelineData() {
 // ── Tags ──
 
 export async function getAllTags() {
+    await requirePipelineAccess();
     try {
         return await prisma.tag.findMany({ orderBy: { name: "asc" } });
     } catch (error) {
@@ -303,6 +322,7 @@ export async function getAllTags() {
 }
 
 export async function createTag(name: string, color?: string) {
+    await requirePipelineAccess();
     try {
         const tag = await prisma.tag.create({
             data: { name, color: color || "#64748B" },
@@ -315,6 +335,7 @@ export async function createTag(name: string, color?: string) {
 }
 
 export async function deleteTag(id: string) {
+    await requirePipelineAccess();
     try {
         await prisma.tag.delete({ where: { id } });
         revalidatePath("/dashboard/pipeline");
@@ -326,6 +347,7 @@ export async function deleteTag(id: string) {
 }
 
 export async function addTagToDeal(dealId: string, tagId: string) {
+    await requirePipelineAccess();
     try {
         await prisma.dealTag.create({
             data: { dealId, tagId },
@@ -339,6 +361,7 @@ export async function addTagToDeal(dealId: string, tagId: string) {
 }
 
 export async function removeTagFromDeal(dealId: string, tagId: string) {
+    await requirePipelineAccess();
     try {
         await prisma.dealTag.deleteMany({
             where: { dealId, tagId },
@@ -381,6 +404,7 @@ async function executeStageAutomations(dealId: string, stageId: string) {
 }
 
 export async function getStageAutomations(stageId: string) {
+    await requirePipelineAccess();
     try {
         return await prisma.stageAutomation.findMany({
             where: { stageId },
@@ -394,6 +418,7 @@ export async function getStageAutomations(stageId: string) {
 }
 
 export async function getAllAutomations() {
+    await requirePipelineAccess();
     try {
         return await prisma.stageAutomation.findMany({
             include: { tag: true, stage: true },
@@ -410,6 +435,7 @@ export async function createStageAutomation(data: {
     action: string;
     tagId: string;
 }) {
+    await requirePipelineAccess();
     try {
         const automation = await prisma.stageAutomation.create({
             data: {
@@ -429,6 +455,7 @@ export async function createStageAutomation(data: {
 }
 
 export async function deleteStageAutomation(id: string) {
+    await requirePipelineAccess();
     try {
         await prisma.stageAutomation.delete({ where: { id } });
         revalidatePath("/dashboard/pipeline");
@@ -445,6 +472,7 @@ export async function createPipelineStage(data: {
     name: string;
     color?: string;
 }) {
+    await requirePipelineAccess();
     try {
         // Get the max order (before closed stages)
         const closedStages = await prisma.pipelineStage.findMany({
@@ -485,6 +513,7 @@ export async function updatePipelineStage(id: string, data: {
     name?: string;
     color?: string;
 }) {
+    await requirePipelineAccess();
     try {
         const stage = await prisma.pipelineStage.findUnique({ where: { id } });
         if (!stage) return { success: false, error: "Stage not found." };
@@ -506,6 +535,7 @@ export async function updatePipelineStage(id: string, data: {
 }
 
 export async function deletePipelineStage(id: string) {
+    await requirePipelineAccess();
     try {
         const stage = await prisma.pipelineStage.findUnique({ where: { id } });
         if (!stage) return { success: false, error: "Stage not found." };
@@ -541,6 +571,7 @@ export async function deletePipelineStage(id: string) {
 }
 
 export async function reorderPipelineStages(orderedIds: string[]) {
+    await requirePipelineAccess();
     try {
         for (let i = 0; i < orderedIds.length; i++) {
             await prisma.pipelineStage.update({
@@ -568,6 +599,7 @@ export async function savePipelineConfiguration(data: {
     closedWonColor?: string;
     closedLostColor?: string;
 }) {
+    await requirePipelineAccess();
     try {
         const normalizedActiveStages = data.activeStages
             .map((stage, index) => ({

@@ -4,12 +4,37 @@ import { prisma } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { Prisma } from "@prisma/client";
 import { withSettingsDefaults } from "@/lib/system-settings";
-import { requirePermission } from "@/lib/authz";
+import { getSessionAccessSubject, requireAuthenticated, requirePermission } from "@/lib/authz";
+import { hasPermission } from "@/lib/permissions";
 
 export async function getSystemSettings() {
     try {
+        const session = await requireAuthenticated();
         const settings = await prisma.systemSettings.findFirst();
-        return withSettingsDefaults(settings);
+        const resolved = withSettingsDefaults(settings);
+        const subject = getSessionAccessSubject(session);
+        const canManageAi = hasPermission(subject, "ai.manage");
+        const canManageIntegrations = hasPermission(subject, "integrations.manage");
+
+        return {
+            ...resolved,
+            openaiApiKey: canManageAi ? resolved.openaiApiKey : null,
+            geminiApiKey: canManageAi ? resolved.geminiApiKey : null,
+            n8nWebhookUrl: canManageAi ? resolved.n8nWebhookUrl : null,
+            whatsappAccessToken: canManageIntegrations ? resolved.whatsappAccessToken : null,
+            whatsappMetaAppSecret: canManageIntegrations ? resolved.whatsappMetaAppSecret : null,
+            whatsappRegistrationPin: canManageIntegrations ? resolved.whatsappRegistrationPin : null,
+            whatsappWebhookVerifyToken: canManageIntegrations ? resolved.whatsappWebhookVerifyToken : null,
+            whatsappAdminToken: canManageIntegrations ? resolved.whatsappAdminToken : null,
+            whatsappUserToken: canManageIntegrations ? resolved.whatsappUserToken : null,
+            whatsappProxyUrl: canManageIntegrations ? resolved.whatsappProxyUrl : null,
+            googleClientId: null,
+            googleClientSecret: null,
+            googleAccessToken: null,
+            googleRefreshToken: null,
+            googleSyncToken: null,
+            mercadoPagoAccessToken: canManageIntegrations ? resolved.mercadoPagoAccessToken : null,
+        };
     } catch (error) {
         console.error("Failed to fetch settings:", error);
         return withSettingsDefaults(null);
@@ -45,8 +70,6 @@ export async function updateSystemSettings(data: {
     brandName?: string;
     brandLogoUrl?: string;
     brandFaviconUrl?: string;
-    googleClientId?: string;
-    googleClientSecret?: string;
     googleCalendarId?: string;
     leadScoringEnabled?: boolean;
     captureLeadName?: boolean;

@@ -77,7 +77,6 @@ async function runPrismaDbPush() {
                 "./node_modules/prisma/build/index.js",
                 "db",
                 "push",
-                "--accept-data-loss",
                 "--schema",
                 "./prisma/schema.prisma",
             ],

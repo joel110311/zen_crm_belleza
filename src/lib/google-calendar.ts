@@ -1,12 +1,24 @@
 import { prisma } from "@/lib/db";
 import { getSystemSettingsOrDefaults, withSettingsDefaults } from "@/lib/system-settings";
+import {
+    decryptGoogleToken,
+    encryptGoogleToken,
+    isEncryptedGoogleToken,
+} from "@/lib/google-token-crypto";
 import type { GoogleCalendarSource } from "@prisma/client";
 
 const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo";
+const GOOGLE_REVOKE_URL = "https://oauth2.googleapis.com/revoke";
 const GOOGLE_CALENDAR_API = "https://www.googleapis.com/calendar/v3";
-const GOOGLE_CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar";
+const GOOGLE_CALENDAR_SCOPES = [
+    "https://www.googleapis.com/auth/calendar.events",
+    "https://www.googleapis.com/auth/calendar.calendarlist.readonly",
+    "openid",
+    "email",
+] as const;
+const GOOGLE_REQUIRED_CALENDAR_SCOPES = GOOGLE_CALENDAR_SCOPES.slice(0, 2);
 const SYNC_THROTTLE_MS = 60 * 1000;
 const MAX_SPECIALISTS = 5;
 const WRITABLE_ACCESS_ROLES = new Set(["writer", "owner"]);
@@ -16,6 +28,7 @@ type TokenResponse = {
     access_token: string;
     expires_in: number;
     refresh_token?: string;
+    scope?: string;
 };
 
 type GoogleEventDateTime = {
@@ -138,13 +151,28 @@ function isCalendarWritable(accessRole?: string | null) {
     return WRITABLE_ACCESS_ROLES.has((accessRole || "").toLowerCase());
 }
 
-function hasGoogleConfig(settings: Awaited<ReturnType<typeof getSystemSettingsOrDefaults>>) {
-    return Boolean(settings.googleClientId && settings.googleClientSecret);
+function getGoogleOAuthCredentials() {
+    const clientId = process.env.GOOGLE_CLIENT_ID?.trim();
+    const clientSecret = process.env.GOOGLE_CLIENT_SECRET?.trim();
+
+    return clientId && clientSecret ? { clientId, clientSecret } : null;
+}
+
+function requireGoogleOAuthCredentials() {
+    const credentials = getGoogleOAuthCredentials();
+    if (!credentials) {
+        throw new Error("La integracion central de Google Calendar no esta configurada en el servidor.");
+    }
+    return credentials;
+}
+
+function hasGoogleConfig() {
+    return Boolean(getGoogleOAuthCredentials());
 }
 
 function hasGoogleConnection(settings: Awaited<ReturnType<typeof getSystemSettingsOrDefaults>>) {
     return Boolean(
-        hasGoogleConfig(settings) &&
+        hasGoogleConfig() &&
         settings.googleAccessToken &&
         settings.googleRefreshToken,
     );
@@ -222,8 +250,10 @@ async function updateGoogleTokens(
     return prisma.systemSettings.update({
         where: { id: settingsId },
         data: {
-            googleAccessToken: tokens.access_token,
-            googleRefreshToken: tokens.refresh_token || undefined,
+            googleAccessToken: encryptGoogleToken(tokens.access_token),
+            googleRefreshToken: tokens.refresh_token
+                ? encryptGoogleToken(tokens.refresh_token)
+                : undefined,
             googleTokenExpiresAt: expiresAt,
         },
     });
@@ -247,21 +277,39 @@ async function getValidGoogleAccessToken() {
         throw new Error("Google Calendar no esta conectado.");
     }
 
+    const credentials = requireGoogleOAuthCredentials();
+    const accessToken = decryptGoogleToken(settings.googleAccessToken);
+    const refreshToken = decryptGoogleToken(settings.googleRefreshToken);
+    if (!accessToken || !refreshToken) {
+        throw new Error("Google Calendar no esta conectado.");
+    }
+
     if (
-        settings.googleAccessToken &&
         settings.googleTokenExpiresAt &&
         settings.googleTokenExpiresAt.getTime() > Date.now() + 30_000
     ) {
+        if (
+            !isEncryptedGoogleToken(settings.googleAccessToken) ||
+            !isEncryptedGoogleToken(settings.googleRefreshToken)
+        ) {
+            await prisma.systemSettings.update({
+                where: { id: settings.id },
+                data: {
+                    googleAccessToken: encryptGoogleToken(accessToken),
+                    googleRefreshToken: encryptGoogleToken(refreshToken),
+                },
+            });
+        }
         return {
-            accessToken: settings.googleAccessToken,
+            accessToken,
             settings,
         };
     }
 
     const body = new URLSearchParams({
-        client_id: settings.googleClientId || "",
-        client_secret: settings.googleClientSecret || "",
-        refresh_token: settings.googleRefreshToken || "",
+        client_id: credentials.clientId,
+        client_secret: credentials.clientSecret,
+        refresh_token: refreshToken,
         grant_type: "refresh_token",
     });
 
@@ -274,7 +322,7 @@ async function getValidGoogleAccessToken() {
     const updated = await updateGoogleTokens(settings.id, tokens);
 
     return {
-        accessToken: updated.googleAccessToken || tokens.access_token,
+        accessToken: decryptGoogleToken(updated.googleAccessToken) || tokens.access_token,
         settings: {
             ...settings,
             ...updated,
@@ -650,7 +698,7 @@ export async function getGoogleCalendarStatus(): Promise<GoogleCalendarStatus> {
     const sources = settings.googleCalendars.map(mapSourceSummary);
 
     return {
-        configured: hasGoogleConfig(settings),
+        configured: hasGoogleConfig(),
         connected: hasGoogleConnection(settings),
         connectedEmail: settings.googleConnectedEmail || null,
         calendarId: writeTarget?.calendarId || getCalendarId(settings.googleCalendarId),
@@ -863,16 +911,13 @@ export function getGoogleCalendarRedirectUri(fallbackOrigin?: string) {
 }
 
 export async function getGoogleCalendarAuthUrl(redirectUri: string, state?: string) {
-    const settings = await getSystemSettingsOrDefaults();
-    if (!hasGoogleConfig(settings)) {
-        throw new Error("Primero configura Google Client ID y Google Client Secret.");
-    }
+    const credentials = requireGoogleOAuthCredentials();
 
     const params = new URLSearchParams({
-        client_id: settings.googleClientId || "",
+        client_id: credentials.clientId,
         redirect_uri: redirectUri,
         response_type: "code",
-        scope: `${GOOGLE_CALENDAR_SCOPE} openid email`,
+        scope: GOOGLE_CALENDAR_SCOPES.join(" "),
         access_type: "offline",
         include_granted_scopes: "true",
         prompt: "select_account consent",
@@ -887,14 +932,15 @@ export async function getGoogleCalendarAuthUrl(redirectUri: string, state?: stri
 
 export async function completeGoogleCalendarOAuth(code: string, redirectUri: string) {
     const settings = await getSystemSettingsOrDefaults();
-    if (!settings.id || !hasGoogleConfig(settings)) {
-        throw new Error("Faltan las credenciales de Google Calendar.");
+    const credentials = requireGoogleOAuthCredentials();
+    if (!settings.id) {
+        throw new Error("No existe la configuracion del sistema.");
     }
 
     const body = new URLSearchParams({
         code,
-        client_id: settings.googleClientId || "",
-        client_secret: settings.googleClientSecret || "",
+        client_id: credentials.clientId,
+        client_secret: credentials.clientSecret,
         redirect_uri: redirectUri,
         grant_type: "authorization_code",
     });
@@ -904,6 +950,14 @@ export async function completeGoogleCalendarOAuth(code: string, redirectUri: str
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body,
     });
+
+    if (tokens.scope) {
+        const grantedScopes = new Set(tokens.scope.split(/\s+/).filter(Boolean));
+        const missingScope = GOOGLE_REQUIRED_CALENDAR_SCOPES.find((scope) => !grantedScopes.has(scope));
+        if (missingScope) {
+            throw new Error("Google no concedio todos los permisos necesarios para sincronizar el calendario.");
+        }
+    }
 
     await updateGoogleTokens(settings.id, tokens);
 
@@ -945,6 +999,19 @@ export async function completeGoogleCalendarOAuth(code: string, redirectUri: str
 export async function disconnectGoogleCalendar() {
     const settings = await prisma.systemSettings.findFirst();
     if (!settings?.id) return;
+
+    try {
+        const tokenToRevoke = decryptGoogleToken(settings.googleRefreshToken) || decryptGoogleToken(settings.googleAccessToken);
+        if (tokenToRevoke) {
+            await fetch(GOOGLE_REVOKE_URL, {
+                method: "POST",
+                headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                body: new URLSearchParams({ token: tokenToRevoke }),
+            });
+        }
+    } catch {
+        // Revocation is best-effort. Local credentials are removed even if Google is unavailable.
+    }
 
     await prisma.$transaction(async (tx) => {
         await tx.googleCalendarSource.deleteMany({

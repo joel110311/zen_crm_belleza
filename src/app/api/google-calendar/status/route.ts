@@ -1,31 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
+import { ensurePermissionResponse } from "@/lib/authz";
 import {
     discoverGoogleCalendarSources,
     disconnectGoogleCalendar,
-    getGoogleCalendarRedirectUri,
     getGoogleCalendarStatus,
     saveGoogleCalendarSources,
     syncGoogleCalendarToCrm,
 } from "@/lib/google-calendar";
 
-export async function GET(request: NextRequest) {
+export async function GET() {
     const session = await auth();
-    if (!session?.user) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const denied = ensurePermissionResponse(session, "integrations.manage");
+    if (denied) return denied;
 
-    return NextResponse.json({
-        ...(await getGoogleCalendarStatus()),
-        redirectUri: getGoogleCalendarRedirectUri(request.nextUrl.origin),
-    });
+    return NextResponse.json(await getGoogleCalendarStatus());
 }
 
 export async function POST(request: NextRequest) {
     const session = await auth();
-    if (!session?.user) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const denied = ensurePermissionResponse(session, "integrations.manage");
+    if (denied) return denied;
 
     try {
         const body = await request.json().catch(() => ({}));
@@ -54,9 +49,9 @@ export async function POST(request: NextRequest) {
         }
 
         return NextResponse.json({ error: "Unsupported action" }, { status: 400 });
-    } catch (error) {
+    } catch {
         return NextResponse.json(
-            { error: error instanceof Error ? error.message : "Google Calendar action failed" },
+            { error: "No se pudo completar la operacion de Google Calendar." },
             { status: 500 },
         );
     }

@@ -3,6 +3,9 @@ import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/db";
 import { normalizePermissions, normalizeRole } from "@/lib/permissions";
+import { consumeRateLimit, getRequestIp, resetRateLimit } from "@/lib/security";
+
+const AUTH_RATE_LIMIT = { limit: 8, windowMs: 15 * 60 * 1000 };
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
     trustHost: true,
@@ -13,13 +16,19 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
                 email: { label: "Email", type: "email" },
                 password: { label: "Password", type: "password" },
             },
-            async authorize(credentials) {
+            async authorize(credentials, request) {
                 if (!credentials?.email || !credentials?.password) {
                     return null;
                 }
 
+                const email = String(credentials.email).trim().toLowerCase();
+                const ip = getRequestIp(request.headers);
+                const rateLimitKey = `auth:${ip}:${email}`;
+                const rateLimit = consumeRateLimit(rateLimitKey, AUTH_RATE_LIMIT);
+                if (!rateLimit.allowed) return null;
+
                 const user = await prisma.user.findUnique({
-                    where: { email: credentials.email as string },
+                    where: { email },
                 });
 
                 if (!user) {
@@ -34,6 +43,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
                 if (!isPasswordValid) {
                     return null;
                 }
+
+                resetRateLimit(rateLimitKey);
 
                 // ALWAYS return a non-null name — use email as fallback 
                 return {
@@ -69,8 +80,11 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
                             token.name = dbUser.name || dbUser.email || (token.email as string) || "Usuario";
                             token.role = normalizeRole(dbUser.role);
                             token.permissions = normalizePermissions(dbUser.permissions);
-                        } else if (!token.name) {
-                            token.name = (token.email as string) || "Usuario";
+                        } else {
+                            delete token.id;
+                            delete token.role;
+                            delete token.permissions;
+                            token.name = "Usuario desactivado";
                         }
                     } catch {
                         if (!token.name) {
@@ -88,7 +102,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             if (session.user) {
                 (session.user as any).role = token.role;
                 (session.user as any).permissions = normalizePermissions((token as any).permissions);
-                (session.user as any).id = token.id;
+                (session.user as any).id = typeof token.id === "string" ? token.id : undefined;
                 session.user.name = (token.name as string) || (token.email as string) || "Usuario";
             }
             return session;
