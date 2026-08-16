@@ -202,18 +202,7 @@ async function buildAppointmentLookupReply(
     const [conversation, config] = await Promise.all([
         prisma.conversation.findUnique({
             where: { id: conversationId },
-            select: {
-                contactId: true,
-                messages: {
-                    orderBy: { createdAt: "desc" },
-                    take: 16,
-                    select: {
-                        content: true,
-                        direction: true,
-                        senderType: true,
-                    },
-                },
-            },
+            select: { contactId: true },
         }),
         getBusinessHoursConfig(),
     ]);
@@ -231,28 +220,6 @@ async function buildAppointmentLookupReply(
     });
 
     if (appointments.length === 0) {
-        const ambiguousDate = getUnresolvedAmbiguousDate(
-            [...conversation.messages].reverse(),
-            latestUserMessage,
-        );
-
-        if (ambiguousDate) {
-            const [firstCandidate, secondCandidate] = getAmbiguousDateCandidates(
-                ambiguousDate.weekday,
-                config,
-            );
-
-            return [
-                "*No encuentro una cita registrada en el calendario.*",
-                "",
-                "El horario todavía no está apartado.",
-                "",
-                `Cuando dijiste *${ambiguousDate.phrase}*, ¿te referías al *${firstCandidate}* o al *${secondCandidate}*?`,
-                "",
-                "Respóndeme con una de esas dos fechas y revisaré inmediatamente la disponibilidad real antes de registrarla.",
-            ].join("\n");
-        }
-
         return [
             "*No encuentro una cita registrada en el calendario.*",
             "",
@@ -335,10 +302,11 @@ function getUnresolvedAmbiguousDate(
     };
 }
 
-function getAmbiguousDateCandidates(
+function buildAmbiguousDateReply(
+    phrase: string,
     weekday: string,
     config: Awaited<ReturnType<typeof getBusinessHoursConfig>>,
-): [string, string] {
+) {
     const todayKey = getBusinessDateKey(new Date(), config.timeZone);
     const [year, month, day] = todayKey.split("-").map(Number);
     const currentWeekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
@@ -353,22 +321,12 @@ function getAmbiguousDateCandidates(
         { weekday: "long", day: "numeric", month: "long", year: "numeric" },
     );
 
-    return [formatCandidate(firstDateKey), formatCandidate(secondDateKey)];
-}
-
-function buildAmbiguousDateReply(
-    phrase: string,
-    weekday: string,
-    config: Awaited<ReturnType<typeof getBusinessHoursConfig>>,
-) {
-    const [firstCandidate, secondCandidate] = getAmbiguousDateCandidates(weekday, config);
-
     return [
         "*Antes de apartar el horario necesito confirmar la fecha exacta.*",
         "",
-        `Cuando dices *${phrase}*, ¿te refieres al *${firstCandidate}* o al *${secondCandidate}*?`,
+        `Cuando dices *${phrase}*, te refieres al *${formatCandidate(firstDateKey)}* o al *${formatCandidate(secondDateKey)}*?`,
         "",
-        "Respóndeme con una de esas dos fechas para continuar.",
+        "Respondeme con el dia, mes y año para evitar cualquier confusion.",
     ].join("\n");
 }
 
