@@ -433,7 +433,9 @@ export function GoogleCalendarPanel() {
 
                             <div className="rounded-xl border bg-muted/30 px-4 py-3">
                                 <p className="text-xs text-muted-foreground">Calendario actual de escritura</p>
-                                <p className="text-sm font-medium break-all">{status.calendarId || "Sin calendario activo"}</p>
+                                <p className="text-sm font-medium break-all">
+                                    {status.connected && status.calendarId ? status.calendarId : "Sin calendario conectado"}
+                                </p>
                             </div>
 
                             <div className="rounded-xl border bg-muted/30 px-4 py-3">

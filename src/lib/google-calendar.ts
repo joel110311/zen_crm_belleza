@@ -694,17 +694,18 @@ export async function discoverGoogleCalendarSources() {
 
 export async function getGoogleCalendarStatus(): Promise<GoogleCalendarStatus> {
     const settings = await getGoogleSettingsWithSources();
+    const connected = hasGoogleConnection(settings);
     const writeTarget = resolveWriteTargetSource(settings.googleCalendars, settings.googleCalendarId);
     const sources = settings.googleCalendars.map(mapSourceSummary);
 
     return {
         configured: hasGoogleConfig(),
-        connected: hasGoogleConnection(settings),
-        connectedEmail: settings.googleConnectedEmail || null,
-        calendarId: writeTarget?.calendarId || getCalendarId(settings.googleCalendarId),
-        lastSyncedAt: settings.googleLastSyncedAt?.toISOString() || null,
-        sources,
-        specialistCount: sources.filter((source) => source.isSpecialist).length,
+        connected,
+        connectedEmail: connected ? settings.googleConnectedEmail || null : null,
+        calendarId: connected ? writeTarget?.calendarId || getCalendarId(settings.googleCalendarId) : null,
+        lastSyncedAt: connected ? settings.googleLastSyncedAt?.toISOString() || null : null,
+        sources: connected ? sources : [],
+        specialistCount: connected ? sources.filter((source) => source.isSpecialist).length : 0,
         maxSpecialists: MAX_SPECIALISTS,
     };
 }
@@ -1025,6 +1026,7 @@ export async function disconnectGoogleCalendar() {
                 googleRefreshToken: null,
                 googleTokenExpiresAt: null,
                 googleConnectedEmail: null,
+                googleCalendarId: null,
                 googleSyncToken: null,
                 googleLastSyncedAt: null,
             },
