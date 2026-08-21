@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import {
     AppointmentSchedulingError,
+    cancelManagedAppointment,
     createManagedAppointment,
     deleteManagedAppointment,
     updateManagedAppointment,
@@ -88,6 +89,7 @@ export async function getAppointments() {
 
         return await prisma.appointment.findMany({
             where: {
+                status: { not: "cancelled" },
                 OR: [
                     { googleCalendarId: null },
                     ...(visibleCalendarIds.length > 0
@@ -281,6 +283,15 @@ export async function updateAppointmentStatus(id: string, nextStatus: string, re
     await requireAnyPermission(["reception.manage", "calendar.manage"]);
 
     try {
+        if (nextStatus === "cancelled") {
+            const appointment = await cancelManagedAppointment(
+                id,
+                reason?.trim() || "Cita cancelada desde el CRM.",
+            );
+            revalidateCalendarSurfaces();
+            return { success: true, appointment };
+        }
+
         const now = new Date();
         const data: Record<string, unknown> = {
             status: nextStatus,
@@ -301,11 +312,6 @@ export async function updateAppointmentStatus(id: string, nextStatus: string, re
         if (nextStatus === "in_progress") data.startedAt = now;
         if (nextStatus === "completed") data.completedAt = now;
         if (nextStatus === "no_show") data.noShowAt = now;
-        if (nextStatus === "cancelled") {
-            data.cancelledAt = now;
-            data.cancellationReason = reason?.trim() || null;
-            data.confirmationStatus = "declined";
-        }
         if (nextStatus === "scheduled") {
             data.confirmationStatus = "pending";
         }
@@ -318,7 +324,7 @@ export async function updateAppointmentStatus(id: string, nextStatus: string, re
 
         if (nextStatus === "confirmed") {
             await syncAppointmentReminders(id);
-        } else if (["scheduled", "waiting", "called", "in_progress", "completed", "no_show", "cancelled"].includes(nextStatus)) {
+        } else if (["scheduled", "waiting", "called", "in_progress", "completed", "no_show"].includes(nextStatus)) {
             await cancelAppointmentReminders(
                 id,
                 nextStatus === "scheduled"
@@ -475,20 +481,15 @@ export async function cancelAppointmentByToken(token: string, reason?: string) {
         return { success: false, error: "No encontramos esta cita." };
     }
 
-    const now = new Date();
-    const updated = await prisma.appointment.update({
+    await cancelManagedAppointment(
+        appointment.id,
+        reason?.trim() || "Cancelado por el paciente",
+    );
+    const updated = await prisma.appointment.findUniqueOrThrow({
         where: { id: appointment.id },
-        data: {
-            status: "cancelled",
-            cancelledAt: now,
-            cancellationReason: reason?.trim() || "Cancelado por el paciente",
-            confirmationStatus: "declined",
-            updatedAt: now,
-        },
         include: APPOINTMENT_INCLUDE,
     });
 
-    await cancelAppointmentReminders(appointment.id, "Cancelado por el paciente desde el portal.");
     revalidateCalendarSurfaces();
     revalidatePath(`/portal/turno/${token}`);
     return { success: true, appointment: updated };

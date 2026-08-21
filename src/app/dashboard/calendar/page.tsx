@@ -31,7 +31,6 @@ const STATUS_FILTER_OPTIONS = [
     { id: "waiting", label: "En sala" },
     { id: "in_progress", label: "En consulta" },
     { id: "completed", label: "Completadas" },
-    { id: "cancelled", label: "Canceladas" },
     { id: "no_show", label: "No asistió" },
 ] as const;
 
