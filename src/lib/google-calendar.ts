@@ -363,11 +363,27 @@ async function googleCalendarRequest<T>(
 }
 
 async function listGoogleCalendarEntries() {
-    const { data } = await googleCalendarRequest<{
-        items?: GoogleCalendarListEntry[];
-    }>("/users/me/calendarList?showHidden=true&showDeleted=false");
+    const entries: GoogleCalendarListEntry[] = [];
+    let nextPageToken: string | null = null;
 
-    return (data?.items || []).filter((item) => !item.deleted);
+    do {
+        const params = new URLSearchParams({
+            showHidden: "true",
+            showDeleted: "false",
+            maxResults: "250",
+        });
+        if (nextPageToken) params.set("pageToken", nextPageToken);
+
+        const { data } = await googleCalendarRequest<{
+            items?: GoogleCalendarListEntry[];
+            nextPageToken?: string;
+        }>(`/users/me/calendarList?${params.toString()}`);
+
+        entries.push(...(data?.items || []));
+        nextPageToken = data?.nextPageToken || null;
+    } while (nextPageToken);
+
+    return entries.filter((item) => !item.deleted);
 }
 
 function getGoogleEventLocalId(event: GoogleCalendarEvent) {

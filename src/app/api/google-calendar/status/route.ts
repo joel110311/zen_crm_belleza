@@ -27,6 +27,9 @@ export async function POST(request: NextRequest) {
         const action = body?.action as string | undefined;
 
         if (action === "sync") {
+            // Refresh the account's CalendarList first so calendars created after
+            // the original OAuth connection are available immediately.
+            await discoverGoogleCalendarSources();
             const result = await syncGoogleCalendarToCrm(true);
             return NextResponse.json({
                 ...(await getGoogleCalendarStatus()),

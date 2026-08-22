@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requirePermission } from "@/lib/authz";
-import { syncSpecialistsFromGoogleSources } from "@/lib/google-calendar";
+import { syncGoogleCalendarToCrm, syncSpecialistsFromGoogleSources } from "@/lib/google-calendar";
 
 const MAX_SPECIALISTS = 5;
 
@@ -159,19 +159,77 @@ export async function saveSpecialist(input: SpecialistInput) {
             googleCalendarSourceId: nullableText(input.googleCalendarSourceId),
         };
 
-        const specialist = input.id
-            ? await prisma.specialist.update({
+        const requestedCalendarSourceId = nullableText(input.googleCalendarSourceId);
+        const currentSpecialist = input.id
+            ? await prisma.specialist.findUnique({
                 where: { id: input.id },
-                data,
-                include: { googleCalendarSource: true },
+                select: { googleCalendarSourceId: true },
             })
-            : await prisma.specialist.create({
-                data,
-                include: { googleCalendarSource: true },
+            : null;
+
+        if (requestedCalendarSourceId) {
+            const source = await prisma.googleCalendarSource.findUnique({
+                where: { id: requestedCalendarSourceId },
+                include: { specialist: { select: { id: true, name: true } } },
             });
+            if (!source || !["writer", "owner"].includes((source.accessRole || "").toLowerCase())) {
+                return { success: false, error: "El calendario seleccionado no existe o no permite crear citas." };
+            }
+            if (source.specialist && source.specialist.id !== input.id) {
+                return { success: false, error: `Ese calendario ya esta vinculado con ${source.specialist.name}.` };
+            }
+        }
+
+        const specialist = await prisma.$transaction(async (tx) => {
+            if (
+                currentSpecialist?.googleCalendarSourceId &&
+                currentSpecialist.googleCalendarSourceId !== requestedCalendarSourceId
+            ) {
+                await tx.googleCalendarSource.update({
+                    where: { id: currentSpecialist.googleCalendarSourceId },
+                    data: { isSpecialist: false, specialistName: null },
+                });
+            }
+
+            const saved = input.id
+                ? await tx.specialist.update({
+                    where: { id: input.id },
+                    data,
+                    include: { googleCalendarSource: true },
+                })
+                : await tx.specialist.create({
+                    data,
+                    include: { googleCalendarSource: true },
+                });
+
+            if (requestedCalendarSourceId) {
+                await tx.googleCalendarSource.update({
+                    where: { id: requestedCalendarSourceId },
+                    data: {
+                        isSelected: true,
+                        blocksAvailability: true,
+                        importToCrm: true,
+                        isSpecialist: true,
+                        specialistName: saved.displayName || saved.name,
+                    },
+                });
+            }
+
+            return saved;
+        });
+
+        let warning: string | undefined;
+        if (requestedCalendarSourceId) {
+            try {
+                await syncGoogleCalendarToCrm(true);
+            } catch (error) {
+                console.error("Specialist saved but Google Calendar import failed:", error);
+                warning = "El especialista quedo vinculado, pero no se pudieron importar los eventos de Google en este momento.";
+            }
+        }
 
         revalidateSpecialistSurfaces();
-        return { success: true, specialist };
+        return { success: true, specialist, warning };
     } catch (error) {
         console.error("Failed to save specialist:", error);
         return { success: false, error: "No se pudo guardar el especialista." };

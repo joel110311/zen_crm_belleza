@@ -50,7 +50,17 @@ export function GoogleCalendarPanel() {
         try {
             const response = await fetch("/api/google-calendar/status", { cache: "no-store" });
             if (!response.ok) throw new Error("No se pudo consultar el estado.");
-            const payload = (await response.json()) as GoogleCalendarStatus;
+            let payload = (await response.json()) as GoogleCalendarStatus;
+            if (payload.connected) {
+                const refreshResponse = await fetch("/api/google-calendar/status", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ action: "discover" }),
+                });
+                if (refreshResponse.ok) {
+                    payload = (await refreshResponse.json()) as GoogleCalendarStatus;
+                }
+            }
             setStatus(payload);
             setDraftSources(sortSources(payload.sources || []));
         } catch (error) {
@@ -144,7 +154,7 @@ export function GoogleCalendarPanel() {
             setDraftSources(sortSources(payload.sources || []));
             toast({
                 title: "Calendarios cargados",
-                description: "Ya puedes elegir que calendarios usar en el CRM.",
+                description: "La lista de Google se actualizo. Ya puedes elegir calendarios nuevos y asignarlos a especialistas.",
             });
         } catch (error) {
             toast({

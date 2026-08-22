@@ -43,6 +43,23 @@ type GoogleSource = {
     writable: boolean;
 };
 
+async function loadGoogleCalendarSources() {
+    const statusResponse = await fetch("/api/google-calendar/status", { cache: "no-store" });
+    if (!statusResponse.ok) return [] as GoogleSource[];
+
+    let status = await statusResponse.json();
+    if (status?.connected) {
+        const refreshResponse = await fetch("/api/google-calendar/status", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "discover" }),
+        }).catch(() => null);
+        if (refreshResponse?.ok) status = await refreshResponse.json();
+    }
+
+    return (status?.sources || []).filter((source: GoogleSource) => source.writable);
+}
+
 const EMPTY_FORM = {
     id: "",
     name: "",
@@ -94,13 +111,11 @@ export function SpecialistManagerPanel() {
         const [rows, userRows, status] = await Promise.all([
             getSpecialists(true),
             getSpecialistAssignableUsers(),
-            fetch("/api/google-calendar/status", { cache: "no-store" })
-                .then(async (response) => (response.ok ? response.json() : null))
-                .catch(() => null),
+            loadGoogleCalendarSources().catch(() => []),
         ]);
         setSpecialists(rows);
         setUsers(userRows);
-        setGoogleSources((status?.sources || []).filter((source: GoogleSource) => source.isSelected && source.writable));
+        setGoogleSources(status);
     };
 
     useEffect(() => {
@@ -109,14 +124,12 @@ export function SpecialistManagerPanel() {
             const [rows, userRows, status] = await Promise.all([
                 getSpecialists(true),
                 getSpecialistAssignableUsers(),
-                fetch("/api/google-calendar/status", { cache: "no-store" })
-                    .then(async (response) => (response.ok ? response.json() : null))
-                    .catch(() => null),
+                loadGoogleCalendarSources().catch(() => []),
             ]);
             if (!active) return;
             setSpecialists(rows);
             setUsers(userRows);
-            setGoogleSources((status?.sources || []).filter((source: GoogleSource) => source.isSelected && source.writable));
+            setGoogleSources(status);
         };
 
         void loadInitial();
@@ -191,7 +204,11 @@ export function SpecialistManagerPanel() {
                 toast({ title: "No se pudo guardar", description: result.error, variant: "destructive" });
                 return;
             }
-            toast({ title: "Especialista guardado" });
+            toast({
+                title: "Especialista guardado",
+                description: result.warning || "El calendario y el usuario vinculados quedaron actualizados.",
+                variant: result.warning ? "destructive" : "default",
+            });
             setForm(EMPTY_FORM);
             await load();
         });
@@ -531,7 +548,7 @@ export function SpecialistManagerPanel() {
                                         <SelectItem value="none">Sin calendario</SelectItem>
                                         {googleSources.map((source) => (
                                             <SelectItem key={source.id} value={source.id}>
-                                                {source.summary}
+                                                {source.summary}{source.isSelected ? "" : " (se activara al guardar)"}
                                             </SelectItem>
                                         ))}
                                     </SelectContent>
