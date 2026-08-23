@@ -897,11 +897,9 @@ export async function cancelManagedAppointment(
 }
 
 export async function deleteManagedAppointment(id: string) {
-    try {
-        await deleteAppointmentFromGoogleCalendar(id);
-    } catch (syncError) {
-        console.error("[Google Calendar] Delete sync failed:", syncError);
-    }
+    // Delete the remote event first. If Google rejects the operation, keep the
+    // CRM record so it cannot be silently reimported during the next sync.
+    await deleteAppointmentFromGoogleCalendar(id);
     return prisma.appointment.delete({
         where: { id },
     });

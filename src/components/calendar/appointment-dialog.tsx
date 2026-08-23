@@ -560,9 +560,17 @@ export function AppointmentDialog({
         if (!confirm("Eliminar cita?")) return;
 
         startTransition(async () => {
-            await deleteAppointment(selectedEvent.id);
+            const result = await deleteAppointment(selectedEvent.id);
+            if (!result.success) {
+                toast({
+                    title: "No se pudo eliminar la cita",
+                    description: result.error,
+                    variant: "destructive",
+                });
+                return;
+            }
             toast({ title: "Cita eliminada" });
-            onSuccess();
+            await onSuccess();
             onOpenChange(false);
         });
     };

@@ -280,9 +280,17 @@ export default function CalendarPage() {
 
     const handleDelete = async (id: string) => {
         if (!confirm("¿Eliminar cita?")) return;
-        await deleteAppointment(id);
+        const result = await deleteAppointment(id);
+        if (!result.success) {
+            toast({
+                title: "No se pudo eliminar la cita",
+                description: result.error,
+                variant: "destructive",
+            });
+            return;
+        }
         toast({ title: "Cita eliminada" });
-        void fetchAppointments();
+        await fetchAppointments();
     };
 
     const handleNew = () => {

@@ -599,6 +599,12 @@ export async function deleteAppointment(id: string) {
         return { success: true };
     } catch (error) {
         console.error("Failed to delete appointment:", error);
-        return { success: false, error: "Failed to delete appointment" };
+        const message = error instanceof Error ? error.message : "";
+        return {
+            success: false,
+            error: message.includes("Google Calendar")
+                ? message
+                : "No se pudo eliminar la cita. Intentalo nuevamente.",
+        };
     }
 }
