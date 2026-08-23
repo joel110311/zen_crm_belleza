@@ -128,6 +128,13 @@ async function migrateLegacyOfficialWhatsAppData(pool) {
     await runSafeQuery(pool, 'UPDATE "SystemSettings" SET "appointmentReminderProvider" = \'meta\' WHERE "appointmentReminderProvider" = \'ycloud\'');
 }
 
+async function removeLegacyAppointmentDuration(pool) {
+    console.log("[Startup] Removing legacy global appointment duration...");
+    await pool.query(
+        'ALTER TABLE IF EXISTS "SystemSettings" DROP COLUMN IF EXISTS "appointmentDurationMinutes"',
+    );
+}
+
 async function migrateLegacyBeautyBranding(pool) {
     console.log("[Startup] Migrating legacy ophthalmology branding to beauty defaults...");
     await pool.query(`
@@ -156,6 +163,7 @@ async function startup() {
     try {
         await waitForDatabase(pool);
         await migrateLegacyOfficialWhatsAppData(pool);
+        await removeLegacyAppointmentDuration(pool);
         await runPrismaDbPush();
         await migrateLegacyBeautyBranding(pool);
         console.log("[Startup] Checking schema...");
