@@ -195,14 +195,11 @@ export function BigCalendar({
     );
 
     const CustomEvent = ({ event }: EventProps<CalendarEvent>) => {
-        const isPast = localWallDateToOperationUtc(event.end, businessHours.timeZone).getTime() < Date.now();
-        const isCompleted = event.resource?.status === "completed";
         const isReserved = event.resource?.status === "scheduled" && event.resource?.confirmationStatus === "pending";
         const calendarColor = isReserved ? "#B58A2A" : event.resource?.googleCalendarColor || "#0EA5E9";
         const baseClasses =
             "flex h-full w-full items-start gap-2 overflow-hidden rounded-r-md border-l-[6px] px-1.5 py-0.5 leading-tight shadow-sm transition-all";
-        const backgroundColor = isCompleted || isPast ? `${calendarColor}14` : `${calendarColor}1F`;
-        const textColor = calendarColor;
+        const backgroundColor = `${calendarColor}30`;
 
         return (
             <div
@@ -210,8 +207,8 @@ export function BigCalendar({
                 style={{
                     borderLeftColor: calendarColor,
                     backgroundColor,
-                    color: textColor,
-                    opacity: isCompleted || isPast ? 0.8 : 1,
+                    color: "#111827",
+                    opacity: 1,
                 }}
             >
                 <div

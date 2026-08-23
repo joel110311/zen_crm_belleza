@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CalendarClock, Check, CheckCircle2, MoreVertical, Trash2 } from "lucide-react";
+import { CalendarClock, CalendarPlus, Check, CheckCircle2, MoreVertical, Trash2 } from "lucide-react";
 
 import { deleteAppointment, updateAppointmentStatus } from "@/app/actions/calendar";
 import { WhatsAppIcon } from "@/components/icons/whatsapp-icon";
@@ -22,6 +22,8 @@ type AppointmentQuickActionsProps = {
     appointmentDate: string;
     clientName: string;
     contactId: string | null;
+    patientId: string | null;
+    specialistId: string | null;
     status: string;
     confirmationStatus: string;
     paymentStatus: string;
@@ -32,6 +34,8 @@ export function AppointmentQuickActions({
     appointmentDate,
     clientName,
     contactId,
+    patientId,
+    specialistId,
     status,
     confirmationStatus,
     paymentStatus,
@@ -75,6 +79,22 @@ export function AppointmentQuickActions({
 
     return (
         <div className="flex flex-wrap items-center gap-1.5">
+            <Button
+                variant="outline"
+                size="sm"
+                className="h-9 rounded-xl px-2.5 sm:px-3"
+                asChild
+            >
+                <Link
+                    href={`/dashboard/calendar?new=1${patientId ? `&patientId=${encodeURIComponent(patientId)}` : ""}${specialistId ? `&specialistId=${encodeURIComponent(specialistId)}` : ""}`}
+                    aria-label={`Crear otra cita para ${clientName}`}
+                    title={`Crear otra cita para ${clientName}`}
+                >
+                    <CalendarPlus className="mr-1.5 h-4 w-4" />
+                    <span>Cita</span>
+                </Link>
+            </Button>
+
             {contactId ? (
                 <Button variant="outline" size="icon" className="h-9 w-9 rounded-xl text-primary" asChild>
                     <Link

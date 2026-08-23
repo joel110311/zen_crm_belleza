@@ -102,7 +102,11 @@ export default function CalendarPage() {
     const searchParams = useSearchParams();
     const initialCalendarDate = useMemo(() => parseCalendarDate(searchParams.get("date")), [searchParams]);
     const requestedAppointmentId = searchParams.get("appointmentId") || "";
+    const requestedNewAppointment = searchParams.get("new") === "1";
+    const requestedPatientId = searchParams.get("patientId") || "";
+    const requestedSpecialistId = searchParams.get("specialistId") || "";
     const openedAppointmentRef = useRef("");
+    const openedNewAppointmentRef = useRef(false);
     const { data: session, status: sessionStatus } = useSession();
     const sessionUser = session?.user as { id?: string; role?: string | null } | undefined;
     const currentUserId = sessionUser?.id || null;
@@ -250,6 +254,17 @@ export default function CalendarPage() {
         }, 0);
         return () => window.clearTimeout(timer);
     }, [appointments, requestedAppointmentId]);
+
+    useEffect(() => {
+        if (!requestedNewAppointment || openedNewAppointmentRef.current) return;
+        openedNewAppointmentRef.current = true;
+        const timer = window.setTimeout(() => {
+            setSelectedEvent(null);
+            setSelectedSlot(null);
+            setIsDialogOpen(true);
+        }, 0);
+        return () => window.clearTimeout(timer);
+    }, [requestedNewAppointment]);
 
     const handleSelectSlot = (slot: { start: Date; end: Date }) => {
         setSelectedSlot(slot);
@@ -422,12 +437,15 @@ export default function CalendarPage() {
                 onOpenChange={setIsDialogOpen}
                 selectedEvent={selectedEvent}
                 selectedSlot={selectedSlot}
+                defaultPatientId={requestedPatientId || null}
                 defaultSpecialistId={
                     isProfessional
                         ? currentUserSpecialist?.id || null
-                        : activeSpecialistFilter === "all" || activeSpecialistFilter === NO_SPECIALIST_FILTER
-                            ? null
-                            : activeSpecialistFilter
+                        : requestedSpecialistId || (
+                            activeSpecialistFilter === "all" || activeSpecialistFilter === NO_SPECIALIST_FILTER
+                                ? null
+                                : activeSpecialistFilter
+                        )
                 }
                 onSuccess={fetchAppointments}
                 businessHours={businessHours}

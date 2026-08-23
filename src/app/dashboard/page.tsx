@@ -197,7 +197,9 @@ async function getDashboardData(params: {
         : {};
     const appointmentWhere: Prisma.AppointmentWhereInput = {
         status: { not: "cancelled" },
-        startTime: params.appointmentTab === "today" ? { gte: start, lt: end } : { gte: now },
+        // Keep today's overdue appointments actionable on the dashboard, but do
+        // not mix older historical appointments into the operational list.
+        startTime: params.appointmentTab === "today" ? { gte: start, lt: end } : { gte: start },
         ...specialistWhere,
         ...(searchWhere || {}),
     };
@@ -373,7 +375,12 @@ async function getDashboardData(params: {
                 .filter((movement) => movement.type === "income" && movement.status === "confirmed")
                 .reduce((sum, movement) => sum + movement.amount, 0);
 
-            return { ...appointment, nextAppointment, paidAmount };
+            return {
+                ...appointment,
+                nextAppointment,
+                paidAmount,
+                isUpcoming: appointment.startTime.getTime() >= now.getTime(),
+            };
         }),
     );
 
@@ -551,7 +558,10 @@ function DashboardFocusBanner({
     operationContext: DashboardOperationContext;
     stats: Awaited<ReturnType<typeof getDashboardData>>["stats"];
 }) {
-    const next = appointments[0];
+    const next = appointments.find((appointment) => (
+        appointment.isUpcoming &&
+        !["completed", "cancelled", "no_show"].includes(appointment.status)
+    ));
     const nextName = next?.patient
         ? getPatientName(next.patient)
         : getContactFullName(next?.contact, "Cliente");
@@ -1144,7 +1154,7 @@ function AppointmentsPanel({
                                 className="rounded-full"
                                 asChild
                             >
-                                <Link href={makeHref("upcoming")}>Próximas</Link>
+                                <Link href={makeHref("upcoming")}>Hoy y próximas</Link>
                             </Button>
                             <Button
                                 variant={appointmentTab === "today" ? "default" : "ghost"}
@@ -1238,6 +1248,8 @@ function AppointmentsPanel({
                                         appointmentDate={appointmentDate}
                                         clientName={displayName}
                                         contactId={appointment.contactId}
+                                        patientId={appointment.patientId}
+                                        specialistId={appointment.specialistId}
                                         status={appointment.status}
                                         confirmationStatus={appointment.confirmationStatus}
                                         paymentStatus={appointment.paymentStatus}
