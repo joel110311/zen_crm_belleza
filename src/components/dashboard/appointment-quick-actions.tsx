@@ -3,17 +3,32 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CalendarClock, CalendarPlus, Check, CheckCircle2, MoreVertical, Trash2 } from "lucide-react";
+import { CalendarClock, CalendarPlus, Check, CheckCircle2, Loader2, MoreVertical, Plus, Trash2, UserPlus, UserRoundCog } from "lucide-react";
 
-import { deleteAppointment, updateAppointmentStatus } from "@/app/actions/calendar";
+import {
+    assignAppointmentClient,
+    assignAppointmentSpecialist,
+    deleteAppointment,
+    getAppointmentAssignmentOptions,
+    updateAppointmentStatus,
+} from "@/app/actions/calendar";
 import { WhatsAppIcon } from "@/components/icons/whatsapp-icon";
 import { Button } from "@/components/ui/button";
+import {
+    Command,
+    CommandEmpty,
+    CommandGroup,
+    CommandInput,
+    CommandItem,
+    CommandList,
+} from "@/components/ui/command";
 import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useToast } from "@/components/ui/use-toast";
 import { cn } from "@/lib/utils";
 
@@ -24,6 +39,8 @@ type AppointmentQuickActionsProps = {
     contactId: string | null;
     patientId: string | null;
     specialistId: string | null;
+    needsClientAssignment: boolean;
+    needsSpecialistAssignment: boolean;
     status: string;
     confirmationStatus: string;
     paymentStatus: string;
@@ -36,6 +53,8 @@ export function AppointmentQuickActions({
     contactId,
     patientId,
     specialistId,
+    needsClientAssignment,
+    needsSpecialistAssignment,
     status,
     confirmationStatus,
     paymentStatus,
@@ -44,8 +63,50 @@ export function AppointmentQuickActions({
     const { toast } = useToast();
     const [isPending, startTransition] = useTransition();
     const [isOpeningPayment, setIsOpeningPayment] = useState(false);
+    const [clientPickerOpen, setClientPickerOpen] = useState(false);
+    const [specialistPickerOpen, setSpecialistPickerOpen] = useState(false);
+    const [assignmentOptions, setAssignmentOptions] = useState<Awaited<ReturnType<typeof getAppointmentAssignmentOptions>> | null>(null);
+    const [isLoadingOptions, setIsLoadingOptions] = useState(false);
     const isCompleted = status === "completed";
     const isConfirmed = confirmationStatus === "confirmed";
+
+    const loadAssignmentOptions = async () => {
+        if (assignmentOptions || isLoadingOptions) return;
+        setIsLoadingOptions(true);
+        try {
+            setAssignmentOptions(await getAppointmentAssignmentOptions());
+        } catch {
+            toast({ title: "No se pudieron cargar las opciones", variant: "destructive" });
+        } finally {
+            setIsLoadingOptions(false);
+        }
+    };
+
+    const selectClient = (selectedContactId: string) => {
+        startTransition(async () => {
+            const result = await assignAppointmentClient(appointmentId, selectedContactId);
+            if (!result.success) {
+                toast({ title: "No se pudo asignar el cliente", description: result.error, variant: "destructive" });
+                return;
+            }
+            setClientPickerOpen(false);
+            toast({ title: "Cliente asignado" });
+            router.refresh();
+        });
+    };
+
+    const selectSpecialist = (selectedSpecialistId: string) => {
+        startTransition(async () => {
+            const result = await assignAppointmentSpecialist(appointmentId, selectedSpecialistId);
+            if (!result.success) {
+                toast({ title: "No se pudo asignar el profesional", description: result.error, variant: "destructive" });
+                return;
+            }
+            setSpecialistPickerOpen(false);
+            toast({ title: "Profesional asignado", description: "La cita y Google Calendar quedaron actualizados." });
+            router.refresh();
+        });
+    };
 
     const confirmAppointment = () => {
         startTransition(async () => {
@@ -79,6 +140,105 @@ export function AppointmentQuickActions({
 
     return (
         <div className="flex flex-wrap items-center gap-1.5">
+            {needsClientAssignment ? (
+                <Popover
+                    open={clientPickerOpen}
+                    onOpenChange={(open) => {
+                        setClientPickerOpen(open);
+                        if (open) void loadAssignmentOptions();
+                    }}
+                >
+                    <PopoverTrigger asChild>
+                        <Button variant="outline" size="sm" className="h-9 rounded-xl px-2.5 sm:px-3">
+                            <UserPlus className="mr-1.5 h-4 w-4" />
+                            Cliente
+                        </Button>
+                    </PopoverTrigger>
+                    <PopoverContent align="end" className="w-[min(330px,calc(100vw-24px))] p-0">
+                        <Command>
+                            <CommandInput placeholder="Buscar cliente por nombre o telefono..." />
+                            <CommandList>
+                                {isLoadingOptions ? (
+                                    <div className="flex items-center justify-center gap-2 px-3 py-6 text-sm text-muted-foreground">
+                                        <Loader2 className="h-4 w-4 animate-spin" /> Cargando clientes...
+                                    </div>
+                                ) : null}
+                                <CommandEmpty>No se encontro ningun cliente.</CommandEmpty>
+                                <CommandGroup heading="Clientes">
+                                    {(assignmentOptions?.contacts || []).map((contact) => (
+                                        <CommandItem
+                                            key={contact.id}
+                                            value={`${contact.name} ${contact.phone}`}
+                                            onSelect={() => selectClient(contact.id)}
+                                            disabled={isPending}
+                                        >
+                                            <UserPlus className="h-4 w-4" />
+                                            <span className="min-w-0 flex-1">
+                                                <span className="block truncate font-medium">{contact.name}</span>
+                                                <span className="block truncate text-xs text-muted-foreground">{contact.phone}</span>
+                                            </span>
+                                        </CommandItem>
+                                    ))}
+                                </CommandGroup>
+                            </CommandList>
+                        </Command>
+                        <div className="border-t p-2">
+                            <Button variant="ghost" size="sm" className="w-full justify-start" asChild>
+                                <Link href="/dashboard/contacts">
+                                    <Plus className="mr-2 h-4 w-4" /> Registrar nuevo cliente
+                                </Link>
+                            </Button>
+                        </div>
+                    </PopoverContent>
+                </Popover>
+            ) : null}
+
+            {needsSpecialistAssignment ? (
+                <Popover
+                    open={specialistPickerOpen}
+                    onOpenChange={(open) => {
+                        setSpecialistPickerOpen(open);
+                        if (open) void loadAssignmentOptions();
+                    }}
+                >
+                    <PopoverTrigger asChild>
+                        <Button variant="outline" size="sm" className="h-9 rounded-xl px-2.5 sm:px-3">
+                            <UserRoundCog className="mr-1.5 h-4 w-4" />
+                            Profesional
+                        </Button>
+                    </PopoverTrigger>
+                    <PopoverContent align="end" className="w-[min(310px,calc(100vw-24px))] p-0">
+                        <Command>
+                            <CommandInput placeholder="Buscar profesional..." />
+                            <CommandList>
+                                {isLoadingOptions ? (
+                                    <div className="flex items-center justify-center gap-2 px-3 py-6 text-sm text-muted-foreground">
+                                        <Loader2 className="h-4 w-4 animate-spin" /> Cargando profesionales...
+                                    </div>
+                                ) : null}
+                                <CommandEmpty>No hay profesionales disponibles.</CommandEmpty>
+                                <CommandGroup heading="Profesionales">
+                                    {(assignmentOptions?.specialists || []).map((specialist) => (
+                                        <CommandItem
+                                            key={specialist.id}
+                                            value={`${specialist.displayName || specialist.name} ${specialist.specialty || ""}`}
+                                            onSelect={() => selectSpecialist(specialist.id)}
+                                            disabled={isPending}
+                                        >
+                                            <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: specialist.color || "var(--primary)" }} />
+                                            <span className="min-w-0 flex-1">
+                                                <span className="block truncate font-medium">{specialist.displayName || specialist.name}</span>
+                                                <span className="block truncate text-xs text-muted-foreground">{specialist.specialty || "Profesional de belleza"}</span>
+                                            </span>
+                                        </CommandItem>
+                                    ))}
+                                </CommandGroup>
+                            </CommandList>
+                        </Command>
+                    </PopoverContent>
+                </Popover>
+            ) : null}
+
             <Button
                 variant="outline"
                 size="sm"

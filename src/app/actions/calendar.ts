@@ -106,6 +106,98 @@ export async function getAppointments() {
     }
 }
 
+export async function getAppointmentAssignmentOptions() {
+    await requirePermission("calendar.manage");
+
+    const [contacts, specialists] = await Promise.all([
+        prisma.contact.findMany({
+            take: 100,
+            orderBy: [{ updatedAt: "desc" }, { name: "asc" }],
+            select: {
+                id: true,
+                name: true,
+                lastName: true,
+                phone: true,
+                patients: {
+                    take: 1,
+                    select: { id: true },
+                },
+            },
+        }),
+        prisma.specialist.findMany({
+            where: { isActive: true },
+            orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+            select: {
+                id: true,
+                name: true,
+                displayName: true,
+                specialty: true,
+                color: true,
+            },
+        }),
+    ]);
+
+    return {
+        contacts: contacts.map((contact) => ({
+            id: contact.id,
+            patientId: contact.patients[0]?.id || null,
+            name: [contact.name, contact.lastName].filter(Boolean).join(" ").trim() || contact.phone || "Cliente",
+            phone: contact.phone,
+        })),
+        specialists,
+    };
+}
+
+export async function assignAppointmentClient(appointmentId: string, contactId: string) {
+    await requirePermission("calendar.manage");
+
+    try {
+        const contact = await prisma.contact.findUnique({
+            where: { id: contactId },
+            select: {
+                id: true,
+                patients: { take: 1, select: { id: true } },
+            },
+        });
+        if (!contact) return { success: false, error: "El cliente seleccionado ya no existe." };
+
+        const appointment = await updateManagedAppointment(appointmentId, {
+            contactId: contact.id,
+            ...(contact.patients[0]?.id ? { patientId: contact.patients[0].id } : {}),
+        });
+        revalidateCalendarSurfaces();
+        return { success: true, appointment };
+    } catch (error) {
+        console.error("Failed to assign appointment client:", error);
+        return { success: false, error: "No se pudo asignar el cliente a la cita." };
+    }
+}
+
+export async function assignAppointmentSpecialist(appointmentId: string, specialistId: string) {
+    await requirePermission("calendar.manage");
+
+    try {
+        const specialist = await prisma.specialist.findFirst({
+            where: { id: specialistId, isActive: true },
+            select: { id: true },
+        });
+        if (!specialist) return { success: false, error: "El profesional seleccionado ya no esta disponible." };
+
+        const appointment = await updateManagedAppointment(appointmentId, {
+            specialistId: specialist.id,
+        });
+        await syncAppointmentReminders(appointmentId);
+        revalidateCalendarSurfaces();
+        return { success: true, appointment };
+    } catch (error) {
+        console.error("Failed to assign appointment specialist:", error);
+        if (error instanceof AppointmentSchedulingError) {
+            return { success: false, error: error.message };
+        }
+        return { success: false, error: "No se pudo asignar el profesional a la cita." };
+    }
+}
+
 export async function createAppointment(data: {
     title: string;
     startTime: Date;

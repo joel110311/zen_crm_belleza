@@ -199,7 +199,7 @@ async function getDashboardData(params: {
         status: { not: "cancelled" },
         // Keep today's overdue appointments actionable on the dashboard, but do
         // not mix older historical appointments into the operational list.
-        startTime: params.appointmentTab === "today" ? { gte: start, lt: end } : { gte: start },
+        startTime: params.appointmentTab === "today" ? { gte: start, lt: end } : { gte: now },
         ...specialistWhere,
         ...(searchWhere || {}),
     };
@@ -1191,9 +1191,10 @@ function AppointmentsPanel({
                             <p className="mt-1 text-sm text-muted-foreground">Prueba otra búsqueda o crea una cita nueva.</p>
                         </div>
                     ) : appointments.map((appointment) => {
+                        const hasAssignedClient = Boolean(appointment.patientId || appointment.contactId);
                         const displayName = appointment.patient
                             ? getPatientName(appointment.patient)
-                            : getContactFullName(appointment.contact, "Cliente");
+                            : getContactFullName(appointment.contact, "Sin cliente asignado");
                         const phone = appointment.patient?.phone || appointment.contact?.phone || "";
                         const specialistName = appointment.specialist?.displayName || appointment.specialist?.name || appointment.specialistName || "Sin asignar";
                         const appointmentCount = appointment.patient?._count.appointments || 1;
@@ -1250,6 +1251,8 @@ function AppointmentsPanel({
                                         contactId={appointment.contactId}
                                         patientId={appointment.patientId}
                                         specialistId={appointment.specialistId}
+                                        needsClientAssignment={!hasAssignedClient}
+                                        needsSpecialistAssignment={!appointment.specialistId}
                                         status={appointment.status}
                                         confirmationStatus={appointment.confirmationStatus}
                                         paymentStatus={appointment.paymentStatus}
