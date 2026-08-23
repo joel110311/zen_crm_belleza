@@ -151,7 +151,7 @@ export function AppointmentQuickActions({
                     <PopoverTrigger asChild>
                         <Button variant="outline" size="sm" className="h-9 rounded-xl px-2.5 sm:px-3">
                             <UserPlus className="mr-1.5 h-4 w-4" />
-                            Cliente
+                            Asignar cliente
                         </Button>
                     </PopoverTrigger>
                     <PopoverContent align="end" className="w-[min(330px,calc(100vw-24px))] p-0">
@@ -204,7 +204,7 @@ export function AppointmentQuickActions({
                     <PopoverTrigger asChild>
                         <Button variant="outline" size="sm" className="h-9 rounded-xl px-2.5 sm:px-3">
                             <UserRoundCog className="mr-1.5 h-4 w-4" />
-                            Profesional
+                            Asignar profesional
                         </Button>
                     </PopoverTrigger>
                     <PopoverContent align="end" className="w-[min(310px,calc(100vw-24px))] p-0">

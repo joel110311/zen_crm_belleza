@@ -163,7 +163,10 @@ export async function assignAppointmentClient(appointmentId: string, contactId: 
 
         const appointment = await updateManagedAppointment(appointmentId, {
             contactId: contact.id,
-            ...(contact.patients[0]?.id ? { patientId: contact.patients[0].id } : {}),
+            // Clear any generic imported patient when the selected contact does
+            // not yet have a patient profile. Otherwise the placeholder name
+            // keeps winning over the real contact in calendar/dashboard views.
+            patientId: contact.patients[0]?.id || "",
         });
         revalidateCalendarSurfaces();
         return { success: true, appointment };

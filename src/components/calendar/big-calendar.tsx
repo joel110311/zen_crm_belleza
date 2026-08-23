@@ -154,16 +154,23 @@ export function BigCalendar({
             onAppointmentTimeChange?.(event.id, nextStartUtc, nextEndUtc);
 
             try {
-                await updateAppointment(event.id, {
+                const result = await updateAppointment(event.id, {
                     startTime: nextStartUtc,
                     endTime: nextEndUtc,
                 });
+                if (!result.success) {
+                    throw new Error(result.error || "No se pudo actualizar la cita.");
+                }
                 toast({
                     title: successMessage,
                     description: `Movida a ${formatDateTimeInOperationZone(nextStartUtc, "es-MX", businessHours.timeZone)}`,
                 });
-                await onMutationSettled?.();
-            } catch {
+                try {
+                    await onMutationSettled?.();
+                } catch (refreshError) {
+                    console.error("Failed to refresh appointments after rescheduling:", refreshError);
+                }
+            } catch (error) {
                 replaceEvent(event.id, originalEvent);
                 onAppointmentTimeChange?.(
                     event.id,
@@ -171,8 +178,8 @@ export function BigCalendar({
                     localWallDateToOperationUtc(originalEvent.end, businessHours.timeZone),
                 );
                 toast({
-                    title: "Error",
-                    description: "No se pudo actualizar la cita.",
+                    title: "No se pudo reprogramar la cita",
+                    description: error instanceof Error ? error.message : "No se pudo actualizar la cita.",
                     variant: "destructive",
                 });
             }
