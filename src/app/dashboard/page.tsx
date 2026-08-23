@@ -954,7 +954,7 @@ function BusinessProfileCard({
                 </div>
 
                 <Button className="mt-auto w-full rounded-xl font-semibold" asChild>
-                    <Link href="/dashboard/settings?section=operation&tab=operation">
+                    <Link href="/dashboard/business?tab=operation">
                         Configurar datos del negocio
                     </Link>
                 </Button>
@@ -1256,6 +1256,7 @@ function AppointmentsPanel({
                                         contactId={appointment.contactId}
                                         patientId={appointment.patientId}
                                         specialistId={appointment.specialistId}
+                                        serviceId={appointment.serviceId}
                                         needsClientAssignment={!hasAssignedClient}
                                         needsSpecialistAssignment={!appointment.specialistId}
                                         status={appointment.status}

@@ -109,7 +109,7 @@ export async function getAppointments() {
 export async function getAppointmentAssignmentOptions() {
     await requirePermission("calendar.manage");
 
-    const [contacts, specialists] = await Promise.all([
+    const [contacts, specialists, services] = await Promise.all([
         prisma.contact.findMany({
             take: 100,
             orderBy: [{ updatedAt: "desc" }, { name: "asc" }],
@@ -135,6 +135,23 @@ export async function getAppointmentAssignmentOptions() {
                 color: true,
             },
         }),
+        prisma.service.findMany({
+            where: { isActive: true, category: { isActive: true } },
+            orderBy: [
+                { category: { sortOrder: "asc" } },
+                { sortOrder: "asc" },
+                { name: "asc" },
+            ],
+            select: {
+                id: true,
+                name: true,
+                durationMinutes: true,
+                price: true,
+                currency: true,
+                category: { select: { name: true } },
+                specialists: { select: { specialistId: true } },
+            },
+        }),
     ]);
 
     return {
@@ -145,7 +162,78 @@ export async function getAppointmentAssignmentOptions() {
             phone: contact.phone,
         })),
         specialists,
+        services: services.map((service) => ({
+            ...service,
+            specialistIds: service.specialists.map((entry) => entry.specialistId),
+        })),
     };
+}
+
+export async function assignAppointmentDetails(
+    appointmentId: string,
+    input: { contactId: string; specialistId: string; serviceId: string; sendReminders: boolean },
+) {
+    await requirePermission("calendar.manage");
+
+    try {
+        const [appointment, contact, specialist, service] = await Promise.all([
+            prisma.appointment.findUnique({ where: { id: appointmentId } }),
+            prisma.contact.findUnique({
+                where: { id: input.contactId },
+                select: { id: true, phone: true, patients: { take: 1, select: { id: true } } },
+            }),
+            prisma.specialist.findFirst({
+                where: { id: input.specialistId, isActive: true },
+                include: { googleCalendarSource: true },
+            }),
+            prisma.service.findFirst({
+                where: { id: input.serviceId, isActive: true, category: { isActive: true } },
+                include: { specialists: { select: { specialistId: true } } },
+            }),
+        ]);
+
+        if (!appointment) return { success: false, error: "La cita ya no existe." };
+        if (!contact) return { success: false, error: "El cliente seleccionado ya no existe." };
+        if (!contact.phone?.trim()) return { success: false, error: "El cliente necesita un numero de telefono para asignarlo a la cita." };
+        if (!specialist) return { success: false, error: "El profesional seleccionado ya no esta disponible." };
+        if (!service) return { success: false, error: "El servicio seleccionado ya no esta disponible." };
+
+        const eligibleSpecialistIds = service.specialists.map((entry) => entry.specialistId);
+        if (eligibleSpecialistIds.length > 0 && !eligibleSpecialistIds.includes(specialist.id)) {
+            return { success: false, error: "El profesional elegido no esta asignado a este servicio." };
+        }
+
+        const endTime = new Date(appointment.startTime.getTime() + service.durationMinutes * 60_000);
+        const targetCalendarId = specialist.googleCalendarSource?.calendarId;
+        const updated = await updateManagedAppointment(appointmentId, {
+            contactId: contact.id,
+            patientId: contact.patients[0]?.id || "",
+            specialistId: specialist.id,
+            serviceId: service.id,
+            title: service.name,
+            appointmentType: service.name,
+            endTime,
+            paymentAmount: service.price,
+            paymentCurrency: service.currency,
+            paymentStatus: appointment.paymentStatus === "paid"
+                ? "paid"
+                : service.price > 0
+                    ? "pending"
+                    : "unpaid",
+            remindersOptOut: !input.sendReminders,
+            blockingCalendarIds: targetCalendarId ? [targetCalendarId] : undefined,
+        });
+
+        await syncAppointmentReminders(appointmentId);
+        revalidateCalendarSurfaces();
+        return { success: true, appointment: updated };
+    } catch (error) {
+        console.error("Failed to assign appointment details:", error);
+        if (error instanceof AppointmentSchedulingError) {
+            return { success: false, error: error.message };
+        }
+        return { success: false, error: "No se pudieron guardar los datos de la cita." };
+    }
 }
 
 export async function assignAppointmentClient(appointmentId: string, contactId: string) {

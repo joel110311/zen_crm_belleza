@@ -17,7 +17,6 @@ type PortalBookingInput = {
     serviceId?: string;
     date: string;
     time: string;
-    durationMinutes?: number;
     firstName: string;
     lastName: string;
     phone: string;
@@ -96,7 +95,6 @@ export async function getPortalData(slug = DEFAULT_PORTAL_SLUG) {
         subtitle: resolveBusinessSubtitle(settings.clinicSubtitle),
         address: settings.clinicAddress || null,
         slug: settings.portalSlug || DEFAULT_PORTAL_SLUG,
-        defaultDurationMinutes: settings.appointmentDurationMinutes || 30,
         remindersEnabled: Boolean(settings.appointmentRemindersEnabled && settings.reminderWhatsAppEnabled),
         operationContext: buildOperationContext(settings),
     };
@@ -139,7 +137,7 @@ export async function getPortalData(slug = DEFAULT_PORTAL_SLUG) {
                 displayName: "Profesional de belleza",
                 specialty: "Belleza",
                 color: resolvePortalColor(settings.portalPrimaryColor),
-                defaultDurationMinutes: settings.appointmentDurationMinutes || 30,
+                defaultDurationMinutes: 30,
                 isActive: true,
             },
             select: {
@@ -193,7 +191,7 @@ export async function getPortalData(slug = DEFAULT_PORTAL_SLUG) {
     };
 }
 
-export async function getPortalAvailability(slug: string, specialistId: string, date: string, durationMinutes?: number) {
+export async function getPortalAvailability(slug: string, specialistId: string, date: string, serviceId: string) {
     const requestHeaders = await headers();
     const rateLimit = consumeRateLimit(`portal-availability:${getRequestIp(requestHeaders)}`, {
         limit: 120,
@@ -220,8 +218,20 @@ export async function getPortalAvailability(slug: string, specialistId: string, 
         return { success: false, error: "Selecciona un especialista valido.", slots: [] as string[] };
     }
 
+    const service = await prisma.service.findFirst({
+        where: { id: cleanText(serviceId), isActive: true, category: { isActive: true } },
+        include: { specialists: { select: { specialistId: true } } },
+    });
+    if (!service) {
+        return { success: false, error: "Selecciona un servicio valido.", slots: [] as string[] };
+    }
+    const assignedSpecialistIds = service.specialists.map((entry) => entry.specialistId);
+    if (assignedSpecialistIds.length > 0 && !assignedSpecialistIds.includes(specialist.id)) {
+        return { success: false, error: "El profesional seleccionado no realiza este servicio.", slots: [] as string[] };
+    }
+
     const config = await getBusinessHoursConfig();
-    const safeDurationMinutes = Math.min(480, Math.max(15, durationMinutes || specialist.defaultDurationMinutes || settings.appointmentDurationMinutes || 30));
+    const safeDurationMinutes = Math.min(480, Math.max(5, service.durationMinutes));
     const durationMs = safeDurationMinutes * 60 * 1000;
     const result = await getAvailableSlotsForDate(date, durationMs, config, {
         specialistId: specialist.id,
@@ -272,6 +282,9 @@ export async function bookPortalAppointment(input: PortalBookingInput) {
     if (!firstName || !phone || !specialistId || !input.date || !input.time) {
         return { success: false, error: "Completa nombre, teléfono, profesional, fecha y hora." };
     }
+    if (!selectedService) {
+        return { success: false, error: "Selecciona un servicio valido antes de reservar." };
+    }
     if (firstName.length > 80 || lastName.length > 100 || cleanText(input.email).length > 254 || cleanText(input.reason).length > 500) {
         return { success: false, error: "Uno de los datos ingresados supera la longitud permitida." };
     }
@@ -308,7 +321,7 @@ export async function bookPortalAppointment(input: PortalBookingInput) {
         return { success: false, error: "La fecha u hora no son validas." };
     }
 
-    const durationMinutes = Math.min(480, Math.max(15, selectedService?.durationMinutes || input.durationMinutes || specialist.defaultDurationMinutes || settings.appointmentDurationMinutes || 30));
+    const durationMinutes = Math.min(480, Math.max(5, selectedService.durationMinutes));
     const endTime = new Date(startTime.getTime() + durationMinutes * 60 * 1000);
     const makeVirtual = Boolean(settings.googleMeetEnabled && settings.googleMeetDefaultVirtual);
     const remindersEnabled = Boolean(settings.appointmentRemindersEnabled && settings.reminderWhatsAppEnabled);

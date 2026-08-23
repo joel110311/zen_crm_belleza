@@ -1,19 +1,26 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { CalendarClock, CalendarPlus, Check, CheckCircle2, Loader2, MoreVertical, Plus, Trash2, UserPlus, UserRoundCog } from "lucide-react";
 
 import {
-    assignAppointmentClient,
-    assignAppointmentSpecialist,
+    assignAppointmentDetails,
     deleteAppointment,
     getAppointmentAssignmentOptions,
     updateAppointmentStatus,
 } from "@/app/actions/calendar";
 import { WhatsAppIcon } from "@/components/icons/whatsapp-icon";
 import { Button } from "@/components/ui/button";
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog";
 import {
     Command,
     CommandEmpty,
@@ -28,7 +35,10 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/use-toast";
 import { cn } from "@/lib/utils";
 
@@ -39,6 +49,7 @@ type AppointmentQuickActionsProps = {
     contactId: string | null;
     patientId: string | null;
     specialistId: string | null;
+    serviceId: string | null;
     needsClientAssignment: boolean;
     needsSpecialistAssignment: boolean;
     status: string;
@@ -53,6 +64,7 @@ export function AppointmentQuickActions({
     contactId,
     patientId,
     specialistId,
+    serviceId,
     needsClientAssignment,
     needsSpecialistAssignment,
     status,
@@ -63,10 +75,14 @@ export function AppointmentQuickActions({
     const { toast } = useToast();
     const [isPending, startTransition] = useTransition();
     const [isOpeningPayment, setIsOpeningPayment] = useState(false);
+    const [assignmentDialogOpen, setAssignmentDialogOpen] = useState(false);
     const [clientPickerOpen, setClientPickerOpen] = useState(false);
-    const [specialistPickerOpen, setSpecialistPickerOpen] = useState(false);
     const [assignmentOptions, setAssignmentOptions] = useState<Awaited<ReturnType<typeof getAppointmentAssignmentOptions>> | null>(null);
     const [isLoadingOptions, setIsLoadingOptions] = useState(false);
+    const [selectedContactId, setSelectedContactId] = useState("");
+    const [selectedSpecialistId, setSelectedSpecialistId] = useState(specialistId || "");
+    const [selectedServiceId, setSelectedServiceId] = useState(serviceId || "");
+    const [sendReminders, setSendReminders] = useState(true);
     const isCompleted = status === "completed";
     const isConfirmed = confirmationStatus === "confirmed";
 
@@ -74,7 +90,14 @@ export function AppointmentQuickActions({
         if (assignmentOptions || isLoadingOptions) return;
         setIsLoadingOptions(true);
         try {
-            setAssignmentOptions(await getAppointmentAssignmentOptions());
+            const options = await getAppointmentAssignmentOptions();
+            setAssignmentOptions(options);
+            const currentContactId = needsClientAssignment
+                ? ""
+                : contactId || options.contacts.find((contact) => contact.patientId === patientId)?.id || "";
+            setSelectedContactId(currentContactId);
+            setSelectedSpecialistId(specialistId || "");
+            setSelectedServiceId(serviceId || "");
         } catch {
             toast({ title: "No se pudieron cargar las opciones", variant: "destructive" });
         } finally {
@@ -82,28 +105,34 @@ export function AppointmentQuickActions({
         }
     };
 
-    const selectClient = (selectedContactId: string) => {
-        startTransition(async () => {
-            const result = await assignAppointmentClient(appointmentId, selectedContactId);
-            if (!result.success) {
-                toast({ title: "No se pudo asignar el cliente", description: result.error, variant: "destructive" });
-                return;
-            }
-            setClientPickerOpen(false);
-            toast({ title: "Cliente asignado" });
-            router.refresh();
-        });
-    };
+    const selectedContact = assignmentOptions?.contacts.find((contact) => contact.id === selectedContactId) || null;
+    const selectedService = assignmentOptions?.services.find((service) => service.id === selectedServiceId) || null;
+    const availableSpecialists = useMemo(() => {
+        const specialists = assignmentOptions?.specialists || [];
+        if (!selectedService || selectedService.specialistIds.length === 0) return specialists;
+        return specialists.filter((specialist) => selectedService.specialistIds.includes(specialist.id));
+    }, [assignmentOptions, selectedService]);
+    const needsAssignment = needsClientAssignment || needsSpecialistAssignment || !serviceId;
 
-    const selectSpecialist = (selectedSpecialistId: string) => {
+    const saveAssignment = () => {
+        if (!selectedContactId || !selectedSpecialistId || !selectedServiceId) {
+            toast({ title: "Completa cliente, servicio y profesional", variant: "destructive" });
+            return;
+        }
+
         startTransition(async () => {
-            const result = await assignAppointmentSpecialist(appointmentId, selectedSpecialistId);
+            const result = await assignAppointmentDetails(appointmentId, {
+                contactId: selectedContactId,
+                specialistId: selectedSpecialistId,
+                serviceId: selectedServiceId,
+                sendReminders,
+            });
             if (!result.success) {
-                toast({ title: "No se pudo asignar el profesional", description: result.error, variant: "destructive" });
+                toast({ title: "No se pudo completar la cita", description: result.error, variant: "destructive" });
                 return;
             }
-            setSpecialistPickerOpen(false);
-            toast({ title: "Profesional asignado", description: "La cita y Google Calendar quedaron actualizados." });
+            setAssignmentDialogOpen(false);
+            toast({ title: "Cita completada", description: "Cliente, servicio y profesional quedaron asignados." });
             router.refresh();
         });
     };
@@ -140,103 +169,134 @@ export function AppointmentQuickActions({
 
     return (
         <div className="flex flex-wrap items-center gap-1.5">
-            {needsClientAssignment ? (
-                <Popover
-                    open={clientPickerOpen}
-                    onOpenChange={(open) => {
-                        setClientPickerOpen(open);
-                        if (open) void loadAssignmentOptions();
-                    }}
-                >
-                    <PopoverTrigger asChild>
-                        <Button variant="outline" size="sm" className="h-9 rounded-xl px-2.5 sm:px-3">
-                            <UserPlus className="mr-1.5 h-4 w-4" />
-                            Asignar cliente
-                        </Button>
-                    </PopoverTrigger>
-                    <PopoverContent align="end" className="w-[min(330px,calc(100vw-24px))] p-0">
-                        <Command>
-                            <CommandInput placeholder="Buscar cliente por nombre o telefono..." />
-                            <CommandList>
-                                {isLoadingOptions ? (
-                                    <div className="flex items-center justify-center gap-2 px-3 py-6 text-sm text-muted-foreground">
-                                        <Loader2 className="h-4 w-4 animate-spin" /> Cargando clientes...
-                                    </div>
-                                ) : null}
-                                <CommandEmpty>No se encontro ningun cliente.</CommandEmpty>
-                                <CommandGroup heading="Clientes">
-                                    {(assignmentOptions?.contacts || []).map((contact) => (
-                                        <CommandItem
-                                            key={contact.id}
-                                            value={`${contact.name} ${contact.phone}`}
-                                            onSelect={() => selectClient(contact.id)}
-                                            disabled={isPending}
-                                        >
-                                            <UserPlus className="h-4 w-4" />
-                                            <span className="min-w-0 flex-1">
-                                                <span className="block truncate font-medium">{contact.name}</span>
-                                                <span className="block truncate text-xs text-muted-foreground">{contact.phone}</span>
-                                            </span>
-                                        </CommandItem>
-                                    ))}
-                                </CommandGroup>
-                            </CommandList>
-                        </Command>
-                        <div className="border-t p-2">
-                            <Button variant="ghost" size="sm" className="w-full justify-start" asChild>
-                                <Link href="/dashboard/contacts">
-                                    <Plus className="mr-2 h-4 w-4" /> Registrar nuevo cliente
-                                </Link>
-                            </Button>
-                        </div>
-                    </PopoverContent>
-                </Popover>
-            ) : null}
+            {needsAssignment ? (
+                <>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-9 rounded-xl px-2.5 sm:px-3"
+                        onClick={() => {
+                            setAssignmentDialogOpen(true);
+                            void loadAssignmentOptions();
+                        }}
+                    >
+                        <UserRoundCog className="mr-1.5 h-4 w-4" />
+                        Asignar
+                    </Button>
+                    <Dialog open={assignmentDialogOpen} onOpenChange={setAssignmentDialogOpen}>
+                        <DialogContent className="max-w-md">
+                            <DialogHeader>
+                                <DialogTitle>Completar cita</DialogTitle>
+                                <DialogDescription>Asigna únicamente los datos operativos que faltan en la cita importada.</DialogDescription>
+                            </DialogHeader>
 
-            {needsSpecialistAssignment ? (
-                <Popover
-                    open={specialistPickerOpen}
-                    onOpenChange={(open) => {
-                        setSpecialistPickerOpen(open);
-                        if (open) void loadAssignmentOptions();
-                    }}
-                >
-                    <PopoverTrigger asChild>
-                        <Button variant="outline" size="sm" className="h-9 rounded-xl px-2.5 sm:px-3">
-                            <UserRoundCog className="mr-1.5 h-4 w-4" />
-                            Asignar profesional
-                        </Button>
-                    </PopoverTrigger>
-                    <PopoverContent align="end" className="w-[min(310px,calc(100vw-24px))] p-0">
-                        <Command>
-                            <CommandInput placeholder="Buscar profesional..." />
-                            <CommandList>
-                                {isLoadingOptions ? (
-                                    <div className="flex items-center justify-center gap-2 px-3 py-6 text-sm text-muted-foreground">
-                                        <Loader2 className="h-4 w-4 animate-spin" /> Cargando profesionales...
+                            {isLoadingOptions ? (
+                                <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
+                                    <Loader2 className="h-4 w-4 animate-spin" /> Cargando opciones...
+                                </div>
+                            ) : (
+                                <div className="space-y-4 py-1">
+                                    <div className="space-y-1.5">
+                                        <Label>Cliente *</Label>
+                                        <Popover open={clientPickerOpen} onOpenChange={setClientPickerOpen}>
+                                            <PopoverTrigger asChild>
+                                                <Button variant="outline" className="h-11 w-full justify-start rounded-xl px-3 font-normal">
+                                                    <UserPlus className="mr-2 h-4 w-4 text-primary" />
+                                                    <span className="min-w-0 flex-1 truncate text-left">
+                                                        {selectedContact ? `${selectedContact.name} · ${selectedContact.phone}` : "Buscar cliente por nombre o telefono..."}
+                                                    </span>
+                                                </Button>
+                                            </PopoverTrigger>
+                                            <PopoverContent align="start" className="w-[min(380px,calc(100vw-48px))] p-0">
+                                                <Command>
+                                                    <CommandInput placeholder="Buscar cliente..." />
+                                                    <CommandList>
+                                                        <CommandEmpty>No se encontro ningun cliente.</CommandEmpty>
+                                                        <CommandGroup heading="Clientes con telefono">
+                                                            {(assignmentOptions?.contacts || []).map((contact) => (
+                                                                <CommandItem
+                                                                    key={contact.id}
+                                                                    value={`${contact.name} ${contact.phone}`}
+                                                                    disabled={!contact.phone}
+                                                                    onSelect={() => {
+                                                                        setSelectedContactId(contact.id);
+                                                                        setClientPickerOpen(false);
+                                                                    }}
+                                                                >
+                                                                    <UserPlus className="h-4 w-4" />
+                                                                    <span className="min-w-0 flex-1">
+                                                                        <span className="block truncate font-medium">{contact.name}</span>
+                                                                        <span className="block truncate text-xs text-muted-foreground">{contact.phone || "Sin telefono · agrega uno para seleccionarlo"}</span>
+                                                                    </span>
+                                                                </CommandItem>
+                                                            ))}
+                                                        </CommandGroup>
+                                                    </CommandList>
+                                                </Command>
+                                                <div className="border-t p-2">
+                                                    <Button variant="ghost" size="sm" className="w-full justify-start" asChild>
+                                                        <Link href="/dashboard/contacts"><Plus className="mr-2 h-4 w-4" /> Registrar nuevo cliente</Link>
+                                                    </Button>
+                                                </div>
+                                            </PopoverContent>
+                                        </Popover>
                                     </div>
-                                ) : null}
-                                <CommandEmpty>No hay profesionales disponibles.</CommandEmpty>
-                                <CommandGroup heading="Profesionales">
-                                    {(assignmentOptions?.specialists || []).map((specialist) => (
-                                        <CommandItem
-                                            key={specialist.id}
-                                            value={`${specialist.displayName || specialist.name} ${specialist.specialty || ""}`}
-                                            onSelect={() => selectSpecialist(specialist.id)}
-                                            disabled={isPending}
+
+                                    <div className="space-y-1.5">
+                                        <Label>Servicio *</Label>
+                                        <Select
+                                            value={selectedServiceId}
+                                            onValueChange={(value) => {
+                                                setSelectedServiceId(value);
+                                                const nextService = assignmentOptions?.services.find((service) => service.id === value);
+                                                if (nextService?.specialistIds.length && !nextService.specialistIds.includes(selectedSpecialistId)) {
+                                                    setSelectedSpecialistId("");
+                                                }
+                                            }}
                                         >
-                                            <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: specialist.color || "var(--primary)" }} />
-                                            <span className="min-w-0 flex-1">
-                                                <span className="block truncate font-medium">{specialist.displayName || specialist.name}</span>
-                                                <span className="block truncate text-xs text-muted-foreground">{specialist.specialty || "Profesional de belleza"}</span>
-                                            </span>
-                                        </CommandItem>
-                                    ))}
-                                </CommandGroup>
-                            </CommandList>
-                        </Command>
-                    </PopoverContent>
-                </Popover>
+                                            <SelectTrigger className="h-11 rounded-xl"><SelectValue placeholder="Selecciona un servicio" /></SelectTrigger>
+                                            <SelectContent>
+                                                {(assignmentOptions?.services || []).map((service) => (
+                                                    <SelectItem key={service.id} value={service.id}>
+                                                        {service.name} · {service.durationMinutes} min · {new Intl.NumberFormat("es-MX", { style: "currency", currency: service.currency, maximumFractionDigits: 0 }).format(service.price)}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+
+                                    <div className="space-y-1.5">
+                                        <Label>Profesional *</Label>
+                                        <Select value={selectedSpecialistId} onValueChange={setSelectedSpecialistId}>
+                                            <SelectTrigger className="h-11 rounded-xl"><SelectValue placeholder="Selecciona un profesional" /></SelectTrigger>
+                                            <SelectContent>
+                                                {availableSpecialists.map((specialist) => (
+                                                    <SelectItem key={specialist.id} value={specialist.id}>{specialist.displayName || specialist.name}</SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+
+                                    <label className="flex items-center justify-between gap-4 rounded-xl border bg-muted/20 px-3 py-2.5">
+                                        <span>
+                                            <span className="block text-sm font-medium">Enviar recordatorio</span>
+                                            <span className="block text-xs text-muted-foreground">Se programara usando el telefono del cliente.</span>
+                                        </span>
+                                        <Switch checked={sendReminders} onCheckedChange={setSendReminders} />
+                                    </label>
+                                </div>
+                            )}
+
+                            <DialogFooter>
+                                <Button variant="outline" onClick={() => setAssignmentDialogOpen(false)}>Cancelar</Button>
+                                <Button onClick={saveAssignment} disabled={isPending || isLoadingOptions || !selectedContactId || !selectedServiceId || !selectedSpecialistId}>
+                                    {isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                                    Guardar asignacion
+                                </Button>
+                            </DialogFooter>
+                        </DialogContent>
+                    </Dialog>
+                </>
             ) : null}
 
             <Button

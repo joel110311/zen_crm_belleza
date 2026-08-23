@@ -134,7 +134,7 @@ export function PortalBooking({ data }: Props) {
                     data.slug,
                     selectedSpecialistId,
                     date,
-                    selectedService?.durationMinutes,
+                    selectedServiceId,
                 );
                 if (!result.success) {
                     setSlots([]);
@@ -148,7 +148,7 @@ export function PortalBooking({ data }: Props) {
         };
 
         void load();
-    }, [data.enabled, data.slug, date, selectedService?.durationMinutes, selectedSpecialistId, toast]);
+    }, [data.enabled, data.slug, date, selectedServiceId, selectedSpecialistId, toast]);
 
     const selectService = (serviceId: string) => {
         setSelectedServiceId(serviceId);
@@ -179,7 +179,6 @@ export function PortalBooking({ data }: Props) {
                 serviceId: selectedServiceId !== "none" ? selectedServiceId : undefined,
                 date,
                 time: timeToOperationInputValue(slotDate, operationContext.timeZone),
-                durationMinutes: selectedService?.durationMinutes || specialist?.defaultDurationMinutes || data.defaultDurationMinutes,
                 firstName: firstName.trim(),
                 lastName: "",
                 phone,
@@ -504,7 +503,7 @@ export function PortalBooking({ data }: Props) {
                                 </div>
                                 <div className="flex items-center gap-3">
                                     <Clock className="h-5 w-5 shrink-0 text-muted-foreground" />
-                                    <p>{selectedService?.durationMinutes || specialist?.defaultDurationMinutes || data.defaultDurationMinutes} minutos</p>
+                                    <p>{selectedService?.durationMinutes} minutos</p>
                                 </div>
                                 {selectedService?.showPrice ? (
                                     <div className="flex items-center gap-3">

@@ -195,7 +195,7 @@ export default function BillingPage() {
 
     const printTicket = useCallback((movement: NonNullable<CashDeskData>["movements"][number]) => {
         if (!desk?.pos?.ticketEnabled) {
-            toast({ title: "Ticket desactivado", description: "Activalo en Configuracion > Operacion > Caja, IVA y ticket." });
+            toast({ title: "Ticket desactivado", description: "Activalo en Mi Negocio > Operacion > Caja, IVA y ticket." });
             return;
         }
         const header = String(desk.pos.ticketHeader || operationContext.defaultCurrency)

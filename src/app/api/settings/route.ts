@@ -6,6 +6,7 @@ import { auth } from "@/lib/auth";
 import { ensureAuthenticatedResponse, getSessionAccessSubject } from "@/lib/authz";
 import { hasAnyPermission, hasPermission, type PermissionKey } from "@/lib/permissions";
 import { syncFutureAppointmentReminders } from "@/lib/appointment-reminders";
+import { normalizeBusinessPolicies } from "@/lib/ai/business-policies";
 
 const SETTINGS_READ_PERMISSIONS: PermissionKey[] = [
     "ai.manage",
@@ -63,7 +64,7 @@ const SETTINGS_FIELD_PERMISSIONS: Record<string, PermissionKey> = {
     businessHoursEnd: "settings.manage",
     businessTimeZone: "settings.manage",
     businessWeeklySchedule: "settings.manage",
-    appointmentDurationMinutes: "calendar.manage",
+    businessPolicies: "settings.manage",
     brandName: "settings.manage",
     brandLogoUrl: "settings.manage",
     brandFaviconUrl: "settings.manage",
@@ -162,6 +163,9 @@ export async function POST(request: NextRequest) {
         if (unauthorized) return unauthorized;
 
         const data = await request.json();
+        if (Object.prototype.hasOwnProperty.call(data, "businessPolicies")) {
+            data.businessPolicies = normalizeBusinessPolicies(data.businessPolicies);
+        }
         const subject = getSessionAccessSubject(session);
         const requestedFields = Object.keys(data);
         if (requestedFields.some((field) => META_CONNECTION_FIELDS.has(field))) {
@@ -196,6 +200,7 @@ export async function POST(request: NextRequest) {
             whatsappAdminToken: data.whatsappAdminToken ? "***" : undefined,
             whatsappUserToken: data.whatsappUserToken ? "***" : undefined,
             whatsappProxyUrl: data.whatsappProxyUrl ? "***" : undefined,
+            businessPolicies: data.businessPolicies ? "[configured]" : undefined,
         });
 
         // Upsert the first record (we assume single tenant for now)

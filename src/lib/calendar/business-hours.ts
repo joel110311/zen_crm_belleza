@@ -1,7 +1,6 @@
 export const DEFAULT_BUSINESS_TIME_ZONE = "America/Mexico_City";
 export const DEFAULT_BUSINESS_HOURS_START = "09:00";
 export const DEFAULT_BUSINESS_HOURS_END = "18:00";
-export const DEFAULT_APPOINTMENT_DURATION_MINUTES = 30;
 
 export const BUSINESS_DAY_KEYS = [
     "monday",
@@ -39,7 +38,6 @@ type SettingsLike = {
     businessHoursStart?: string | null;
     businessHoursEnd?: string | null;
     businessTimeZone?: string | null;
-    appointmentDurationMinutes?: number | null;
     businessWeeklySchedule?: unknown;
 };
 
@@ -55,7 +53,6 @@ export type BusinessHoursConfig = {
     start: string;
     end: string;
     timeZone: string;
-    defaultDurationMinutes: number;
     weeklySchedule: BusinessWeeklySchedule;
 };
 
@@ -184,15 +181,10 @@ export function normalizeBusinessHours(settings?: SettingsLike | null): Business
         fallbackEnd,
     );
     const summaryRange = deriveSummaryRange(weeklySchedule);
-    const safeDuration = Number.isFinite(settings?.appointmentDurationMinutes)
-        ? Math.min(Math.max(Math.round(settings?.appointmentDurationMinutes || DEFAULT_APPOINTMENT_DURATION_MINUTES), 15), 180)
-        : DEFAULT_APPOINTMENT_DURATION_MINUTES;
-
     return {
         start: summaryRange.start,
         end: summaryRange.end,
         timeZone: settings?.businessTimeZone?.trim() || DEFAULT_BUSINESS_TIME_ZONE,
-        defaultDurationMinutes: safeDuration,
         weeklySchedule,
     };
 }

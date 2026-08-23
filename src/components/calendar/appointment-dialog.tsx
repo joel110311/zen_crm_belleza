@@ -275,7 +275,7 @@ export function AppointmentDialog({
             setPatientId(initialPatientId);
             setDate(nextDate);
             setTime(clampTimeToSchedule(localTimeInputValue(selectedSlot.start), nextDate));
-            setDuration(String(businessHours.defaultDurationMinutes));
+            setDuration("30");
             setNotes("");
             setSelectedSpecialistId(defaultSpecialistId || "none");
             setSelectedServiceId("none");
@@ -296,7 +296,7 @@ export function AppointmentDialog({
         setPatientId(initialPatientId);
         setDate(nextOpenDate);
         setTime(clampTimeToSchedule(businessHours.start, nextOpenDate));
-        setDuration(String(businessHours.defaultDurationMinutes));
+        setDuration("30");
         setNotes("");
         setSelectedSpecialistId(defaultSpecialistId || "none");
         setSelectedServiceId("none");

@@ -24,17 +24,41 @@ import {
     shiftDateKey,
     zonedDateTimeToUtc,
 } from "@/lib/calendar/business-hours";
-import { getContactFullName } from "@/lib/contact-name";
 
 type PlannerResult = {
     intent: "schedule" | "other";
     action: "create" | "ask_missing" | "ignore";
+    serviceId?: string | null;
     title?: string | null;
     notes?: string | null;
     localDate?: string | null;
     localTime?: string | null;
-    durationMinutes?: number | null;
     missingFields?: string[];
+};
+
+type BookingCatalogService = {
+    id: string;
+    name: string;
+    description: string | null;
+    durationMinutes: number;
+    price: number;
+    currency: string;
+    category: { name: string };
+    specialists: Array<{
+        specialist: {
+            id: string;
+            name: string;
+            displayName: string | null;
+            googleCalendarSource: { calendarId: string } | null;
+        };
+    }>;
+};
+
+type BookingSpecialist = {
+    id: string;
+    name: string;
+    displayName: string | null;
+    googleCalendarSource: { calendarId: string } | null;
 };
 
 type ReschedulePlannerResult = {
@@ -87,6 +111,9 @@ const APPOINTMENT_FOLLOW_UP_PROMPTS = [
     /\b(horarios?)\b.{0,60}\b(disponibles?|libres?)\b/i,
     /\b(mañana|manana|tarde)\b.{0,80}\b(disponibilidad|agenda|horario)\b/i,
     /\b(confirmar|confirma|confirmame|confírmame)\b.{0,60}\b(fecha exacta|fecha|dia|día)\b/i,
+    /\b(que|qué|cual|cuál)\b.{0,30}\bservicio\b.{0,40}\b(deseas|quieres|buscas|necesitas)\b/i,
+    /\bdime\b.{0,25}\bservicio\b/i,
+    /\b(con quien|con quién|profesional|especialista)\b.{0,50}\b(prefieres|deseas|quieres|cita)\b/i,
 ];
 
 const EVENT_OR_QUOTE_CONTEXT_PATTERNS = [
@@ -205,6 +232,47 @@ function hasAppointmentContext(
     // ("si", "ese horario" o una transcripcion de audio como "a la una").
     // El planificador decide despues si realmente contienen una confirmacion.
     return looksLikeDateOrTimeAnswer(latestUserMessage) || latestUserMessage.trim().length <= 160;
+}
+
+function normalizeCatalogText(value: string) {
+    return value
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLocaleLowerCase("es-MX")
+        .replace(/[^a-z0-9]+/g, " ")
+        .trim();
+}
+
+function resolveCatalogService(
+    planner: PlannerResult,
+    services: BookingCatalogService[],
+    conversationText: string,
+) {
+    const byPlannerId = planner.serviceId
+        ? services.find((service) => service.id === planner.serviceId)
+        : null;
+    if (byPlannerId) return byPlannerId;
+
+    const normalizedConversation = normalizeCatalogText(conversationText);
+    const exactNameMatches = services.filter((service) => {
+        const normalizedName = normalizeCatalogText(service.name);
+        return normalizedName.length >= 3 && normalizedConversation.includes(normalizedName);
+    });
+
+    if (exactNameMatches.length === 1) return exactNameMatches[0];
+    if (services.length === 1) return services[0];
+    return null;
+}
+
+function findSpecialistByMention(text: string, specialists: BookingSpecialist[]) {
+    const normalizedText = normalizeCatalogText(text);
+    return specialists.find((specialist) => {
+        const names = [specialist.name, specialist.displayName]
+            .filter((value): value is string => Boolean(value))
+            .map(normalizeCatalogText)
+            .filter(Boolean);
+        return names.some((name) => normalizedText.includes(name));
+    }) || null;
 }
 
 function hasAppointmentRescheduleIntent(text: string) {
@@ -819,6 +887,26 @@ function buildSpecialistReply(
     ].join("\n");
 }
 
+function buildServiceReply(services: BookingCatalogService[]) {
+    if (services.length === 0) {
+        return [
+            "*Todavia no hay servicios activos disponibles para agendar.*",
+            "",
+            "Necesito apoyo del negocio para continuar con tu cita.",
+        ].join("\n");
+    }
+    const visibleServices = services.slice(0, 8).map((service) => `- ${service.name}`);
+    return [
+        "*Antes de revisar horarios necesito identificar el servicio.*",
+        "",
+        "Dime cual de estos servicios deseas:",
+        ...visibleServices,
+        ...(services.length > visibleServices.length
+            ? ["- O escribe el nombre del servicio que buscas"]
+            : []),
+    ].join("\n");
+}
+
 function buildSuccessReply(
     title: string,
     startTime: Date,
@@ -898,7 +986,7 @@ async function planAppointmentFromConversation(
     conversationId: string,
     latestUserMessage: string,
 ) {
-    const [conversation, config] = await Promise.all([
+    const [conversation, config, services, activeSpecialists] = await Promise.all([
         prisma.conversation.findUnique({
             where: { id: conversationId },
             include: {
@@ -910,6 +998,42 @@ async function planAppointmentFromConversation(
             },
         }),
         getBusinessHoursConfig(),
+        prisma.service.findMany({
+            where: { isActive: true, category: { isActive: true } },
+            orderBy: [{ isFeatured: "desc" }, { sortOrder: "asc" }, { name: "asc" }],
+            select: {
+                id: true,
+                name: true,
+                description: true,
+                durationMinutes: true,
+                price: true,
+                currency: true,
+                category: { select: { name: true } },
+                specialists: {
+                    where: { specialist: { isActive: true } },
+                    select: {
+                        specialist: {
+                            select: {
+                                id: true,
+                                name: true,
+                                displayName: true,
+                                googleCalendarSource: { select: { calendarId: true } },
+                            },
+                        },
+                    },
+                },
+            },
+        }),
+        prisma.specialist.findMany({
+            where: { isActive: true },
+            orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+            select: {
+                id: true,
+                name: true,
+                displayName: true,
+                googleCalendarSource: { select: { calendarId: true } },
+            },
+        }),
     ]);
 
     if (!conversation) {
@@ -943,11 +1067,11 @@ Devuelve SOLO JSON valido, sin markdown, con esta forma exacta:
 {
   "intent": "schedule" | "other",
   "action": "create" | "ask_missing" | "ignore",
+  "serviceId": string | null,
   "title": string | null,
   "notes": string | null,
   "localDate": "YYYY-MM-DD" | null,
   "localTime": "HH:mm" | null,
-  "durationMinutes": number | null,
   "missingFields": string[]
 }
 
@@ -958,6 +1082,14 @@ CONTEXTO
 - Horario comercial por dia:
 ${formatBusinessScheduleLines(config)}
 - Nombre del cliente: ${conversation.contact?.name || "Sin nombre"}
+- Servicios activos (usa solamente uno de estos IDs):
+${JSON.stringify(services.map((service) => ({
+        id: service.id,
+        name: service.name,
+        category: service.category.name,
+        description: service.description,
+        durationMinutes: service.durationMinutes,
+    })))}
 
 REGLAS
 - Usa el historial para resolver mensajes como "manana a las 3" o "si, a esa hora".
@@ -968,11 +1100,12 @@ REGLAS
 - Si el asistente pregunto "que fecha es tu evento" o pidio datos para cotizar, una respuesta como "17 de octubre" NO debe activar agenda.
 - No niegues atencion por calendario salvo que el cliente haya pedido claramente agendar/ser atendido en una fecha u horario.
 - Si falta fecha o falta hora, usa action = "ask_missing".
+- Identifica el servicio solicitado usando el historial completo y devuelve exactamente su serviceId.
+- Nunca inventes un serviceId. Si el servicio no esta claro, serviceId debe ser null, action = "ask_missing" y agrega "service" a missingFields.
 - Si menciona un dia pero no una hora, localDate debe tener ese dia y localTime debe ser null.
 - Si menciona una hora pero no un dia, localTime debe tener esa hora y localDate debe ser null.
 - Si no hay intencion clara de cita, usa intent = "other" y action = "ignore".
-- Si no mencionan duracion, deja durationMinutes en null.
-- El titulo debe ser corto y util.
+- El titulo debe ser el nombre del servicio identificado; no inventes otro servicio.
 - No inventes fecha ni hora si no se pueden deducir con seguridad.
 - No trates el horario comercial como disponibilidad real; la disponibilidad se valida despues con calendario.
 
@@ -991,6 +1124,8 @@ Cliente: ${latestUserMessage}
     return {
         conversation,
         config,
+        services,
+        activeSpecialists,
         planner: parsePlannerResult(raw || ""),
         ambiguousDate,
     };
@@ -1026,7 +1161,7 @@ export async function maybeHandleAppointmentBooking(
         return { kind: "none", reply: null };
     }
 
-    const { planner, conversation, config } = planned;
+    const { planner, conversation, config, services, activeSpecialists } = planned;
     if (planned.ambiguousDate) {
         return {
             kind: "missing",
@@ -1037,22 +1172,53 @@ export async function maybeHandleAppointmentBooking(
             ),
         };
     }
-    const durationMinutes = Math.min(
-        Math.max(planner.durationMinutes || config.defaultDurationMinutes, 15),
-        180,
-    );
-    const bookingContext = await getGoogleCalendarBookingContext();
+    if (planner.action === "ignore") {
+        return { kind: "none", reply: null };
+    }
     const specialistContextText = [
         latestUserMessage,
         ...conversation.messages.map((message) => message.content),
     ].join("\n");
-    let selectedSpecialist = await findGoogleSpecialistByMention(specialistContextText);
+    const selectedService = resolveCatalogService(planner, services, specialistContextText);
+    if (!selectedService) {
+        return {
+            kind: "missing",
+            reply: buildServiceReply(services),
+        };
+    }
+    const durationMinutes = Math.min(Math.max(selectedService.durationMinutes, 5), 480);
+    const bookingContext = await getGoogleCalendarBookingContext();
+    const assignedSpecialists = selectedService.specialists.map((entry) => entry.specialist);
+    const eligibleSpecialists = assignedSpecialists.length > 0
+        ? assignedSpecialists
+        : activeSpecialists;
+    let selectedCrmSpecialist = findSpecialistByMention(specialistContextText, eligibleSpecialists);
 
-    if (!selectedSpecialist && bookingContext.specialists.length === 1) {
+    if (!selectedCrmSpecialist && eligibleSpecialists.length === 1) {
+        selectedCrmSpecialist = eligibleSpecialists[0];
+    }
+
+    if (!selectedCrmSpecialist && eligibleSpecialists.length > 1) {
+        return {
+            kind: "missing",
+            reply: buildSpecialistReply(eligibleSpecialists.map((specialist) => ({
+                specialistName: specialist.displayName || specialist.name,
+                summary: specialist.displayName || specialist.name,
+            }))),
+        };
+    }
+
+    let selectedSpecialist = selectedCrmSpecialist?.googleCalendarSource?.calendarId
+        ? bookingContext.allSources.find((source) =>
+            source.calendarId === selectedCrmSpecialist?.googleCalendarSource?.calendarId,
+        ) || null
+        : await findGoogleSpecialistByMention(specialistContextText);
+
+    if (!selectedCrmSpecialist && !selectedSpecialist && bookingContext.specialists.length === 1) {
         selectedSpecialist = bookingContext.specialists[0];
     }
 
-    if (!selectedSpecialist && bookingContext.specialists.length > 1) {
+    if (!selectedCrmSpecialist && !selectedSpecialist && bookingContext.specialists.length > 1) {
         return {
             kind: "missing",
             reply: buildSpecialistReply(bookingContext.specialists),
@@ -1073,6 +1239,7 @@ export async function maybeHandleAppointmentBooking(
                 config,
                 {
                     calendarIds: blockingCalendarIds,
+                    specialistId: selectedCrmSpecialist?.id,
                     limit: 6,
                     slotHoldOwnerKey: conversation.id,
                 },
@@ -1090,16 +1257,10 @@ export async function maybeHandleAppointmentBooking(
         };
     }
 
-    if (planner.action === "ignore") {
-        return { kind: "none", reply: null };
-    }
-
     try {
         const startTime = zonedDateTimeToUtc(planner.localDate, planner.localTime, config.timeZone);
         const endTime = new Date(startTime.getTime() + durationMinutes * 60 * 1000);
-        const title =
-            planner.title?.trim() ||
-            `Cita con ${getContactFullName(conversation.contact, conversation.contact?.phone || "cliente")}`;
+        const title = selectedService.name;
 
         if (mode === "validate") {
             await validateManagedAppointment({
@@ -1107,6 +1268,7 @@ export async function maybeHandleAppointmentBooking(
                 endTime,
                 googleCalendarId: targetCalendar?.calendarId || undefined,
                 blockingCalendarIds,
+                specialistId: selectedCrmSpecialist?.id,
                 slotHoldOwnerKey: conversation.id,
             });
 
@@ -1131,11 +1293,23 @@ export async function maybeHandleAppointmentBooking(
             endTime,
             notes: planner.notes?.trim() || latestUserMessage,
             contactId: conversation.contactId,
+            specialistId: selectedCrmSpecialist?.id,
+            serviceId: selectedService.id,
             userId: conversation.assignedUserId || undefined,
+            appointmentType: selectedService.name,
+            source: "whatsapp",
+            paymentStatus: selectedService.price > 0 ? "pending" : "unpaid",
+            paymentAmount: selectedService.price,
+            paymentCurrency: selectedService.currency,
             googleCalendarId: targetCalendar?.calendarId || undefined,
             googleCalendarName: targetCalendar?.summary || undefined,
             googleCalendarColor: targetCalendar?.backgroundColor || undefined,
-            specialistName: selectedSpecialist?.specialistName || selectedSpecialist?.summary || undefined,
+            specialistName:
+                selectedCrmSpecialist?.displayName ||
+                selectedCrmSpecialist?.name ||
+                selectedSpecialist?.specialistName ||
+                selectedSpecialist?.summary ||
+                undefined,
             blockingCalendarIds,
             slotHoldOwnerKey: conversation.id,
         });
@@ -1150,7 +1324,11 @@ export async function maybeHandleAppointmentBooking(
                 startTime,
                 durationMinutes,
                 config.timeZone,
-                selectedSpecialist?.specialistName || selectedSpecialist?.summary || null,
+                selectedCrmSpecialist?.displayName ||
+                    selectedCrmSpecialist?.name ||
+                    selectedSpecialist?.specialistName ||
+                    selectedSpecialist?.summary ||
+                    null,
             ),
         };
     } catch (error) {

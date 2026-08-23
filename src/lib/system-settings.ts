@@ -2,7 +2,6 @@ import { prisma } from "@/lib/db";
 import type { SystemSettings } from "@prisma/client";
 import { DEFAULT_CHAT_MODEL_ID } from "@/lib/ai/models";
 import {
-    DEFAULT_APPOINTMENT_DURATION_MINUTES,
     DEFAULT_BUSINESS_HOURS_END,
     DEFAULT_BUSINESS_HOURS_START,
     DEFAULT_BUSINESS_TIME_ZONE,
@@ -10,6 +9,8 @@ import {
 } from "@/lib/calendar/business-hours";
 import { getOperationCountry } from "@/lib/operation-context";
 import { DEFAULT_BRAND_NAME } from "@/lib/branding";
+import { DEFAULT_BEAUTY_AGENT_PROMPT } from "@/lib/ai/default-agent-prompt";
+import { EMPTY_BUSINESS_POLICIES } from "@/lib/ai/business-policies";
 
 const DEFAULT_COUNTRY = getOperationCountry("MX");
 
@@ -30,10 +31,7 @@ export const SYSTEM_SETTINGS_DEFAULTS = {
     whatsappProxyEnabled: process.env.WHATSAPP_PROXY_ENABLED === "true",
     whatsappProxyUrl: process.env.WHATSAPP_PROXY_URL || "",
     agentName: "Asistente Zen",
-    agentPrompt: `Eres un asistente de WhatsApp para un CRM. Responde siempre en español claro, breve y profesional.
-Usa el contexto recuperado cuando sea relevante.
-Si no encuentras una respuesta fiable en la base de conocimiento, dilo con honestidad y pide el dato faltante.
-Cuando detectes intencion comercial o de seguimiento, guia la conversacion hacia el siguiente paso util.`,
+    agentPrompt: DEFAULT_BEAUTY_AGENT_PROMPT,
     welcomeMessage: `👋 ¡Hola! Gracias por contactarnos.\n\n¿En qué te podemos ayudar hoy?`,
     welcomeRepeatHours: 24,
     agentTemperature: 0.3,
@@ -52,7 +50,7 @@ Cuando detectes intencion comercial o de seguimiento, guia la conversacion hacia
         DEFAULT_BUSINESS_HOURS_END,
         true,
     ),
-    appointmentDurationMinutes: DEFAULT_APPOINTMENT_DURATION_MINUTES,
+    businessPolicies: EMPTY_BUSINESS_POLICIES,
     brandName: DEFAULT_BRAND_NAME,
     brandLogoUrl: "",
     brandFaviconUrl: "",

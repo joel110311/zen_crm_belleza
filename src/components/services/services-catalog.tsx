@@ -11,12 +11,10 @@ import {
     Pencil,
     Plus,
     Scissors,
-    Sparkles,
     Star,
     Trash2,
     Upload,
     UserRound,
-    UsersRound,
 } from "lucide-react";
 import {
     deleteService,
@@ -134,7 +132,6 @@ export function ServicesCatalog({ initialData }: { initialData: CatalogPayload }
     const [categoryForm, setCategoryForm] = useState<CategoryForm>(EMPTY_CATEGORY_FORM);
 
     const services = useMemo(() => initialData.categories.flatMap((category) => category.services), [initialData.categories]);
-    const activeServiceCount = services.filter((service) => service.isActive).length;
 
     const refresh = () => startTransition(() => router.refresh());
 
@@ -228,12 +225,6 @@ export function ServicesCatalog({ initialData }: { initialData: CatalogPayload }
                         <Plus className="mr-2 h-4 w-4" /> Añadir servicio
                     </Button>
                 </div>
-
-                <div className="mt-4 grid gap-2 sm:grid-cols-3">
-                    <SummaryCard label="Servicios activos" value={activeServiceCount} icon={Sparkles} />
-                    <SummaryCard label="Categorías" value={initialData.categories.length} icon={FolderPlus} />
-                    <SummaryCard label="Especialistas" value={initialData.specialists.filter((entry) => entry.isActive).length} icon={UsersRound} />
-                </div>
             </div>
 
             <Tabs value={activeTab} onValueChange={setActiveTab} className="min-h-0 flex-1 overflow-hidden px-5 pt-4">
@@ -246,7 +237,7 @@ export function ServicesCatalog({ initialData }: { initialData: CatalogPayload }
                     {services.length === 0 ? (
                         <EmptyState title="Todavía no hay servicios" description="Crea el primero con precio, duración y profesionales asignados." actionLabel="Añadir servicio" onAction={openNewService} />
                     ) : (
-                        <div className="space-y-6">
+                        <div className="space-y-4">
                             {initialData.categories.map((category) => category.services.length > 0 ? (
                                 <section key={category.id}>
                                     <div className="mb-2 flex items-center gap-2">
@@ -254,7 +245,7 @@ export function ServicesCatalog({ initialData }: { initialData: CatalogPayload }
                                         <h2 className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">{category.name}</h2>
                                         {!category.isActive ? <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">Oculta</span> : null}
                                     </div>
-                                    <div className="grid gap-3 xl:grid-cols-2 2xl:grid-cols-3">
+                                    <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
                                         {category.services.map((service) => (
                                             <ServiceCard
                                                 key={service.id}
@@ -327,46 +318,46 @@ export function ServicesCatalog({ initialData }: { initialData: CatalogPayload }
     );
 }
 
-function SummaryCard({ label, value, icon: Icon }: { label: string; value: number; icon: typeof Sparkles }) {
-    return <div className="flex items-center gap-3 rounded-xl border border-border bg-background px-3 py-2.5"><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary"><Icon className="h-4 w-4" /></span><div><p className="text-lg font-bold leading-none">{value}</p><p className="mt-1 text-xs text-muted-foreground">{label}</p></div></div>;
-}
-
 function ServiceCard({ service, pending, onEdit, onDelete, onFeaturedChange, onActiveChange }: { service: Service; pending: boolean; onEdit: () => void; onDelete: () => void; onFeaturedChange: (value: boolean) => void; onActiveChange: (value: boolean) => void }) {
+    const assignedSpecialist = service.specialists[0]?.specialist;
+    const remainingSpecialists = Math.max(0, service.specialists.length - 1);
+    const specialistNames = service.specialists
+        .map(({ specialist }) => specialist.displayName || specialist.name)
+        .join(", ");
+
     return (
-        <article className={cn("rounded-xl border bg-background p-4 shadow-sm transition-shadow hover:shadow-md", !service.isActive && "opacity-65")}>
-            <div className="flex items-start justify-between gap-3">
+        <article className={cn("rounded-xl border bg-background p-2.5 shadow-sm transition-shadow hover:shadow-md", !service.isActive && "opacity-65")}>
+            <div className="flex min-w-0 items-start gap-2.5">
                 {service.imageUrl ? (
-                    <img src={service.imageUrl} alt="" className="h-16 w-16 shrink-0 rounded-xl border object-cover" />
+                    <img src={service.imageUrl} alt="" className="h-10 w-10 shrink-0 rounded-lg border object-cover" />
                 ) : (
-                    <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl border bg-muted/35 text-muted-foreground">
-                        <ImageIcon className="h-6 w-6" />
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border bg-muted/35 text-muted-foreground">
+                        <ImageIcon className="h-4 w-4" />
                     </span>
                 )}
                 <div className="min-w-0 flex-1">
-                    <h3 className="truncate font-semibold text-foreground">{service.name}</h3>
-                    <p className="mt-1 line-clamp-2 min-h-10 text-sm text-muted-foreground">{service.description || "Sin descripción"}</p>
+                    <h3 className="truncate text-sm font-semibold leading-5 text-foreground">{service.name}</h3>
+                    <p className="truncate text-xs leading-4 text-muted-foreground" title={service.description || "Sin descripción"}>{service.description || "Sin descripción"}</p>
                 </div>
-                <button type="button" onClick={() => onFeaturedChange(!service.isFeatured)} disabled={pending} className={cn("rounded-lg p-1.5", service.isFeatured ? "text-amber-500" : "text-muted-foreground hover:text-amber-500")} aria-label={service.isFeatured ? "Quitar de destacados" : "Marcar como destacado"}><Star className={cn("h-5 w-5", service.isFeatured && "fill-current")} /></button>
+                <button type="button" onClick={() => onFeaturedChange(!service.isFeatured)} disabled={pending} className={cn("shrink-0 rounded-md p-1", service.isFeatured ? "text-amber-500" : "text-muted-foreground hover:text-amber-500")} aria-label={service.isFeatured ? "Quitar de destacados" : "Marcar como destacado"}><Star className={cn("h-4 w-4", service.isFeatured && "fill-current")} /></button>
             </div>
-            <div className="mt-3 flex items-center justify-between border-y border-border py-3">
-                <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground"><Clock3 className="h-4 w-4" /> {service.durationMinutes} min</span>
+            <div className="mt-2 flex min-w-0 items-center gap-2 border-t border-border pt-2">
+                <span className="inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground"><Clock3 className="h-3.5 w-3.5" /> {service.durationMinutes} min</span>
                 {service.showPrice ? (
-                    <span className="font-bold text-foreground">{formatMoney(service.price, service.currency)}</span>
+                    <span className="shrink-0 text-sm font-bold text-foreground">{formatMoney(service.price, service.currency)}</span>
                 ) : (
-                    <span className="rounded-full bg-muted px-2 py-1 text-xs font-medium text-muted-foreground">Precio oculto en portal</span>
+                    <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">Precio oculto</span>
                 )}
-            </div>
-            <div className="mt-3">
-                <p className="mb-2 text-xs font-medium text-muted-foreground">Profesionales asignados</p>
-                <div className="flex min-h-7 flex-wrap gap-1.5">
-                    {service.specialists.length > 0 ? service.specialists.map(({ specialist }) => (
-                        <span key={specialist.id} className="inline-flex items-center gap-1 rounded-full border border-primary/15 bg-primary/10 px-2 py-1 text-xs font-medium text-primary"><UserRound className="h-3 w-3" />{specialist.displayName || specialist.name}</span>
-                    )) : <span className="rounded-full bg-muted px-2 py-1 text-xs text-muted-foreground">Cualquier profesional</span>}
-                </div>
-            </div>
-            <div className="mt-4 flex items-center justify-between border-t border-border pt-3">
-                <label className="flex items-center gap-2 text-xs text-muted-foreground"><Switch size="sm" checked={service.isActive} onCheckedChange={onActiveChange} disabled={pending} />{service.isActive ? "Activo" : "Oculto"}</label>
-                <div className="flex gap-1"><Button variant="ghost" size="icon" className="h-8 w-8" onClick={onEdit} aria-label={`Editar servicio ${service.name}`}><Pencil className="h-4 w-4" /></Button><Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={onDelete} aria-label={`Eliminar servicio ${service.name}`}><Trash2 className="h-4 w-4" /></Button></div>
+                <span
+                    className="ml-auto inline-flex min-w-0 items-center gap-1 rounded-full bg-primary/8 px-1.5 py-0.5 text-[10px] font-medium text-primary"
+                    title={specialistNames || "Cualquier profesional"}
+                >
+                    <UserRound className="h-3 w-3 shrink-0" />
+                    <span className="max-w-28 truncate">{assignedSpecialist ? (assignedSpecialist.displayName || assignedSpecialist.name) : "Cualquier profesional"}</span>
+                    {remainingSpecialists > 0 ? <span className="shrink-0">+{remainingSpecialists}</span> : null}
+                </span>
+                <label className="ml-0.5 flex shrink-0 items-center" title={service.isActive ? "Servicio activo" : "Servicio oculto"}><Switch size="sm" checked={service.isActive} onCheckedChange={onActiveChange} disabled={pending} /><span className="sr-only">{service.isActive ? "Activo" : "Oculto"}</span></label>
+                <div className="flex shrink-0 gap-0.5"><Button variant="ghost" size="icon" className="h-7 w-7" onClick={onEdit} aria-label={`Editar servicio ${service.name}`}><Pencil className="h-3.5 w-3.5" /></Button><Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={onDelete} aria-label={`Eliminar servicio ${service.name}`}><Trash2 className="h-3.5 w-3.5" /></Button></div>
             </div>
         </article>
     );

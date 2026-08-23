@@ -13,10 +13,12 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { KnowledgeBase } from "@/components/brain/knowledge-base";
+import { AssistantPlayground } from "@/components/brain/assistant-playground";
 import { PhonePrefixInput } from "@/components/shared/phone-prefix-input";
 import { getSystemSettings, updateSystemSettings } from "@/app/actions/settings";
 import { useToast } from "@/components/ui/use-toast";
 import { normalizeChatModelSelection, resolveChatModelSelection, SUPPORTED_CHAT_MODELS } from "@/lib/ai/models";
+import { DEFAULT_BEAUTY_AGENT_PROMPT } from "@/lib/ai/default-agent-prompt";
 import {
     BUSINESS_DAY_KEYS,
     BUSINESS_DAY_LABELS,
@@ -42,7 +44,6 @@ export default function BrainConfigPage() {
     const [businessWeeklySchedule, setBusinessWeeklySchedule] = useState<BusinessWeeklySchedule>(
         () => normalizeBusinessHours().weeklySchedule,
     );
-    const [appointmentDurationMinutes, setAppointmentDurationMinutes] = useState("30");
     const [leadScoringEnabled, setLeadScoringEnabled] = useState(true);
     const [captureLeadName, setCaptureLeadName] = useState(false);
     const [captureLeadEmail, setCaptureLeadEmail] = useState(false);
@@ -60,8 +61,7 @@ export default function BrainConfigPage() {
                     setIsBotEnabled(settings.isBotEnabled);
                     setAgentName(settings.agentName || "Asistente Zen");
                     setAgentPrompt(
-                        settings.agentPrompt ||
-                            "Eres un asistente comercial y de soporte que responde por WhatsApp desde un CRM. Responde en español, con claridad y sin inventar informacion.",
+                        settings.agentPrompt || DEFAULT_BEAUTY_AGENT_PROMPT,
                     );
                     setWelcomeMessage(
                         settings.welcomeMessage ||
@@ -76,7 +76,6 @@ export default function BrainConfigPage() {
                     setTemperature([settings.agentTemperature || 0.3]);
                     setBusinessTimeZone(businessHours.timeZone || "America/Mexico_City");
                     setBusinessWeeklySchedule(businessHours.weeklySchedule);
-                    setAppointmentDurationMinutes(String(settings.appointmentDurationMinutes || 30));
                     setLeadScoringEnabled(settings.leadScoringEnabled ?? true);
                     setCaptureLeadName(settings.captureLeadName ?? false);
                     setCaptureLeadEmail(settings.captureLeadEmail ?? false);
@@ -112,7 +111,6 @@ export default function BrainConfigPage() {
         try {
             const normalizedBusinessHours = normalizeBusinessHours({
                 businessTimeZone,
-                appointmentDurationMinutes: Number(appointmentDurationMinutes) || 30,
                 businessWeeklySchedule,
             });
             const result = await updateSystemSettings({
@@ -131,7 +129,6 @@ export default function BrainConfigPage() {
                 businessHoursEnd: normalizedBusinessHours.end,
                 businessTimeZone: normalizedBusinessHours.timeZone,
                 businessWeeklySchedule: normalizedBusinessHours.weeklySchedule,
-                appointmentDurationMinutes: Number(appointmentDurationMinutes) || 30,
                 leadScoringEnabled,
                 captureLeadName,
                 captureLeadEmail,
@@ -175,7 +172,6 @@ export default function BrainConfigPage() {
     const selectedModel = resolveChatModelSelection(openaiModel);
     const currentBusinessHours = normalizeBusinessHours({
         businessTimeZone,
-        appointmentDurationMinutes: Number(appointmentDurationMinutes) || 30,
         businessWeeklySchedule,
     });
     return (
@@ -200,9 +196,10 @@ export default function BrainConfigPage() {
             </div>
 
             <Tabs defaultValue="config" className="flex-1">
-                <TabsList className="grid h-auto w-full max-w-[380px] grid-cols-2 gap-2 rounded-xl border bg-card p-1.5 shadow-[0_12px_24px_-20px_rgba(15,23,42,0.22)]">
+                <TabsList className="grid h-auto w-full max-w-[560px] grid-cols-3 gap-2 rounded-xl border bg-card p-1.5 shadow-[0_12px_24px_-20px_rgba(15,23,42,0.22)]">
                     <TabsTrigger value="config" className="min-w-0 h-10 rounded-lg border border-transparent bg-background px-2 text-[13px] font-semibold leading-tight text-foreground/75 data-[state=active]:border-primary/30 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-[0_14px_28px_-18px_rgba(37,99,235,0.72)] sm:h-11 sm:px-4 sm:text-sm">Configuracion</TabsTrigger>
                     <TabsTrigger value="knowledge" className="min-w-0 h-10 rounded-lg border border-transparent bg-background px-2 text-[13px] font-semibold leading-tight text-foreground/75 data-[state=active]:border-primary/30 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-[0_14px_28px_-18px_rgba(37,99,235,0.72)] sm:h-11 sm:px-4 sm:text-sm">Conocimiento</TabsTrigger>
+                    <TabsTrigger value="test" className="min-w-0 h-10 rounded-lg border border-transparent bg-background px-2 text-[13px] font-semibold leading-tight text-foreground/75 data-[state=active]:border-primary/30 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-[0_14px_28px_-18px_rgba(37,99,235,0.72)] sm:h-11 sm:px-4 sm:text-sm">Probar agente</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="config" className="mt-4 space-y-5 sm:mt-5">
@@ -285,13 +282,16 @@ export default function BrainConfigPage() {
                                     <Input value={agentName} onChange={(event) => setAgentName(event.target.value)} />
                                 </div>
                                 <div className="space-y-2">
-                                    <Label>Prompt principal</Label>
+                                    <Label>Personalidad e instrucciones adicionales</Label>
                                     <Textarea
                                         value={agentPrompt}
                                         onChange={(event) => setAgentPrompt(event.target.value)}
-                                        className="min-h-[220px] font-mono text-sm"
-                                        placeholder="Describe tono, objetivos, restricciones y la forma de responder."
+                                        className="min-h-[180px] text-sm"
+                                        placeholder="Opcional: indica el tono, forma de hablar o reglas especiales de atención."
                                     />
+                                    <p className="text-xs leading-5 text-muted-foreground">
+                                        No necesitas pegar aquí el catálogo, precios, duración, horarios ni profesionales. El asistente los obtiene automáticamente de Mi Negocio y Servicios.
+                                    </p>
                                 </div>
                             </CardContent>
                         </Card>
@@ -615,22 +615,6 @@ export default function BrainConfigPage() {
                             </div>
 
                             <div className="space-y-4">
-                                <div className="space-y-2">
-                                    <Label>Duracion por defecto de la cita (minutos)</Label>
-                                    <Select value={appointmentDurationMinutes} onValueChange={setAppointmentDurationMinutes}>
-                                        <SelectTrigger className="w-full">
-                                            <SelectValue placeholder="Selecciona una duracion" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="15">15 minutos</SelectItem>
-                                            <SelectItem value="30">30 minutos</SelectItem>
-                                            <SelectItem value="45">45 minutos</SelectItem>
-                                            <SelectItem value="60">60 minutos</SelectItem>
-                                            <SelectItem value="90">90 minutos</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-
                                 <div className="rounded-xl border bg-background px-4 py-4 text-sm text-muted-foreground space-y-2">
                                     <p className="font-medium text-foreground">Resumen actual</p>
                                     <p>{formatBusinessScheduleSummary(currentBusinessHours)}</p>
@@ -650,6 +634,10 @@ export default function BrainConfigPage() {
 
                 <TabsContent value="knowledge" className="mt-4 sm:mt-6">
                     <KnowledgeBase />
+                </TabsContent>
+
+                <TabsContent value="test" className="mt-4 sm:mt-6">
+                    <AssistantPlayground />
                 </TabsContent>
             </Tabs>
         </div>

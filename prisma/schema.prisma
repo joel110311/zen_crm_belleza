@@ -914,7 +914,7 @@ model SystemSettings {
   businessHoursEnd                     String                 @default("18:00")
   businessTimeZone                     String                 @default("America/Mexico_City")
   businessWeeklySchedule               Json?
-  appointmentDurationMinutes           Int                    @default(30)
+  businessPolicies                     Json?
   brandName                            String?                @default("Zen CRM Belleza")
   brandLogoUrl                         String?
   brandFaviconUrl                      String?

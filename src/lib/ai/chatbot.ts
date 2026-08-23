@@ -2,10 +2,43 @@ import type OpenAI from "openai";
 import { prisma } from "@/lib/db";
 import { generateCompletion } from "@/lib/ai/openai";
 import { buildKnowledgeContext } from "@/lib/brain/knowledge";
-import { getSystemSettingsOrDefaults } from "@/lib/system-settings";
+import { getSystemSettingsOrDefaults, type AppSystemSettings } from "@/lib/system-settings";
 import { formatBusinessScheduleLines, normalizeBusinessHours } from "@/lib/calendar/business-hours";
 import { getContactFullName } from "@/lib/contact-name";
-import { resolvePhoneLadaContext } from "@/lib/phone";
+import { buildBeautyBusinessContext } from "@/lib/ai/beauty-business-context";
+
+type AssistantHistoryEntry = {
+    content: string;
+    direction: string;
+    senderType: string | null;
+};
+
+type AssistantIdentityContext = {
+    contactName: string;
+    contactPhone: string;
+    contactCompany: string;
+    contactStatus: string;
+    advisorName: string;
+    advisorEmail: string;
+};
+
+export type AssistantPreviewMessage = {
+    role: "user" | "assistant";
+    content: string;
+};
+
+export type AssistantPreviewResult = {
+    reply: string;
+    trace: {
+        model: string;
+        structuredSources: string[];
+        knowledgeSources: Array<{
+            title: string;
+            uri: string | null;
+        }>;
+        operationalActionsExecuted: false;
+    };
+};
 
 function mapHistoryToMessages(
     history: Array<{
@@ -106,11 +139,7 @@ function stripUnverifiedAdvisorLines(
 }
 
 function buildKnowledgeLookupQuery(
-    history: Array<{
-        content: string;
-        direction: string;
-        senderType: string | null;
-    }>,
+    history: AssistantHistoryEntry[],
     latestUserMessage: string,
 ) {
     const recentInboundMessages = history
@@ -124,94 +153,140 @@ function buildKnowledgeLookupQuery(
         .join("\n");
 }
 
-function normalizeAmbiguousNumericToken(token: string) {
-    return token.replace(/[oO]/g, "0");
+function buildAssistantSystemPrompt(params: {
+    settings: AppSystemSettings;
+    businessContext: string;
+    businessScheduleLines: string;
+    businessTimeZone: string;
+    identity: AssistantIdentityContext;
+    knowledgeContext: string;
+    knowledgeSourceLines: string;
+    automationInstruction?: string | null;
+}) {
+    const {
+        settings,
+        businessContext,
+        businessScheduleLines,
+        businessTimeZone,
+        identity,
+        knowledgeContext,
+        knowledgeSourceLines,
+        automationInstruction,
+    } = params;
+
+    return `
+${settings.agentPrompt}
+
+${businessContext}
+
+IDENTIDAD DEL AGENTE
+- Nombre del agente o marca: ${settings.agentName || "Asistente Zen"}
+
+DATOS DEL CONTACTO
+- Nombre: ${identity.contactName}
+- Telefono: ${identity.contactPhone}
+- Empresa: ${identity.contactCompany}
+- Estado: ${identity.contactStatus}
+
+RESPONSABLE HUMANO VERIFICADO EN CRM
+- Nombre: ${identity.advisorName}
+- Email: ${identity.advisorEmail}
+
+REGLAS DE RESPUESTA
+- Responde siempre en espanol.
+- Se breve y util. Evita respuestas largas salvo que el usuario las pida.
+- Si el usuario pide algo que no esta en el contexto, dilo con honestidad.
+- Si el mensaje es ambiguo, haz una sola pregunta aclaratoria.
+- Si la conversacion apunta a venta o seguimiento, intenta cerrar con un siguiente paso concreto.
+- Si el usuario hace una pregunta de seguimiento como "si", "esas", "las casas", "ahi" o "de eso", usa el contexto inmediato de la conversacion para entender a que se refiere.
+- Si recibes una instruccion operativa adicional, siguela sin romper el hilo de la conversacion.
+- No cambies abruptamente a preguntas genericas si el usuario ya esta hablando de un tema concreto.
+- No repitas muletillas o frases de arranque como "Si, claro que si", salvo que realmente aporten algo.
+- No respondas mas de lo que el cliente pregunto si no hace falta.
+- Si no tienes informacion fiable o suficiente para responder, dilo con honestidad y avisa brevemente que vas a canalizar la conversacion con un asesor humano.
+- Si el usuario quiere una cita, ayuda a concretarla dentro del horario comercial del negocio.
+- Nunca afirmes que una cita fue registrada, agendada, confirmada, actualizada, reprogramada o cancelada. Esas confirmaciones solo las envia el modulo operativo despues de escribir el cambio en el calendario.
+- Al hablar de una cita usa siempre la fecha completa con dia, mes y año; no confirmes usando solamente expresiones relativas como "el proximo martes".
+- Nunca inventes ni calcules horarios libres a partir del horario comercial. Solo el modulo operativo puede ofrecer horas despues de consultar citas, bloqueos y retenciones vigentes en el calendario de la profesional elegida.
+- Si hay varias profesionales, pregunta con cual desea la cita y consulta unicamente la agenda de esa profesional.
+- Si solo existe una profesional activa, seleccionala automaticamente y no preguntes con quien desea atenderse.
+- Nunca inventes nombres, telefonos ni correos de asesores, ejecutivos o responsables.
+- Solo puedes mencionar un responsable humano si aparece en los DATOS VERIFICADOS DEL CRM.
+- Nunca inventes telefonos de personas del equipo. Si no existe un dato verificado, omitelo.
+- Nunca menciones al cliente acciones internas del negocio como alertas internas, correos internos, notificaciones al equipo o asuntos de correo.
+- Si el cliente pregunta con quien habla o quien le atiende, puedes usar el nombre del agente o marca indicado en IDENTIDAD DEL AGENTE.
+- Horario comercial por dia:
+${businessScheduleLines}
+- Zona horaria del negocio: ${businessTimeZone}
+- Formatea para WhatsApp: usa saltos de linea entre ideas, pasos, precios y cierre.
+- No amontones la informacion: usa parrafos cortos de 1 o 2 frases maximo.
+- Si enumeras beneficios, opciones o pasos, usa una lista simple con cada punto en su propia linea.
+- Para resaltar algo usa *negritas* con un solo asterisco. No uses **doble asterisco**, encabezados Markdown ni tablas.
+- Mantena un tono amable, profesional y claro. Usa pocos emojis y solo si aportan.
+
+CONTEXTO RAG
+${knowledgeContext || "No se recuperaron fuentes relevantes para esta consulta."}
+
+FUENTES ENCONTRADAS
+${knowledgeSourceLines || "- Ninguna"}
+
+INSTRUCCION OPERATIVA ACTUAL
+${automationInstruction || "Ninguna. Responde de forma normal."}
+    `.trim();
 }
 
-function extractRecentQuantityFact(messages: string[]) {
-    for (const message of [...messages].reverse()) {
-        const normalized = message.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-        const candidates = normalized.match(/\b[0-9o]{2,5}\b/g) || [];
+async function generateConfiguredAssistantReply(params: {
+    settings: AppSystemSettings;
+    latestUserMessage: string;
+    history: AssistantHistoryEntry[];
+    identity: AssistantIdentityContext;
+    automationInstruction?: string | null;
+}) {
+    const businessHours = normalizeBusinessHours(params.settings);
+    const businessContext = await buildBeautyBusinessContext(params.settings);
+    const history = mapHistoryToMessages(params.history);
+    const knowledgeLookupQuery = buildKnowledgeLookupQuery(params.history, params.latestUserMessage);
+    const { context, chunks } = await buildKnowledgeContext(
+        knowledgeLookupQuery || params.latestUserMessage,
+        params.settings.knowledgeTopK,
+    );
+    const knowledgeSourceLines = chunks
+        .map((chunk) => `- ${chunk.sourceTitle}${chunk.sourceUri ? ` -> ${chunk.sourceUri}` : ""}`)
+        .join("\n");
+    const systemPrompt = buildAssistantSystemPrompt({
+        settings: params.settings,
+        businessContext,
+        businessScheduleLines: formatBusinessScheduleLines(businessHours),
+        businessTimeZone: businessHours.timeZone,
+        identity: params.identity,
+        knowledgeContext: context,
+        knowledgeSourceLines,
+        automationInstruction: params.automationInstruction,
+    });
+    const response = await generateCompletion(
+        [
+            { role: "system", content: systemPrompt },
+            ...history,
+            { role: "user", content: params.latestUserMessage },
+        ],
+        params.settings.agentTemperature,
+    );
+    const normalized = normalizeWhatsAppReply(response || "");
 
-        for (const candidate of candidates) {
-            if (!/\d/.test(candidate)) continue;
-
-            const parsed = Number.parseInt(normalizeAmbiguousNumericToken(candidate), 10);
-            if (!Number.isFinite(parsed) || parsed <= 0 || parsed > 10000) continue;
-
-            const hasQuantityContext =
-                /\b(piezas?|pulseras?|invitados?|personas?|pax|cantidad|aprox|aproximadamente)\b/.test(normalized) ||
-                normalized.trim() === candidate ||
-                /\b(el|las|los)\s+[0-9o]{2,5}\b/.test(normalized);
-
-            if (hasQuantityContext) {
-                return {
-                    value: parsed,
-                    raw: message.trim(),
-                };
-            }
-        }
-    }
-
-    return null;
-}
-
-function extractRecentEventDateFact(messages: string[]) {
-    for (const message of [...messages].reverse()) {
-        const normalized = message.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-        const monthMatch = normalized.match(/\b(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre)\b/);
-        if (!monthMatch) continue;
-
-        return {
-            value: monthMatch[1],
-            isTentative: /\b(no\s+esta\s+fija|no\s+es\s+fija|tentativa|aprox|aproximada|por\s+definir)\b/.test(normalized),
-            raw: message.trim(),
-        };
-    }
-
-    return null;
-}
-
-function buildRecentSalesFactsInstruction(
-    history: Array<{
-        content: string;
-        direction: string;
-        senderType: string | null;
-    }>,
-    latestUserMessage: string,
-) {
-    const recentInboundMessages = [
-        ...history
-            .filter((message) => message.direction === "inbound" && message.content?.trim())
-            .slice(-6)
-            .map((message) => message.content.trim()),
-        latestUserMessage.trim(),
-    ].filter(Boolean);
-
-    const quantityFact = extractRecentQuantityFact(recentInboundMessages);
-    const eventDateFact = extractRecentEventDateFact(recentInboundMessages);
-    const lines: string[] = [];
-
-    if (quantityFact) {
-        lines.push(`- Cantidad detectada: ${quantityFact.value} piezas. Mensaje origen: "${quantityFact.raw}".`);
-    }
-
-    if (eventDateFact) {
-        lines.push(`- Fecha/mes de evento detectado: ${eventDateFact.value}${eventDateFact.isTentative ? " (tentativa/no fija)" : ""}. Mensaje origen: "${eventDateFact.raw}".`);
-    }
-
-    if (lines.length === 0) {
-        return null;
-    }
-
-    return [
-        "DATOS COMERCIALES RECIENTES DETECTADOS",
-        ...lines,
-        "Reglas:",
-        "- Si ya hay cantidad detectada, no vuelvas a preguntar cuantas piezas/invitados necesita; usala para cotizar o avanzar.",
-        "- Si la fecha del evento es tentativa o no fija, no bloquees la cotizacion; aclara que puede ajustarse cuando confirme fecha.",
-        "- Si el usuario escribe una cantidad con letras parecidas a numeros, por ejemplo 1oo, interpretala como 100 cuando el contexto sea piezas, invitados o cotizacion.",
-    ].join("\n");
+    return {
+        reply: stripUnverifiedAdvisorLines(normalized, {
+            name: params.identity.advisorName,
+            email: params.identity.advisorEmail,
+        }),
+        knowledgeSources: Array.from(
+            new Map(
+                chunks.map((chunk) => [
+                    `${chunk.sourceTitle}:${chunk.sourceUri || ""}`,
+                    { title: chunk.sourceTitle, uri: chunk.sourceUri },
+                ]),
+            ).values(),
+        ),
+    };
 }
 
 export async function generateConversationReply(
@@ -253,9 +328,6 @@ export async function generateConversationReply(
         direction: message.direction,
         senderType: message.senderType,
     }));
-    const businessHours = normalizeBusinessHours(settings);
-    const ladaContext = resolvePhoneLadaContext(conversation.contact?.phone || null);
-
     const dedupedHistory =
         baseHistory.length > 0 &&
         baseHistory[baseHistory.length - 1].direction === "inbound" &&
@@ -263,101 +335,68 @@ export async function generateConversationReply(
             ? baseHistory.slice(0, -1)
             : baseHistory;
 
-    const history = mapHistoryToMessages(
-        dedupedHistory.map((message) => ({
-            content: message.content,
-            direction: message.direction,
-            senderType: message.senderType,
-        })),
-    );
-    const knowledgeLookupQuery = buildKnowledgeLookupQuery(dedupedHistory, latestUserMessage);
-    const recentSalesFactsInstruction = buildRecentSalesFactsInstruction(dedupedHistory, latestUserMessage);
-    const { context, chunks } = await buildKnowledgeContext(
-        knowledgeLookupQuery || latestUserMessage,
-        settings.knowledgeTopK,
-    );
+    const result = await generateConfiguredAssistantReply({
+        settings,
+        latestUserMessage,
+        history: dedupedHistory,
+        identity: {
+            contactName: getContactFullName(conversation.contact, "Sin nombre"),
+            contactPhone: conversation.contact?.phone || "Sin telefono",
+            contactCompany: conversation.contact?.company || "No registrada",
+            contactStatus: conversation.contact?.status || "lead",
+            advisorName: conversation.assignedUser?.name || "No asignado",
+            advisorEmail: conversation.assignedUser?.email || "No disponible",
+        },
+        automationInstruction,
+    });
 
-    const systemPrompt = `
-${settings.agentPrompt}
+    return result.reply;
+}
 
-IDENTIDAD DEL AGENTE
-- Nombre del agente o marca: ${settings.agentName || "Asistente Zen"}
+export async function generateAssistantPreview(input: {
+    message: string;
+    history?: AssistantPreviewMessage[];
+}): Promise<AssistantPreviewResult> {
+    const settings = await getSystemSettingsOrDefaults();
+    const safeHistory = (input.history || []).slice(-12).map((message) => ({
+        content: message.content.trim().slice(0, 2000),
+        direction: message.role === "assistant" ? "outbound" : "inbound",
+        senderType: message.role === "assistant" ? "bot" : null,
+    }));
+    const result = await generateConfiguredAssistantReply({
+        settings,
+        latestUserMessage: input.message.trim().slice(0, 2000),
+        history: safeHistory,
+        identity: {
+            contactName: "Cliente de prueba",
+            contactPhone: "No disponible en el simulador",
+            contactCompany: "No registrada",
+            contactStatus: "lead",
+            advisorName: "No asignado",
+            advisorEmail: "No disponible",
+        },
+        automationInstruction: [
+            "MODO DE PRUEBA AISLADO.",
+            "Evalua solamente la respuesta conversacional.",
+            "No se ejecutan acciones, no se envia WhatsApp y no se consulta ni modifica una cita real.",
+            "Si la solicitud requiere disponibilidad o una operacion de agenda, explica el siguiente dato que pedirias sin afirmar que realizaste la accion.",
+        ].join(" "),
+    });
 
-DATOS DEL CONTACTO
-- Nombre: ${getContactFullName(conversation.contact, "Sin nombre")}
-- Telefono: ${conversation.contact?.phone || "Sin telefono"}
-- Empresa: ${conversation.contact?.company || "No registrada"}
-- Estado: ${conversation.contact?.status || "lead"}
-
-CONTEXTO TERRITORIAL DETECTADO POR LADA
-- Telefono normalizado: ${ladaContext.normalizedPhone || "No disponible"}
-- Sufijo 10 digitos: ${ladaContext.suffix10 || "No disponible"}
-- Lada 2 digitos: ${ladaContext.lada2 || "No disponible"}
-- Lada 3 digitos: ${ladaContext.lada3 || "No disponible"}
-- Zona inferida: ${ladaContext.zoneLabel}
-- Regla aplicada: ${ladaContext.ruleApplied}
-
-RESPONSABLE HUMANO VERIFICADO EN CRM
-- Nombre: ${conversation.assignedUser?.name || "No asignado"}
-- Email: ${conversation.assignedUser?.email || "No disponible"}
-
-REGLAS DE RESPUESTA
-- Responde siempre en espanol.
-- Se breve y util. Evita respuestas largas salvo que el usuario las pida.
-- Si el usuario pide algo que no esta en el contexto, dilo con honestidad.
-- Si el mensaje es ambiguo, haz una sola pregunta aclaratoria.
-- Si la conversacion apunta a venta o seguimiento, intenta cerrar con un siguiente paso concreto.
-- Aplica la zona inferida por lada en el tono comercial y en recomendaciones de cobertura.
-- Si la zona inferida es "Monterrey y zona metropolitana", trata al contacto como local de esa zona.
-- Si la zona inferida es "Fuera de Monterrey y zona metropolitana", tratalo como contacto foraneo.
-- No inventes ciudad cuando la zona por lada sea "No se pudo clasificar por lada".
-- Si el usuario hace una pregunta de seguimiento como "si", "esas", "las casas", "ahi" o "de eso", usa el contexto inmediato de la conversacion para entender a que se refiere.
-- Si recibes una instruccion operativa adicional, siguela sin romper el hilo de la conversacion.
-- No cambies abruptamente a preguntas genericas si el usuario ya esta hablando de un tema concreto.
-- No repitas muletillas o frases de arranque como "Si, claro que si", salvo que realmente aporten algo.
-- No respondas mas de lo que el cliente pregunto si no hace falta.
-- Si no tienes informacion fiable o suficiente para responder, dilo con honestidad y avisa brevemente que vas a canalizar la conversacion con un asesor humano.
-- Si el usuario quiere una cita, ayuda a concretarla dentro del horario comercial del negocio.
-- Nunca afirmes que una cita fue registrada, agendada, confirmada, actualizada, reprogramada o cancelada. Esas confirmaciones solo las envia el modulo operativo despues de escribir el cambio en el calendario.
-- Al hablar de una cita usa siempre la fecha completa con dia, mes y año; no confirmes usando solamente expresiones relativas como "el proximo martes".
-- Nunca inventes ni calcules horarios libres a partir del horario comercial. Solo el modulo operativo puede ofrecer horas despues de consultar citas, bloqueos y retenciones vigentes en el calendario de la profesional elegida.
-- Si hay varias profesionales, pregunta con cual desea la cita y consulta unicamente la agenda de esa profesional.
-- Si solo existe una profesional activa, seleccionala automaticamente y no preguntes con quien desea atenderse.
-- Nunca inventes nombres, telefonos ni correos de asesores, ejecutivos o responsables.
-- Solo puedes mencionar un responsable humano si aparece en los DATOS VERIFICADOS DEL CRM.
-- Nunca inventes telefonos de personas del equipo. Si no existe un dato verificado, omitelo.
-- Nunca menciones al cliente acciones internas del negocio como alertas internas, correos internos, notificaciones al equipo o asuntos de correo.
-- Si el cliente pregunta con quien habla o quien le atiende, puedes usar el nombre del agente o marca indicado en IDENTIDAD DEL AGENTE.
-- Horario comercial por dia:
-${formatBusinessScheduleLines(businessHours)}
-- Zona horaria del negocio: ${businessHours.timeZone}
-- Formatea para WhatsApp: usa saltos de linea entre ideas, pasos, precios y cierre.
-- No amontones la informacion: usa parrafos cortos de 1 o 2 frases maximo.
-- Si enumeras beneficios, opciones o pasos, usa una lista simple con cada punto en su propia linea.
-- Para resaltar algo usa *negritas* con un solo asterisco. No uses **doble asterisco**, encabezados Markdown ni tablas.
-- Mantena un tono amable, profesional y claro. Usa pocos emojis y solo si aportan.
-
-CONTEXTO RAG
-${context || "No se recuperaron fuentes relevantes para esta consulta."}
-
-FUENTES ENCONTRADAS
-${chunks.length > 0 ? chunks.map((chunk) => `- ${chunk.sourceTitle}${chunk.sourceUri ? ` -> ${chunk.sourceUri}` : ""}`).join("\n") : "- Ninguna"}
-
-INSTRUCCION OPERATIVA ACTUAL
-${[automationInstruction, recentSalesFactsInstruction].filter(Boolean).join("\n\n") || "Ninguna. Responde de forma normal."}
-    `.trim();
-
-    const response = await generateCompletion(
-        [
-            { role: "system", content: systemPrompt },
-            ...history,
-            { role: "user", content: latestUserMessage },
-        ],
-        settings.agentTemperature,
-    );
-
-    const normalized = normalizeWhatsAppReply(response || "");
-    return stripUnverifiedAdvisorLines(normalized, conversation.assignedUser);
+    return {
+        reply: result.reply,
+        trace: {
+            model: settings.openaiModel,
+            structuredSources: [
+                "Personalidad del agente",
+                "Mi Negocio y políticas",
+                "Servicios y duraciones",
+                "Profesionales y horarios",
+            ],
+            knowledgeSources: result.knowledgeSources,
+            operationalActionsExecuted: false,
+        },
+    };
 }
 
 export async function processBotResponse(contactId: string, userMessage: string) {

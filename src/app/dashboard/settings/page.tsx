@@ -2,11 +2,10 @@
 
 import { useEffect, useState, type ChangeEvent, type ComponentType } from "react";
 import { useSession } from "next-auth/react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
     CalendarDays,
     Clock3,
-    Globe2,
     Image as ImageIcon,
     Loader2,
     Palette,
@@ -17,6 +16,7 @@ import {
     Settings,
     Sparkles,
     Stethoscope,
+    Store,
     Trash2,
     Upload,
     Users,
@@ -59,6 +59,13 @@ import {
     type BusinessDayKey,
     type BusinessWeeklySchedule,
 } from "@/lib/calendar/business-hours";
+import {
+    BUSINESS_POLICY_MAX_LENGTH,
+    EMPTY_BUSINESS_POLICIES,
+    normalizeBusinessPolicies,
+    type BusinessPolicies,
+    type BusinessPolicyField,
+} from "@/lib/ai/business-policies";
 
 type SectionId = "theme" | "brand" | "operation" | "users" | "ai" | "whatsapp" | "calendar" | "specialists" | "portal" | "chats";
 type LogoCropTarget = "brand" | "clinic";
@@ -72,7 +79,6 @@ const SECTIONS: Array<{
     permissions?: PermissionKey[];
 }> = [
     { id: "theme", label: "Apariencia", description: "Tema y estilo general del CRM", icon: Palette },
-    { id: "operation", label: "Operación", description: "Marca blanca, datos del negocio y portal de reservas", icon: Globe2, permission: "settings.manage" },
     { id: "users", label: "Usuarios", description: "Accesos, roles y permisos", icon: Users, permission: "users.manage" },
     { id: "ai", label: "Cerebro IA", description: "Claves y servicios de inteligencia", icon: Sparkles, permission: "ai.manage" },
     { id: "whatsapp", label: "Canal WhatsApp", description: "WhatsApp API oficial y conexion alternativa por QR", icon: WhatsAppIcon, permission: "integrations.manage" },
@@ -81,9 +87,49 @@ const SECTIONS: Array<{
     { id: "chats", label: "Notificaciones", description: "Sonidos y preferencias del inbox", icon: Volume2 },
 ];
 
-export default function SettingsPage() {
-    const [activeSection, setActiveSection] = useState<SectionId>("theme");
-    const [operationTab, setOperationTab] = useState<"brand" | "operation" | "portal">("brand");
+const BUSINESS_POLICY_FIELDS: Array<{
+    id: BusinessPolicyField;
+    label: string;
+    description: string;
+    placeholder: string;
+}> = [
+    {
+        id: "cancellationAndRescheduling",
+        label: "Cancelaciones y reagenda",
+        description: "Plazos, cargos, tolerancias y condiciones para mover o cancelar una cita.",
+        placeholder: "Ej. Se puede reagendar sin costo hasta 24 horas antes...",
+    },
+    {
+        id: "depositsAndPayments",
+        label: "Anticipos y pagos",
+        description: "Cuándo se solicita anticipo, métodos aceptados y condiciones de devolución.",
+        placeholder: "Ej. Para apartar servicios mayores a $1,000 se solicita...",
+    },
+    {
+        id: "preparationInstructions",
+        label: "Preparación antes de la cita",
+        description: "Indicaciones que aplican antes de asistir; especifica a qué servicios corresponden.",
+        placeholder: "Ej. Para aplicación de uñas, acudir sin esmalte; para pestañas...",
+    },
+    {
+        id: "customQuotes",
+        label: "Cotizaciones especiales",
+        description: "Casos que necesitan revisar diseño, largo, volumen, diagnóstico o complejidad.",
+        placeholder: "Ej. Los diseños personalizados se cotizan después de recibir una foto...",
+    },
+    {
+        id: "humanEscalation",
+        label: "Cuándo pedir ayuda humana",
+        description: "Situaciones que el asistente no debe resolver por su cuenta. No incluyas contraseñas ni datos sensibles.",
+        placeholder: "Ej. Escalar cuando soliciten una cotización personalizada, presenten una reacción...",
+    },
+];
+
+function SettingsWorkspace() {
+    const pathname = usePathname();
+    const businessOnly = pathname === "/dashboard/business";
+    const [activeSection, setActiveSection] = useState<SectionId>(businessOnly ? "operation" : "theme");
+    const [operationTab, setOperationTab] = useState<"brand" | "operation" | "portal">(businessOnly ? "operation" : "brand");
     const [openaiKey, setOpenaiKey] = useState("");
     const [geminiKey, setGeminiKey] = useState("");
     const [whatsappBaseUrl, setWhatsappBaseUrl] = useState("");
@@ -96,6 +142,7 @@ export default function SettingsPage() {
     const [phoneDefaultCountry, setPhoneDefaultCountry] = useState("MX");
     const [businessTimeZone, setBusinessTimeZone] = useState("America/Mexico_City");
     const [businessWeeklySchedule, setBusinessWeeklySchedule] = useState<BusinessWeeklySchedule>(() => normalizeBusinessHours().weeklySchedule);
+    const [businessPolicies, setBusinessPolicies] = useState<BusinessPolicies>(EMPTY_BUSINESS_POLICIES);
     const [paymentDefaultCurrency, setPaymentDefaultCurrency] = useState("MXN");
     const [paymentEnabledCurrencies, setPaymentEnabledCurrencies] = useState<string[]>(["MXN"]);
     const [brandName, setBrandName] = useState(DEFAULT_BRAND_NAME);
@@ -165,6 +212,7 @@ export default function SettingsPage() {
                 setPhoneDefaultCountry(settings.phoneDefaultCountry || country.code);
                 setBusinessTimeZone(settings.businessTimeZone || country.timeZone);
                 setBusinessWeeklySchedule(normalizeBusinessHours(settings).weeklySchedule);
+                setBusinessPolicies(normalizeBusinessPolicies(settings.businessPolicies));
                 const currencies = normalizeCurrencyList(settings.paymentEnabledCurrencies, country.code);
                 setPaymentEnabledCurrencies(currencies);
                 setPaymentDefaultCurrency(
@@ -216,14 +264,24 @@ export default function SettingsPage() {
     useEffect(() => {
         const requestedSection = searchParams.get("section");
         const requestedOperationTab = searchParams.get("tab");
+        if (businessOnly) {
+            setActiveSection("operation");
+            setOperationTab(
+                ["brand", "operation", "portal"].includes(requestedOperationTab || "")
+                    ? requestedOperationTab as "brand" | "operation" | "portal"
+                    : "operation",
+            );
+            return;
+        }
         if (requestedSection === "templates") {
             router.replace("/dashboard/templates");
             return;
         }
 
-        if (requestedSection === "brand" || requestedSection === "portal") {
-            setActiveSection("operation");
-            setOperationTab(requestedSection);
+        if (requestedSection === "operation" || requestedSection === "brand" || requestedSection === "portal") {
+            const tab = requestedSection === "operation" ? requestedOperationTab || "operation" : requestedSection;
+            router.replace(`/dashboard/business?tab=${encodeURIComponent(tab)}`);
+            return;
         } else if (requestedSection && SECTIONS.some((section) => section.id === requestedSection)) {
             setActiveSection(requestedSection as SectionId);
             if (requestedSection === "operation" && ["brand", "operation", "portal"].includes(requestedOperationTab || "")) {
@@ -244,12 +302,19 @@ export default function SettingsPage() {
                 variant: "destructive",
             });
         }
-    }, [router, searchParams, toast]);
+    }, [businessOnly, router, searchParams, toast]);
 
     const updateBusinessDay = (day: BusinessDayKey, patch: Partial<BusinessWeeklySchedule[BusinessDayKey]>) => {
         setBusinessWeeklySchedule((current) => ({
             ...current,
             [day]: { ...current[day], ...patch },
+        }));
+    };
+
+    const updateBusinessPolicy = (field: BusinessPolicyField, value: string) => {
+        setBusinessPolicies((current) => ({
+            ...current,
+            [field]: value.slice(0, BUSINESS_POLICY_MAX_LENGTH),
         }));
     };
 
@@ -280,6 +345,7 @@ export default function SettingsPage() {
                               businessHoursStart: normalizedHours.start,
                               businessHoursEnd: normalizedHours.end,
                               businessWeeklySchedule: normalizedHours.weeklySchedule,
+                              businessPolicies: normalizeBusinessPolicies(businessPolicies),
                               clinicName,
                               clinicSubtitle,
                               clinicAddress,
@@ -455,15 +521,17 @@ export default function SettingsPage() {
             />
             <div>
                 <h1 className="flex items-center gap-2 text-2xl font-bold">
-                    <Settings className="h-6 w-6 text-primary" />
-                    Configuración
+                    {businessOnly ? <Store className="h-6 w-6 text-primary" /> : <Settings className="h-6 w-6 text-primary" />}
+                    {businessOnly ? "Mi Negocio" : "Configuración"}
                 </h1>
                 <p className="mt-1 text-sm text-muted-foreground">
-                    Ajusta la apariencia, los canales y las integraciones del CRM sin tocar la operacion diaria del equipo.
+                    {businessOnly
+                        ? "Administra la operación, la información comercial, el portal y la marca de tu negocio."
+                        : "Ajusta la apariencia, los canales y las integraciones del CRM sin tocar la operacion diaria del equipo."}
                 </p>
             </div>
 
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {!businessOnly ? <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 {visibleSections.map((section) => {
                     const Icon = section.icon;
                     const isActive = activeSection === section.id;
@@ -491,15 +559,15 @@ export default function SettingsPage() {
                         </button>
                     );
                 })}
-            </div>
+            </div> : null}
 
             <div className="rounded-2xl border bg-card p-4 sm:p-5 md:p-7">
                 {activeSection === "operation" && (
                     <div className="mb-6 flex w-full max-w-xl rounded-xl bg-muted/60 p-1">
                         {([
-                            { id: "brand", label: "Marca blanca" },
                             { id: "operation", label: "Operación" },
                             { id: "portal", label: "Portal" },
+                            { id: "brand", label: "Marca blanca" },
                         ] as const).map((tab) => (
                             <button
                                 key={tab.id}
@@ -843,6 +911,70 @@ export default function SettingsPage() {
                                         Los perfiles, horarios y servicios de cada profesional se editan en la sección Especialistas.
                                     </div>
                                 </div>
+                            </div>
+
+                            <div className="mt-5 rounded-2xl border border-primary/20 bg-primary/5 p-4">
+                                <div className="flex items-start gap-3">
+                                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                                        <Sparkles className="h-4 w-4" />
+                                    </span>
+                                    <div>
+                                        <h3 className="font-semibold">Información automática para el asistente</h3>
+                                        <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                                            El asistente usa el nombre, giro, dirección, horarios, servicios, precios, duración y profesionales registrados en el CRM. No necesitas duplicarlos en el prompt ni en la base de conocimiento.
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="mt-4 grid gap-2 text-sm text-muted-foreground sm:grid-cols-2">
+                                    <p className="rounded-xl border bg-background px-3 py-2">Datos y horarios: <span className="font-medium text-foreground">Mi Negocio</span></p>
+                                    <p className="rounded-xl border bg-background px-3 py-2">Catálogo y duración: <span className="font-medium text-foreground">Servicios</span></p>
+                                    <p className="rounded-xl border bg-background px-3 py-2">Agenda por persona: <span className="font-medium text-foreground">Profesionales</span></p>
+                                    <p className="rounded-xl border bg-background px-3 py-2">Tono y excepciones: <span className="font-medium text-foreground">Asistente IA</span></p>
+                                </div>
+                            </div>
+
+                            <div className="mt-5 rounded-2xl border bg-background p-4">
+                                <div className="flex items-start gap-3">
+                                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                                        <ReceiptText className="h-4 w-4" />
+                                    </span>
+                                    <div>
+                                        <h3 className="font-semibold">Políticas de atención</h3>
+                                        <p className="text-sm leading-6 text-muted-foreground">
+                                            Registra aquí las reglas reales del negocio. El asistente las aplicará únicamente cuando correspondan a la conversación; si un campo queda vacío, no inventará una política.
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                                    {BUSINESS_POLICY_FIELDS.map((field) => (
+                                        <div
+                                            key={field.id}
+                                            className={`space-y-2 rounded-2xl border bg-muted/10 p-4 ${field.id === "humanEscalation" ? "lg:col-span-2" : ""}`}
+                                        >
+                                            <div>
+                                                <Label htmlFor={`business-policy-${field.id}`}>{field.label}</Label>
+                                                <p className="mt-1 text-xs leading-5 text-muted-foreground">{field.description}</p>
+                                            </div>
+                                            <Textarea
+                                                id={`business-policy-${field.id}`}
+                                                rows={4}
+                                                maxLength={BUSINESS_POLICY_MAX_LENGTH}
+                                                value={businessPolicies[field.id]}
+                                                onChange={(event) => updateBusinessPolicy(field.id, event.target.value)}
+                                                placeholder={field.placeholder}
+                                                className="min-h-28 resize-y bg-background"
+                                            />
+                                            <p className="text-right text-[11px] text-muted-foreground">
+                                                {businessPolicies[field.id].length}/{BUSINESS_POLICY_MAX_LENGTH}
+                                            </p>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100">
+                                    Estas políticas no sustituyen el catálogo ni el calendario: precios, duración, profesionales y disponibilidad siempre se toman de los datos operativos del CRM.
+                                </p>
                             </div>
 
                             <div className="mt-5 rounded-2xl border bg-background p-4">
@@ -1245,4 +1377,8 @@ export default function SettingsPage() {
             </div>
         </div>
     );
+}
+
+export default function SettingsPage() {
+    return <SettingsWorkspace />;
 }

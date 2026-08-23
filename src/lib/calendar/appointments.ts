@@ -760,9 +760,17 @@ export async function updateManagedAppointment(id: string, input: Partial<Appoin
     const startTime = input.startTime || existing.startTime;
     const endTime = input.endTime || existing.endTime;
     const specialistId = input.specialistId === undefined ? existing.specialistId : input.specialistId;
+    const specialist = specialistId
+        ? await prisma.specialist.findUnique({
+            where: { id: specialistId },
+            include: { googleCalendarSource: true },
+        })
+        : null;
     const blockingCalendarIds =
         input.blockingCalendarIds && input.blockingCalendarIds.length > 0
             ? input.blockingCalendarIds
+            : specialist?.googleCalendarSource?.calendarId
+                ? [specialist.googleCalendarSource.calendarId]
             : existing.googleCalendarId
                 ? [existing.googleCalendarId]
                 : undefined;
@@ -793,13 +801,6 @@ export async function updateManagedAppointment(id: string, input: Partial<Appoin
             input.slotHoldOwnerKey,
         );
     }
-
-    const specialist = specialistId
-        ? await prisma.specialist.findUnique({
-            where: { id: specialistId },
-            include: { googleCalendarSource: true },
-        })
-        : null;
 
     const updateData: Record<string, unknown> = {
         updatedAt: new Date(),
@@ -835,7 +836,9 @@ export async function updateManagedAppointment(id: string, input: Partial<Appoin
     if (input.specialistName !== undefined) updateData.specialistName = input.specialistName || null;
     if (specialist && input.specialistId !== undefined) {
         updateData.specialistName = specialist.displayName || specialist.name;
-        if (specialist.googleCalendarSource) {
+        // Keep the old calendar id until Google synchronization moves an
+        // existing event. New/unlinked appointments can adopt it immediately.
+        if (specialist.googleCalendarSource && !existing.googleEventId) {
             updateData.googleCalendarId = specialist.googleCalendarSource.calendarId;
             updateData.googleCalendarName = specialist.googleCalendarSource.summary;
             updateData.googleCalendarColor = specialist.googleCalendarSource.backgroundColor;

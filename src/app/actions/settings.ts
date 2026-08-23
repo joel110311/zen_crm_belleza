@@ -6,6 +6,7 @@ import { Prisma } from "@prisma/client";
 import { withSettingsDefaults } from "@/lib/system-settings";
 import { getSessionAccessSubject, requireAuthenticated, requirePermission } from "@/lib/authz";
 import { hasPermission } from "@/lib/permissions";
+import { normalizeBusinessPolicies } from "@/lib/ai/business-policies";
 
 export async function getSystemSettings() {
     try {
@@ -66,7 +67,7 @@ export async function updateSystemSettings(data: {
     businessHoursEnd?: string;
     businessTimeZone?: string;
     businessWeeklySchedule?: Prisma.InputJsonValue;
-    appointmentDurationMinutes?: number;
+    businessPolicies?: Prisma.InputJsonValue;
     brandName?: string;
     brandLogoUrl?: string;
     brandFaviconUrl?: string;
@@ -85,6 +86,10 @@ export async function updateSystemSettings(data: {
 }) {
     try {
         await requirePermission("ai.manage");
+
+        if (data.businessPolicies) {
+            data.businessPolicies = normalizeBusinessPolicies(data.businessPolicies) as unknown as Prisma.InputJsonValue;
+        }
 
         const first = await prisma.systemSettings.findFirst();
 
