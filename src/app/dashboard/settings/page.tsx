@@ -104,6 +104,8 @@ function SettingsWorkspace() {
     const [businessTimeZone, setBusinessTimeZone] = useState("America/Mexico_City");
     const [businessWeeklySchedule, setBusinessWeeklySchedule] = useState<BusinessWeeklySchedule>(() => normalizeBusinessHours().weeklySchedule);
     const [businessPolicies, setBusinessPolicies] = useState<BusinessPolicies>(EMPTY_BUSINESS_POLICIES);
+    const [agentName, setAgentName] = useState("Asistente del negocio");
+    const [escalationPhone, setEscalationPhone] = useState("");
     const [paymentDefaultCurrency, setPaymentDefaultCurrency] = useState("MXN");
     const [paymentEnabledCurrencies, setPaymentEnabledCurrencies] = useState<string[]>(["MXN"]);
     const [brandName, setBrandName] = useState(DEFAULT_BRAND_NAME);
@@ -174,6 +176,8 @@ function SettingsWorkspace() {
                 setBusinessTimeZone(settings.businessTimeZone || country.timeZone);
                 setBusinessWeeklySchedule(normalizeBusinessHours(settings).weeklySchedule);
                 setBusinessPolicies(normalizeBusinessPolicies(settings.businessPolicies));
+                setAgentName(settings.agentName || "Asistente del negocio");
+                setEscalationPhone(settings.escalationPhone || "");
                 const currencies = normalizeCurrencyList(settings.paymentEnabledCurrencies, country.code);
                 setPaymentEnabledCurrencies(currencies);
                 setPaymentDefaultCurrency(
@@ -300,6 +304,7 @@ function SettingsWorkspace() {
                               businessHoursEnd: normalizedHours.end,
                               businessWeeklySchedule: normalizedHours.weeklySchedule,
                               businessPolicies: normalizeBusinessPolicies(businessPolicies),
+                              ...(canAccess("ai.manage") ? { agentName, escalationPhone } : {}),
                               clinicName,
                               clinicSubtitle,
                               clinicAddress,
@@ -887,7 +892,15 @@ function SettingsWorkspace() {
                                 </div>
                             </div>
 
-                            <BusinessPolicyConfigurator value={businessPolicies} onChange={setBusinessPolicies} />
+                            <BusinessPolicyConfigurator
+                                value={businessPolicies}
+                                onChange={setBusinessPolicies}
+                                agentName={agentName}
+                                onAgentNameChange={setAgentName}
+                                escalationPhone={escalationPhone}
+                                onEscalationPhoneChange={setEscalationPhone}
+                                canManageAi={canAccess("ai.manage")}
+                            />
 
                             <div className="mt-5 rounded-2xl border bg-background p-4">
                                 <div className="flex items-start gap-3">

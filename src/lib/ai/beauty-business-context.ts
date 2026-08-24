@@ -5,7 +5,7 @@ import {
     hasConfiguredBusinessPolicies,
     normalizeBusinessPolicies,
 } from "@/lib/ai/business-policies";
-import { formatServicePreparation } from "@/lib/services/preparation-requirements";
+import { formatServiceAftercare, formatServiceBookingQuestions, formatServicePreparation } from "@/lib/services/preparation-requirements";
 
 function cleanInline(value: string | null | undefined, fallback: string) {
     const normalized = value?.replace(/\s+/g, " ").trim();
@@ -95,6 +95,8 @@ export async function buildBeautyBusinessContext(settings: AppSystemSettings) {
             .map(({ specialist }) => specialist.displayName || specialist.name)
             .filter(Boolean);
         const preparation = formatServicePreparation(service.preparationRequirements);
+        const bookingQuestions = formatServiceBookingQuestions(service.preparationRequirements);
+        const aftercare = formatServiceAftercare(service.preparationRequirements);
         const details = [
             `duración ${service.durationMinutes} min`,
             service.showPrice ? `precio ${formatMoney(service.price, service.currency)}` : "precio bajo consulta",
@@ -103,6 +105,8 @@ export async function buildBeautyBusinessContext(settings: AppSystemSettings) {
                 : "disponible con cualquier profesional compatible",
             clip(service.description),
             preparation.length > 0 ? `preparación: ${preparation.join("; ")}` : "",
+            bookingQuestions.length > 0 ? `preguntas previas: ${bookingQuestions.join("; ")}` : "",
+            aftercare.length > 0 ? `cuidados posteriores: ${aftercare.join("; ")}` : "",
         ].filter(Boolean);
 
         return `- [${service.category.name}] ${service.name} — ${details.join(" · ")}`;
@@ -120,6 +124,7 @@ export async function buildBeautyBusinessContext(settings: AppSystemSettings) {
         "CONTEXTO ESTRUCTURADO DEL NEGOCIO (DATOS VERIFICADOS DEL CRM)",
         "",
         "IDENTIDAD Y OPERACIÓN",
+        `- Nombre del asistente: ${cleanInline(settings.agentName, "Asistente del negocio")}`,
         `- Nombre comercial: ${cleanInline(settings.clinicName || settings.portalClinicName, "No configurado")}`,
         `- Giro o subtítulo: ${cleanInline(settings.clinicSubtitle, "Negocio de belleza")}`,
         `- Dirección: ${cleanInline(settings.clinicAddress, "No configurada")}`,

@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { randomUUID } from "crypto";
 import { getSystemSettingsOrDefaults } from "@/lib/system-settings";
+import { normalizeBusinessPolicies } from "@/lib/ai/business-policies";
 import {
     deleteAppointmentFromGoogleCalendar,
     getGoogleCalendarBookingContext,
@@ -76,6 +77,11 @@ type AvailableSlotOptions = {
 const APPOINTMENT_SLOT_HOLD_TTL_MS = 5 * 60 * 1000;
 const APPOINTMENT_SLOT_STEP_MS = 15 * 60 * 1000;
 
+async function getSchedulingRules() {
+    const settings = await getSystemSettingsOrDefaults();
+    return normalizeBusinessPolicies(settings.businessPolicies).scheduling;
+}
+
 function getSlotHoldCalendarKeys(input: {
     specialistId?: string | null;
     googleCalendarId?: string | null;
@@ -136,6 +142,10 @@ export async function releaseAppointmentSlotHold(ownerKey: string) {
 }
 
 export async function acquireAppointmentSlotHold(input: ConflictCheckInput & { ownerKey: string }) {
+    const scheduling = await getSchedulingRules();
+    const bufferMs = scheduling.bufferMinutes * 60 * 1000;
+    const protectedStart = new Date(input.startTime.getTime() - bufferMs);
+    const protectedEnd = new Date(input.endTime.getTime() + bufferMs);
     const now = new Date();
     const expiresAt = new Date(now.getTime() + APPOINTMENT_SLOT_HOLD_TTL_MS);
     const calendarKeys = getSlotHoldCalendarKeys({
@@ -143,7 +153,7 @@ export async function acquireAppointmentSlotHold(input: ConflictCheckInput & { o
         googleCalendarId: input.googleCalendarId,
         calendarIds: input.blockingCalendarIds,
     });
-    const segments = getSlotHoldSegments(input.startTime, input.endTime);
+    const segments = getSlotHoldSegments(protectedStart, protectedEnd);
 
     try {
         await prisma.$transaction(async (tx) => {
@@ -169,8 +179,8 @@ export async function acquireAppointmentSlotHold(input: ConflictCheckInput & { o
                             : input.googleCalendarId
                                 ? { googleCalendarId: input.googleCalendarId }
                                 : {}),
-                    startTime: { lt: input.endTime },
-                    endTime: { gt: input.startTime },
+                    startTime: { lt: protectedEnd },
+                    endTime: { gt: protectedStart },
                 },
                 select: { id: true },
             });
@@ -304,6 +314,7 @@ async function ensureAppointmentIsSchedulable(
     allowOverbook = false,
     slotHoldOwnerKey?: string,
 ) {
+    const scheduling = await getSchedulingRules();
     if (!(startTime instanceof Date) || Number.isNaN(startTime.getTime()) || !(endTime instanceof Date) || Number.isNaN(endTime.getTime())) {
         throw new AppointmentSchedulingError("INVALID_RANGE", "La fecha u hora de la cita no son validas.");
     }
@@ -313,7 +324,11 @@ async function ensureAppointmentIsSchedulable(
     }
 
     const now = new Date();
-    if (startTime <= now) {
+    const minimumStart = new Date(now.getTime() + scheduling.minimumLeadHours * 60 * 60 * 1000);
+    const todayKey = getBusinessDateKey(now, config.timeZone);
+    const startDateKey = getBusinessDateKey(startTime, config.timeZone);
+    const latestDateKey = shiftDateKey(todayKey, scheduling.maximumAdvanceDays);
+    if (startTime <= now || startTime < minimumStart || (!scheduling.allowSameDay && startDateKey === todayKey)) {
         const suggestions = await suggestAvailableSlots(now, endTime.getTime() - startTime.getTime(), config, {
             from: now,
             excludeAppointmentId,
@@ -322,9 +337,22 @@ async function ensureAppointmentIsSchedulable(
         });
         throw new AppointmentSchedulingError(
             "PAST_DATE",
-            "Solo se pueden agendar citas desde este momento en adelante.",
+            scheduling.minimumLeadHours > 0
+                ? `La cita requiere al menos ${scheduling.minimumLeadHours} hora(s) de anticipación.`
+                : !scheduling.allowSameDay && startDateKey === todayKey
+                    ? "El negocio no recibe reservas para el mismo día."
+                    : "Solo se pueden agendar citas desde este momento en adelante.",
             suggestions,
         );
+    }
+
+    if (startDateKey > latestDateKey) {
+        throw new AppointmentSchedulingError("OUTSIDE_BUSINESS_HOURS", `Sólo se aceptan reservas con hasta ${scheduling.maximumAdvanceDays} día(s) de anticipación.`);
+    }
+
+    if (scheduling.closedDates.includes(startDateKey)) {
+        const suggestions = await suggestAvailableSlots(startTime, endTime.getTime() - startTime.getTime(), config, { from: startTime, excludeAppointmentId, specialistId, calendarIds: blockingCalendarIds });
+        throw new AppointmentSchedulingError("OUTSIDE_BUSINESS_HOURS", "El negocio no abre en la fecha seleccionada.", suggestions);
     }
 
     const startBounds = businessBoundsForDate(startTime, config);
@@ -350,11 +378,14 @@ async function ensureAppointmentIsSchedulable(
         );
     }
 
+    const bufferMs = scheduling.bufferMinutes * 60 * 1000;
+    const protectedStart = new Date(startTime.getTime() - bufferMs);
+    const protectedEnd = new Date(endTime.getTime() + bufferMs);
     const conflicts = allowOverbook
         ? []
         : await findConflictingAppointments({
-            startTime,
-            endTime,
+            startTime: protectedStart,
+            endTime: protectedEnd,
             excludeAppointmentId,
             specialistId,
             blockingCalendarIds,
@@ -371,8 +402,8 @@ async function ensureAppointmentIsSchedulable(
     const holdConflicts = allowOverbook
         ? []
         : await findConflictingSlotHolds({
-            startTime,
-            endTime,
+            startTime: protectedStart,
+            endTime: protectedEnd,
             specialistId,
             googleCalendarId: blockingCalendarIds?.[0],
             blockingCalendarIds,
@@ -442,17 +473,23 @@ export async function suggestAvailableSlots(
     config: BusinessHoursConfig,
     options: AvailableSlotOptions = {},
 ) {
+    const scheduling = await getSchedulingRules();
     const stepMs = 15 * 60 * 1000;
     const safeDurationMs = Math.max(durationMs, 15 * 60 * 1000);
     const limit = options.limit ?? 3;
     const suggestions: Date[] = [];
+    const now = new Date();
+    const todayKey = getBusinessDateKey(now, config.timeZone);
+    const latestDateKey = shiftDateKey(todayKey, scheduling.maximumAdvanceDays);
+    const minimumStart = new Date(now.getTime() + scheduling.minimumLeadHours * 60 * 60 * 1000);
+    const bufferMs = scheduling.bufferMinutes * 60 * 1000;
 
     for (let dayOffset = 0; dayOffset < 10 && suggestions.length < limit; dayOffset += 1) {
         const dateKey = shiftDateKey(getBusinessDateKey(reference, config.timeZone), dayOffset);
         const dayReference = zonedDateTimeToUtc(dateKey, "12:00", config.timeZone);
         const dayBounds = businessBoundsForDate(dayReference, config);
 
-        if (!dayBounds.isOpen) {
+        if (!dayBounds.isOpen || scheduling.closedDates.includes(dateKey) || dateKey > latestDateKey || (!scheduling.allowSameDay && dateKey === todayKey)) {
             continue;
         }
 
@@ -500,21 +537,23 @@ export async function suggestAvailableSlots(
             }),
         ]);
 
-        const firstCursor = options.from && dayOffset === 0 && options.from > dayStart
-            ? new Date(Math.ceil(options.from.getTime() / stepMs) * stepMs)
-            : dayStart;
+        const requestedStart = options.from && dayOffset === 0 && options.from > dayStart ? options.from : dayStart;
+        const effectiveStart = requestedStart > minimumStart ? requestedStart : minimumStart;
+        const firstCursor = new Date(Math.ceil(effectiveStart.getTime() / stepMs) * stepMs);
 
         for (let cursor = firstCursor.getTime(); cursor + safeDurationMs <= dayEnd.getTime(); cursor += stepMs) {
             const slotStart = new Date(cursor);
             const slotEnd = new Date(cursor + safeDurationMs);
+            const protectedStart = new Date(slotStart.getTime() - bufferMs);
+            const protectedEnd = new Date(slotEnd.getTime() + bufferMs);
 
             const conflict = dayAppointments.some((appointment) =>
-                appointment.startTime < slotEnd && appointment.endTime > slotStart,
+                appointment.startTime < protectedEnd && appointment.endTime > protectedStart,
             ) || dayBlocks.some((block) =>
                 block.startTime < slotEnd && block.endTime > slotStart,
             ) || dayHolds.some((hold) =>
-                hold.slotStart >= new Date(Math.floor(slotStart.getTime() / APPOINTMENT_SLOT_STEP_MS) * APPOINTMENT_SLOT_STEP_MS) &&
-                hold.slotStart < slotEnd,
+                hold.slotStart >= new Date(Math.floor(protectedStart.getTime() / APPOINTMENT_SLOT_STEP_MS) * APPOINTMENT_SLOT_STEP_MS) &&
+                hold.slotStart < protectedEnd,
             );
 
             if (!conflict) {
@@ -536,6 +575,7 @@ export async function getAvailableSlotsForDate(
     config: BusinessHoursConfig,
     options: AvailableSlotOptions = {},
 ) {
+    const scheduling = await getSchedulingRules();
     try {
         await syncGoogleCalendarToCrm(false);
     } catch (syncError) {
@@ -547,8 +587,11 @@ export async function getAvailableSlotsForDate(
     const limit = options.limit ?? 6;
     const dayReference = zonedDateTimeToUtc(localDate, "12:00", config.timeZone);
     const dayBounds = businessBoundsForDate(dayReference, config);
+    const now = new Date();
+    const todayKey = getBusinessDateKey(now, config.timeZone);
+    const latestDateKey = shiftDateKey(todayKey, scheduling.maximumAdvanceDays);
 
-    if (!dayBounds.isOpen) {
+    if (!dayBounds.isOpen || scheduling.closedDates.includes(dayBounds.dateKey) || dayBounds.dateKey > latestDateKey || (!scheduling.allowSameDay && dayBounds.dateKey === todayKey)) {
         return {
             ...dayBounds,
             slots: [] as Date[],
@@ -597,29 +640,31 @@ export async function getAvailableSlotsForDate(
         }),
     ]);
 
-    const now = new Date();
-    const todayKey = getBusinessDateKey(now, config.timeZone);
+    const minimumStart = new Date(now.getTime() + scheduling.minimumLeadHours * 60 * 60 * 1000);
     const from = options.from && getBusinessDateKey(options.from, config.timeZone) === dayBounds.dateKey
         ? options.from
         : null;
-    const lowerBound = todayKey === dayBounds.dateKey && now > dayBounds.start
-        ? now
+    const lowerBound = todayKey === dayBounds.dateKey && minimumStart > dayBounds.start
+        ? minimumStart
         : dayBounds.start;
     const firstCursor = new Date(
         Math.ceil(Math.max(lowerBound.getTime(), from?.getTime() || dayBounds.start.getTime()) / stepMs) * stepMs,
     );
     const slots: Date[] = [];
+    const bufferMs = scheduling.bufferMinutes * 60 * 1000;
 
     for (let cursor = firstCursor.getTime(); cursor + safeDurationMs <= dayBounds.end.getTime(); cursor += stepMs) {
         const slotStart = new Date(cursor);
         const slotEnd = new Date(cursor + safeDurationMs);
+        const protectedStart = new Date(slotStart.getTime() - bufferMs);
+        const protectedEnd = new Date(slotEnd.getTime() + bufferMs);
         const conflict = dayAppointments.some((appointment) =>
-            appointment.startTime < slotEnd && appointment.endTime > slotStart,
+            appointment.startTime < protectedEnd && appointment.endTime > protectedStart,
         ) || dayBlocks.some((block) =>
             block.startTime < slotEnd && block.endTime > slotStart,
         ) || dayHolds.some((hold) =>
-            hold.slotStart >= new Date(Math.floor(slotStart.getTime() / APPOINTMENT_SLOT_STEP_MS) * APPOINTMENT_SLOT_STEP_MS) &&
-            hold.slotStart < slotEnd,
+            hold.slotStart >= new Date(Math.floor(protectedStart.getTime() / APPOINTMENT_SLOT_STEP_MS) * APPOINTMENT_SLOT_STEP_MS) &&
+            hold.slotStart < protectedEnd,
         );
 
         if (!conflict) {

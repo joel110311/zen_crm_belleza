@@ -1,4 +1,14 @@
-export const BUSINESS_POLICIES_VERSION = 2 as const;
+export const BUSINESS_POLICIES_VERSION = 3 as const;
+
+export const BEAUTY_BUSINESS_TYPES = [
+    "integrated_beauty",
+    "hair_salon",
+    "barbershop",
+    "nails",
+    "lashes_brows",
+    "spa_aesthetics",
+] as const;
+export type BeautyBusinessType = (typeof BEAUTY_BUSINESS_TYPES)[number];
 
 export const PAYMENT_METHODS = ["cash", "transfer", "card", "mercado_pago"] as const;
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
@@ -15,6 +25,23 @@ export type HumanEscalationTrigger = (typeof HUMAN_ESCALATION_TRIGGERS)[number];
 
 export type BusinessPolicies = {
     version: typeof BUSINESS_POLICIES_VERSION;
+    identity: {
+        businessType: BeautyBusinessType;
+        ownerName: string;
+        tone: "warm" | "elegant" | "direct";
+        emojiLevel: "none" | "low" | "moderate";
+    };
+    publicInfo: {
+        mapsUrl: string;
+    };
+    scheduling: {
+        askTimePreference: boolean;
+        allowSameDay: boolean;
+        minimumLeadHours: number;
+        maximumAdvanceDays: number;
+        bufferMinutes: number;
+        closedDates: string[];
+    };
     cancellation: {
         manageByChat: boolean;
         minimumNoticeHours: number;
@@ -35,6 +62,9 @@ export type BusinessPolicies = {
         reviewerName: string;
         allowBookingBeforeQuote: boolean;
     };
+    companions: {
+        policy: "not_defined" | "allowed" | "not_allowed" | "one_only";
+    };
     humanEscalation: {
         triggers: HumanEscalationTrigger[];
     };
@@ -49,6 +79,23 @@ export type BusinessPolicies = {
 
 export const EMPTY_BUSINESS_POLICIES: BusinessPolicies = {
     version: BUSINESS_POLICIES_VERSION,
+    identity: {
+        businessType: "integrated_beauty",
+        ownerName: "",
+        tone: "warm",
+        emojiLevel: "low",
+    },
+    publicInfo: {
+        mapsUrl: "",
+    },
+    scheduling: {
+        askTimePreference: true,
+        allowSameDay: true,
+        minimumLeadHours: 0,
+        maximumAdvanceDays: 90,
+        bufferMinutes: 0,
+        closedDates: [],
+    },
     cancellation: {
         manageByChat: true,
         minimumNoticeHours: 24,
@@ -68,6 +115,9 @@ export const EMPTY_BUSINESS_POLICIES: BusinessPolicies = {
         mode: "photo_quote",
         reviewerName: "el equipo",
         allowBookingBeforeQuote: true,
+    },
+    companions: {
+        policy: "not_defined",
     },
     humanEscalation: {
         triggers: ["explicit_request", "custom_quote", "adverse_reaction", "complaint"],
@@ -113,17 +163,47 @@ function stringList<T extends string>(value: unknown, options: readonly T[], fal
     return [...new Set(value.filter((entry): entry is T => typeof entry === "string" && options.includes(entry as T)))];
 }
 
+function dateList(value: unknown) {
+    if (!Array.isArray(value)) return [];
+    return [...new Set(value.filter((entry): entry is string =>
+        typeof entry === "string" && /^\d{4}-\d{2}-\d{2}$/.test(entry),
+    ))].sort().slice(0, 120);
+}
+
 export function normalizeBusinessPolicies(value?: unknown): BusinessPolicies {
     const source = asRecord(value);
+    const identity = asRecord(source.identity);
+    const publicInfo = asRecord(source.publicInfo);
+    const scheduling = asRecord(source.scheduling);
     const cancellation = asRecord(source.cancellation);
     const deposits = asRecord(source.deposits);
     const customWork = asRecord(source.customWork);
+    const companions = asRecord(source.companions);
     const humanEscalation = asRecord(source.humanEscalation);
     const legacySource = asRecord(source.legacyNotes);
     const sourceVersion = Number(source.version || 1);
 
     return {
         version: BUSINESS_POLICIES_VERSION,
+        identity: {
+            businessType: oneOf(identity.businessType, BEAUTY_BUSINESS_TYPES, "integrated_beauty"),
+            ownerName: cleanText(identity.ownerName),
+            tone: oneOf(identity.tone, ["warm", "elegant", "direct"] as const, "warm"),
+            emojiLevel: oneOf(identity.emojiLevel, ["none", "low", "moderate"] as const, "low"),
+        },
+        publicInfo: {
+            mapsUrl: typeof publicInfo.mapsUrl === "string" && /^https:\/\/(?:www\.)?(?:google\.[^/]+\/maps|maps\.app\.goo\.gl)\//i.test(publicInfo.mapsUrl.trim())
+                ? publicInfo.mapsUrl.trim().slice(0, 500)
+                : "",
+        },
+        scheduling: {
+            askTimePreference: typeof scheduling.askTimePreference === "boolean" ? scheduling.askTimePreference : true,
+            allowSameDay: typeof scheduling.allowSameDay === "boolean" ? scheduling.allowSameDay : true,
+            minimumLeadHours: clampNumber(scheduling.minimumLeadHours, 0, 0, 168),
+            maximumAdvanceDays: clampNumber(scheduling.maximumAdvanceDays, 90, 1, 730),
+            bufferMinutes: clampNumber(scheduling.bufferMinutes, 0, 0, 120),
+            closedDates: dateList(scheduling.closedDates),
+        },
         cancellation: {
             manageByChat: typeof cancellation.manageByChat === "boolean"
                 ? cancellation.manageByChat
@@ -150,6 +230,9 @@ export function normalizeBusinessPolicies(value?: unknown): BusinessPolicies {
             allowBookingBeforeQuote: typeof customWork.allowBookingBeforeQuote === "boolean"
                 ? customWork.allowBookingBeforeQuote
                 : true,
+        },
+        companions: {
+            policy: oneOf(companions.policy, ["not_defined", "allowed", "not_allowed", "one_only"] as const, "not_defined"),
         },
         humanEscalation: {
             triggers: stringList(humanEscalation.triggers, HUMAN_ESCALATION_TRIGGERS, [...EMPTY_BUSINESS_POLICIES.humanEscalation.triggers]),
@@ -185,6 +268,45 @@ export function compileBusinessPolicies(value?: unknown) {
     const lines: string[] = [
         "REGLA DE POLÍTICAS: aplica solamente las reglas compiladas a continuación. No inventes requisitos, cargos, anticipos, penalizaciones ni excepciones.",
     ];
+
+    const businessType = {
+        integrated_beauty: "salón de belleza integral",
+        hair_salon: "peluquería o salón de cabello",
+        barbershop: "barbería",
+        nails: "salón de uñas",
+        lashes_brows: "estudio de pestañas y cejas",
+        spa_aesthetics: "spa o centro de estética",
+    }[policies.identity.businessType];
+    const tone = {
+        warm: "cálido, claro y profesional",
+        elegant: "elegante, sereno y profesional",
+        direct: "breve, directo y amable",
+    }[policies.identity.tone];
+    const emojiRule = {
+        none: "No uses emojis.",
+        low: "Usa como máximo un emoji ocasional cuando resulte natural.",
+        moderate: "Puedes usar uno o dos emojis adecuados, sin saturar la conversación.",
+    }[policies.identity.emojiLevel];
+    lines.push(`- Identidad: atiendes para un ${businessType}; usa un tono ${tone}. ${emojiRule}`);
+    if (policies.identity.ownerName) {
+        lines.push(`- Responsable principal del negocio: ${policies.identity.ownerName}. No lo menciones si no aporta a la conversación.`);
+    }
+    if (policies.publicInfo.mapsUrl) {
+        lines.push(`- Ubicación pública en Google Maps: ${policies.publicInfo.mapsUrl}`);
+    }
+
+    lines.push(
+        policies.scheduling.askTimePreference
+            ? "- Preferencia horaria: cuando el cliente no indique una hora, pregunta primero si prefiere mañana o tarde y después consulta disponibilidad real."
+            : "- Preferencia horaria: si falta la hora, consulta y ofrece opciones reales cercanas sin obligar a elegir mañana o tarde.",
+    );
+    lines.push(`- Agenda: requiere ${policies.scheduling.minimumLeadHours} hora(s) de anticipación, permite reservar hasta ${policies.scheduling.maximumAdvanceDays} día(s) adelante y deja ${policies.scheduling.bufferMinutes} minuto(s) entre citas.`);
+    if (!policies.scheduling.allowSameDay) {
+        lines.push("- Agenda: no ofrezcas citas para el mismo día.");
+    }
+    if (policies.scheduling.closedDates.length > 0) {
+        lines.push(`- Días inhábiles adicionales: ${policies.scheduling.closedDates.join(", ")}. La disponibilidad real del CRM también los bloquea.`);
+    }
 
     if (policies.cancellation.manageByChat) {
         lines.push(`- Cancelaciones y cambios: pueden gestionarse por chat con al menos ${policies.cancellation.minimumNoticeHours} hora(s) de anticipación, siempre que el CRM confirme la operación.`);
@@ -236,6 +358,14 @@ export function compileBusinessPolicies(value?: unknown) {
             ? "- Puede agendarse el servicio base antes de obtener la cotización, si el cliente no exige conocer antes el precio final."
             : "- No confirmes la reserva de un trabajo personalizado hasta que el equipo haya realizado la cotización o valoración.",
     );
+
+    const companionRule = {
+        not_defined: "No hay una política de acompañantes definida; no inventes restricciones.",
+        allowed: "Se permiten acompañantes.",
+        not_allowed: "No se permiten acompañantes ni niños durante la cita.",
+        one_only: "Se permite como máximo un acompañante.",
+    }[policies.companions.policy];
+    lines.push(`- Acompañantes: ${companionRule}`);
 
     if (policies.humanEscalation.triggers.length > 0) {
         lines.push(`- Escala a una persona cuando: ${policies.humanEscalation.triggers.map((trigger) => ESCALATION_TRIGGER_LABELS[trigger]).join("; ")}.`);

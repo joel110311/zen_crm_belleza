@@ -37,6 +37,10 @@ import { useToast } from "@/components/ui/use-toast";
 import { cn } from "@/lib/utils";
 import {
     EMPTY_SERVICE_PREPARATION,
+    SERVICE_AFTERCARE_LABELS,
+    SERVICE_AFTERCARE_OPTIONS,
+    SERVICE_BOOKING_QUESTION_LABELS,
+    SERVICE_BOOKING_QUESTIONS,
     SERVICE_PREPARATION_LABELS,
     SERVICE_PREPARATION_OPTIONS,
     normalizeServicePreparation,
@@ -386,6 +390,24 @@ function ServiceDialog({ open, onOpenChange, form, setForm, categories, speciali
                 : [...current.preparationRequirements.options, option],
         },
     }));
+    const toggleBookingQuestion = (option: ServicePreparationRequirements["bookingQuestions"][number]) => setForm((current) => ({
+        ...current,
+        preparationRequirements: {
+            ...current.preparationRequirements,
+            bookingQuestions: current.preparationRequirements.bookingQuestions.includes(option)
+                ? current.preparationRequirements.bookingQuestions.filter((entry) => entry !== option)
+                : [...current.preparationRequirements.bookingQuestions, option],
+        },
+    }));
+    const toggleAftercare = (option: ServicePreparationRequirements["aftercareOptions"][number]) => setForm((current) => ({
+        ...current,
+        preparationRequirements: {
+            ...current.preparationRequirements,
+            aftercareOptions: current.preparationRequirements.aftercareOptions.includes(option)
+                ? current.preparationRequirements.aftercareOptions.filter((entry) => entry !== option)
+                : [...current.preparationRequirements.aftercareOptions, option],
+        },
+    }));
     const uploadImage = async (event: ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
         if (!file) return;
@@ -439,6 +461,11 @@ function ServiceDialog({ open, onOpenChange, form, setForm, categories, speciali
                     <Field label="Descripción"><Textarea value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} placeholder="Qué incluye el servicio..." rows={3} /></Field>
                     <div className="grid gap-4 sm:grid-cols-3"><Field label="Precio"><Input type="number" min="0" step="0.01" value={form.price} onChange={(event) => setForm((current) => ({ ...current, price: event.target.value }))} /></Field><Field label="Moneda"><Select value={form.currency} onValueChange={(currency) => setForm((current) => ({ ...current, currency }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="MXN">MXN</SelectItem><SelectItem value="USD">USD</SelectItem></SelectContent></Select></Field><Field label="Duración (min)"><Input type="number" min="5" max="480" step="5" value={form.durationMinutes} onChange={(event) => setForm((current) => ({ ...current, durationMinutes: event.target.value }))} /></Field></div>
                     <div className="space-y-3 rounded-xl border border-border p-3">
+                        <div><Label>Preguntas antes de reservar</Label><p className="mt-1 text-xs text-muted-foreground">El asistente preguntará sólo lo marcado y únicamente cuando falte esa información.</p></div>
+                        <div className="grid gap-2 sm:grid-cols-2">{SERVICE_BOOKING_QUESTIONS.map((option) => <label key={option} className="flex cursor-pointer items-start gap-2 rounded-lg border bg-background p-2.5 text-sm"><Checkbox checked={form.preparationRequirements.bookingQuestions.includes(option)} onCheckedChange={() => toggleBookingQuestion(option)} className="mt-0.5" /><span>{SERVICE_BOOKING_QUESTION_LABELS[option]}</span></label>)}</div>
+                        <Field label="Pregunta adicional (opcional)"><Input maxLength={140} value={form.preparationRequirements.customBookingQuestion} onChange={(event) => setForm((current) => ({ ...current, preparationRequirements: { ...current.preparationRequirements, customBookingQuestion: event.target.value } }))} placeholder="Ej. ¿Qué tono desea aplicar?" /></Field>
+                    </div>
+                    <div className="space-y-3 rounded-xl border border-border p-3">
                         <div>
                             <Label>Preparación antes del servicio</Label>
                             <p className="mt-1 text-xs text-muted-foreground">Marca sólo las indicaciones que realmente aplican a este servicio.</p>
@@ -465,6 +492,11 @@ function ServiceDialog({ open, onOpenChange, form, setForm, categories, speciali
                                 placeholder="Ej. Traer una foto de referencia"
                             />
                         </Field>
+                    </div>
+                    <div className="space-y-3 rounded-xl border border-border p-3">
+                        <div><Label>Cuidados posteriores</Label><p className="mt-1 text-xs text-muted-foreground">Recomendaciones que el asistente puede dar al finalizar o cuando el cliente pregunte.</p></div>
+                        <div className="grid gap-2 sm:grid-cols-2">{SERVICE_AFTERCARE_OPTIONS.map((option) => <label key={option} className="flex cursor-pointer items-start gap-2 rounded-lg border bg-background p-2.5 text-sm"><Checkbox checked={form.preparationRequirements.aftercareOptions.includes(option)} onCheckedChange={() => toggleAftercare(option)} className="mt-0.5" /><span>{SERVICE_AFTERCARE_LABELS[option]}</span></label>)}</div>
+                        <Field label="Cuidado adicional (opcional)"><Input maxLength={180} value={form.preparationRequirements.additionalAftercareInstruction} onChange={(event) => setForm((current) => ({ ...current, preparationRequirements: { ...current.preparationRequirements, additionalAftercareInstruction: event.target.value } }))} placeholder="Ej. Aplicar el producto recomendado por el especialista" /></Field>
                     </div>
                     <div className="space-y-2">
                         <div>
