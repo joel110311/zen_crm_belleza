@@ -282,6 +282,7 @@ model Service {
   price           Float               @default(0)
   currency        String              @default("MXN")
   durationMinutes Int                 @default(30)
+  preparationRequirements Json?
   imageUrl        String?
   showPrice       Boolean             @default(true)
   isFeatured      Boolean             @default(false)

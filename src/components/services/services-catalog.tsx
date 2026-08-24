@@ -35,6 +35,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/use-toast";
 import { cn } from "@/lib/utils";
+import {
+    EMPTY_SERVICE_PREPARATION,
+    SERVICE_PREPARATION_LABELS,
+    SERVICE_PREPARATION_OPTIONS,
+    normalizeServicePreparation,
+    type ServicePreparationRequirements,
+} from "@/lib/services/preparation-requirements";
 
 type CatalogPayload = Awaited<ReturnType<typeof getServicesCatalog>>;
 type Category = CatalogPayload["categories"][number];
@@ -49,6 +56,7 @@ type ServiceForm = {
     price: string;
     currency: string;
     durationMinutes: string;
+    preparationRequirements: ServicePreparationRequirements;
     imageUrl: string;
     showPrice: boolean;
     specialistIds: string[];
@@ -71,6 +79,7 @@ const EMPTY_SERVICE_FORM: ServiceForm = {
     price: "",
     currency: "MXN",
     durationMinutes: "30",
+    preparationRequirements: EMPTY_SERVICE_PREPARATION,
     imageUrl: "",
     showPrice: true,
     specialistIds: [],
@@ -113,6 +122,7 @@ function serviceToForm(service: Service): ServiceForm {
         price: String(service.price),
         currency: service.currency,
         durationMinutes: String(service.durationMinutes),
+        preparationRequirements: normalizeServicePreparation(service.preparationRequirements),
         imageUrl: service.imageUrl || "",
         showPrice: service.showPrice,
         specialistIds: service.specialists.map((entry) => entry.specialistId),
@@ -367,6 +377,15 @@ function ServiceDialog({ open, onOpenChange, form, setForm, categories, speciali
     const { toast } = useToast();
     const [isUploadingImage, setIsUploadingImage] = useState(false);
     const toggleSpecialist = (id: string) => setForm((current) => ({ ...current, specialistIds: current.specialistIds.includes(id) ? current.specialistIds.filter((entry) => entry !== id) : [...current.specialistIds, id] }));
+    const togglePreparation = (option: ServicePreparationRequirements["options"][number]) => setForm((current) => ({
+        ...current,
+        preparationRequirements: {
+            ...current.preparationRequirements,
+            options: current.preparationRequirements.options.includes(option)
+                ? current.preparationRequirements.options.filter((entry) => entry !== option)
+                : [...current.preparationRequirements.options, option],
+        },
+    }));
     const uploadImage = async (event: ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
         if (!file) return;
@@ -419,6 +438,34 @@ function ServiceDialog({ open, onOpenChange, form, setForm, categories, speciali
                     <div className="grid gap-4 sm:grid-cols-2"><Field label="Nombre *"><Input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} placeholder="Ej. Corte y peinado" /></Field><Field label="Categoría *"><Select value={form.categoryId} onValueChange={(categoryId) => setForm((current) => ({ ...current, categoryId }))}><SelectTrigger><SelectValue placeholder="Selecciona categoría" /></SelectTrigger><SelectContent>{categories.map((category) => <SelectItem key={category.id} value={category.id}>{category.name}</SelectItem>)}</SelectContent></Select></Field></div>
                     <Field label="Descripción"><Textarea value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} placeholder="Qué incluye el servicio..." rows={3} /></Field>
                     <div className="grid gap-4 sm:grid-cols-3"><Field label="Precio"><Input type="number" min="0" step="0.01" value={form.price} onChange={(event) => setForm((current) => ({ ...current, price: event.target.value }))} /></Field><Field label="Moneda"><Select value={form.currency} onValueChange={(currency) => setForm((current) => ({ ...current, currency }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="MXN">MXN</SelectItem><SelectItem value="USD">USD</SelectItem></SelectContent></Select></Field><Field label="Duración (min)"><Input type="number" min="5" max="480" step="5" value={form.durationMinutes} onChange={(event) => setForm((current) => ({ ...current, durationMinutes: event.target.value }))} /></Field></div>
+                    <div className="space-y-3 rounded-xl border border-border p-3">
+                        <div>
+                            <Label>Preparación antes del servicio</Label>
+                            <p className="mt-1 text-xs text-muted-foreground">Marca sólo las indicaciones que realmente aplican a este servicio.</p>
+                        </div>
+                        <div className="grid gap-2 sm:grid-cols-2">
+                            {SERVICE_PREPARATION_OPTIONS.map((option) => (
+                                <label key={option} className="flex cursor-pointer items-start gap-2 rounded-lg border bg-background p-2.5 text-sm">
+                                    <Checkbox checked={form.preparationRequirements.options.includes(option)} onCheckedChange={() => togglePreparation(option)} className="mt-0.5" />
+                                    <span>{SERVICE_PREPARATION_LABELS[option]}</span>
+                                </label>
+                            ))}
+                        </div>
+                        <Field label="Indicación adicional (opcional, máximo 160 caracteres)">
+                            <Input
+                                maxLength={160}
+                                value={form.preparationRequirements.additionalInstruction}
+                                onChange={(event) => setForm((current) => ({
+                                    ...current,
+                                    preparationRequirements: {
+                                        ...current.preparationRequirements,
+                                        additionalInstruction: event.target.value,
+                                    },
+                                }))}
+                                placeholder="Ej. Traer una foto de referencia"
+                            />
+                        </Field>
+                    </div>
                     <div className="space-y-2">
                         <div>
                             <Label>Especialistas que realizan este servicio</Label>

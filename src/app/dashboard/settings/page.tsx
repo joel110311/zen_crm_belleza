@@ -46,6 +46,7 @@ import { SpecialistManagerPanel } from "@/components/settings/specialist-manager
 import { PortalContentPanel } from "@/components/settings/portal-content-panel";
 import { LogoCropDialog } from "@/components/settings/logo-crop-dialog";
 import { UserAccessPanel } from "@/components/settings/user-access-panel";
+import { BusinessPolicyConfigurator } from "@/components/settings/business-policy-configurator";
 import { Slider } from "@/components/ui/slider";
 import { WhatsAppIcon } from "@/components/icons/whatsapp-icon";
 import { hasPermission, type PermissionKey } from "@/lib/permissions";
@@ -60,11 +61,9 @@ import {
     type BusinessWeeklySchedule,
 } from "@/lib/calendar/business-hours";
 import {
-    BUSINESS_POLICY_MAX_LENGTH,
     EMPTY_BUSINESS_POLICIES,
     normalizeBusinessPolicies,
     type BusinessPolicies,
-    type BusinessPolicyField,
 } from "@/lib/ai/business-policies";
 
 type SectionId = "theme" | "brand" | "operation" | "users" | "ai" | "whatsapp" | "calendar" | "specialists" | "portal" | "chats";
@@ -85,44 +84,6 @@ const SECTIONS: Array<{
     { id: "calendar", label: "Calendario", description: "Google Calendar y recordatorios de citas", icon: CalendarDays, permissions: ["calendar.manage", "integrations.manage"] },
     { id: "specialists", label: "Especialistas", description: "Perfiles, agendas, servicios y bloqueos", icon: Stethoscope, permission: "specialists.manage" },
     { id: "chats", label: "Notificaciones", description: "Sonidos y preferencias del inbox", icon: Volume2 },
-];
-
-const BUSINESS_POLICY_FIELDS: Array<{
-    id: BusinessPolicyField;
-    label: string;
-    description: string;
-    placeholder: string;
-}> = [
-    {
-        id: "cancellationAndRescheduling",
-        label: "Cancelaciones y reagenda",
-        description: "Plazos, cargos, tolerancias y condiciones para mover o cancelar una cita.",
-        placeholder: "Ej. Se puede reagendar sin costo hasta 24 horas antes...",
-    },
-    {
-        id: "depositsAndPayments",
-        label: "Anticipos y pagos",
-        description: "Cuándo se solicita anticipo, métodos aceptados y condiciones de devolución.",
-        placeholder: "Ej. Para apartar servicios mayores a $1,000 se solicita...",
-    },
-    {
-        id: "preparationInstructions",
-        label: "Preparación antes de la cita",
-        description: "Indicaciones que aplican antes de asistir; especifica a qué servicios corresponden.",
-        placeholder: "Ej. Para aplicación de uñas, acudir sin esmalte; para pestañas...",
-    },
-    {
-        id: "customQuotes",
-        label: "Cotizaciones especiales",
-        description: "Casos que necesitan revisar diseño, largo, volumen, diagnóstico o complejidad.",
-        placeholder: "Ej. Los diseños personalizados se cotizan después de recibir una foto...",
-    },
-    {
-        id: "humanEscalation",
-        label: "Cuándo pedir ayuda humana",
-        description: "Situaciones que el asistente no debe resolver por su cuenta. No incluyas contraseñas ni datos sensibles.",
-        placeholder: "Ej. Escalar cuando soliciten una cotización personalizada, presenten una reacción...",
-    },
 ];
 
 function SettingsWorkspace() {
@@ -308,13 +269,6 @@ function SettingsWorkspace() {
         setBusinessWeeklySchedule((current) => ({
             ...current,
             [day]: { ...current[day], ...patch },
-        }));
-    };
-
-    const updateBusinessPolicy = (field: BusinessPolicyField, value: string) => {
-        setBusinessPolicies((current) => ({
-            ...current,
-            [field]: value.slice(0, BUSINESS_POLICY_MAX_LENGTH),
         }));
     };
 
@@ -933,49 +887,7 @@ function SettingsWorkspace() {
                                 </div>
                             </div>
 
-                            <div className="mt-5 rounded-2xl border bg-background p-4">
-                                <div className="flex items-start gap-3">
-                                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                                        <ReceiptText className="h-4 w-4" />
-                                    </span>
-                                    <div>
-                                        <h3 className="font-semibold">Políticas de atención</h3>
-                                        <p className="text-sm leading-6 text-muted-foreground">
-                                            Registra aquí las reglas reales del negocio. El asistente las aplicará únicamente cuando correspondan a la conversación; si un campo queda vacío, no inventará una política.
-                                        </p>
-                                    </div>
-                                </div>
-
-                                <div className="mt-4 grid gap-4 lg:grid-cols-2">
-                                    {BUSINESS_POLICY_FIELDS.map((field) => (
-                                        <div
-                                            key={field.id}
-                                            className={`space-y-2 rounded-2xl border bg-muted/10 p-4 ${field.id === "humanEscalation" ? "lg:col-span-2" : ""}`}
-                                        >
-                                            <div>
-                                                <Label htmlFor={`business-policy-${field.id}`}>{field.label}</Label>
-                                                <p className="mt-1 text-xs leading-5 text-muted-foreground">{field.description}</p>
-                                            </div>
-                                            <Textarea
-                                                id={`business-policy-${field.id}`}
-                                                rows={4}
-                                                maxLength={BUSINESS_POLICY_MAX_LENGTH}
-                                                value={businessPolicies[field.id]}
-                                                onChange={(event) => updateBusinessPolicy(field.id, event.target.value)}
-                                                placeholder={field.placeholder}
-                                                className="min-h-28 resize-y bg-background"
-                                            />
-                                            <p className="text-right text-[11px] text-muted-foreground">
-                                                {businessPolicies[field.id].length}/{BUSINESS_POLICY_MAX_LENGTH}
-                                            </p>
-                                        </div>
-                                    ))}
-                                </div>
-
-                                <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100">
-                                    Estas políticas no sustituyen el catálogo ni el calendario: precios, duración, profesionales y disponibilidad siempre se toman de los datos operativos del CRM.
-                                </p>
-                            </div>
+                            <BusinessPolicyConfigurator value={businessPolicies} onChange={setBusinessPolicies} />
 
                             <div className="mt-5 rounded-2xl border bg-background p-4">
                                 <div className="flex items-start gap-3">

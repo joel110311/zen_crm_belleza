@@ -1,19 +1,11 @@
 import { prisma } from "@/lib/db";
 import type { AppSystemSettings } from "@/lib/system-settings";
 import {
+    compileBusinessPolicies,
     hasConfiguredBusinessPolicies,
     normalizeBusinessPolicies,
-    type BusinessPolicies,
-    type BusinessPolicyField,
 } from "@/lib/ai/business-policies";
-
-const BUSINESS_POLICY_LABELS: Record<BusinessPolicyField, string> = {
-    cancellationAndRescheduling: "Cancelaciones y reagenda",
-    depositsAndPayments: "Anticipos y pagos",
-    preparationInstructions: "Preparación antes de la cita",
-    customQuotes: "Cotizaciones especiales",
-    humanEscalation: "Criterios internos de escalación humana",
-};
+import { formatServicePreparation } from "@/lib/services/preparation-requirements";
 
 function cleanInline(value: string | null | undefined, fallback: string) {
     const normalized = value?.replace(/\s+/g, " ").trim();
@@ -55,12 +47,6 @@ function formatReminderOffsets(value: unknown) {
     return labels.length > 0 ? labels.join(", ") : "No configurados";
 }
 
-function formatPolicyLines(policies: BusinessPolicies) {
-    return (Object.keys(BUSINESS_POLICY_LABELS) as BusinessPolicyField[])
-        .filter((field) => Boolean(policies[field]))
-        .map((field) => `- ${BUSINESS_POLICY_LABELS[field]}: ${policies[field]}`);
-}
-
 export async function buildBeautyBusinessContext(settings: AppSystemSettings) {
     const [services, specialists] = await Promise.all([
         prisma.service.findMany({
@@ -76,6 +62,7 @@ export async function buildBeautyBusinessContext(settings: AppSystemSettings) {
                 name: true,
                 description: true,
                 durationMinutes: true,
+                preparationRequirements: true,
                 price: true,
                 currency: true,
                 showPrice: true,
@@ -107,6 +94,7 @@ export async function buildBeautyBusinessContext(settings: AppSystemSettings) {
         const assignedNames = service.specialists
             .map(({ specialist }) => specialist.displayName || specialist.name)
             .filter(Boolean);
+        const preparation = formatServicePreparation(service.preparationRequirements);
         const details = [
             `duración ${service.durationMinutes} min`,
             service.showPrice ? `precio ${formatMoney(service.price, service.currency)}` : "precio bajo consulta",
@@ -114,6 +102,7 @@ export async function buildBeautyBusinessContext(settings: AppSystemSettings) {
                 ? `profesionales: ${assignedNames.join(", ")}`
                 : "disponible con cualquier profesional compatible",
             clip(service.description),
+            preparation.length > 0 ? `preparación: ${preparation.join("; ")}` : "",
         ].filter(Boolean);
 
         return `- [${service.category.name}] ${service.name} — ${details.join(" · ")}`;
@@ -125,7 +114,7 @@ export async function buildBeautyBusinessContext(settings: AppSystemSettings) {
         return `- ${name}${details.length > 0 ? ` — ${details.join(" · ")}` : ""}`;
     });
     const policies = normalizeBusinessPolicies(settings.businessPolicies);
-    const policyLines = formatPolicyLines(policies);
+    const policyLines = compileBusinessPolicies(policies);
 
     return [
         "CONTEXTO ESTRUCTURADO DEL NEGOCIO (DATOS VERIFICADOS DEL CRM)",

@@ -1,8 +1,10 @@
 "use server";
 
+import type { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireAnyPermission, requirePermission } from "@/lib/authz";
+import { normalizeServicePreparation, type ServicePreparationRequirements } from "@/lib/services/preparation-requirements";
 
 export type ServiceCategoryInput = {
     id?: string;
@@ -21,6 +23,7 @@ export type ServiceInput = {
     price?: number;
     currency?: string;
     durationMinutes?: number;
+    preparationRequirements?: ServicePreparationRequirements;
     imageUrl?: string;
     showPrice?: boolean;
     isFeatured?: boolean;
@@ -177,6 +180,7 @@ export async function saveService(input: ServiceInput) {
                 price,
                 currency: cleanText(input.currency).toUpperCase() || "MXN",
                 durationMinutes,
+                preparationRequirements: normalizeServicePreparation(input.preparationRequirements) as unknown as Prisma.InputJsonValue,
                 imageUrl: cleanText(input.imageUrl) || null,
                 showPrice: input.showPrice !== false,
                 isFeatured: Boolean(input.isFeatured),
