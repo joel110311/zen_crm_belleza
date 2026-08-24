@@ -18,7 +18,7 @@ export type BusinessPolicies = {
     cancellation: {
         manageByChat: boolean;
         minimumNoticeHours: number;
-        lateArrivalToleranceMinutes: number;
+        lateArrivalToleranceMinutes: number | null;
         lateChangeConsequence: "none" | "may_charge" | "deposit_lost" | "human_review";
     };
     deposits: {
@@ -52,7 +52,7 @@ export const EMPTY_BUSINESS_POLICIES: BusinessPolicies = {
     cancellation: {
         manageByChat: true,
         minimumNoticeHours: 24,
-        lateArrivalToleranceMinutes: 15,
+        lateArrivalToleranceMinutes: null,
         lateChangeConsequence: "none",
     },
     deposits: {
@@ -129,7 +129,10 @@ export function normalizeBusinessPolicies(value?: unknown): BusinessPolicies {
                 ? cancellation.manageByChat
                 : EMPTY_BUSINESS_POLICIES.cancellation.manageByChat,
             minimumNoticeHours: clampNumber(cancellation.minimumNoticeHours, 24, 0, 168),
-            lateArrivalToleranceMinutes: clampNumber(cancellation.lateArrivalToleranceMinutes, 15, 0, 60),
+            lateArrivalToleranceMinutes: cancellation.lateArrivalToleranceMinutes === null
+                || cancellation.lateArrivalToleranceMinutes === undefined
+                ? null
+                : clampNumber(cancellation.lateArrivalToleranceMinutes, 0, 0, 60),
             lateChangeConsequence: oneOf(cancellation.lateChangeConsequence, ["none", "may_charge", "deposit_lost", "human_review"] as const, "none"),
         },
         deposits: {
@@ -196,7 +199,9 @@ export function compileBusinessPolicies(value?: unknown) {
         human_review: "Si avisa tarde, no decidas una consecuencia; solicita revisión humana.",
     }[policies.cancellation.lateChangeConsequence];
     lines.push(`- Avisos tardíos: ${consequence}`);
-    lines.push(`- Tolerancia de llegada: ${policies.cancellation.lateArrivalToleranceMinutes} minuto(s).`);
+    if (policies.cancellation.lateArrivalToleranceMinutes !== null) {
+        lines.push(`- Tolerancia de llegada: ${policies.cancellation.lateArrivalToleranceMinutes} minuto(s).`);
+    }
 
     if (!policies.deposits.required) {
         lines.push("- Anticipos: no se requiere anticipo para reservar y no debes solicitar pagos previos.");
