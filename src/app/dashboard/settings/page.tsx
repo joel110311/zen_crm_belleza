@@ -5,7 +5,7 @@ import { useSession } from "next-auth/react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
     CalendarDays,
-    Clock3,
+    Bot,
     Image as ImageIcon,
     Loader2,
     Palette,
@@ -14,7 +14,6 @@ import {
     ReceiptText,
     Save,
     Settings,
-    Sparkles,
     Stethoscope,
     Store,
     Trash2,
@@ -79,7 +78,7 @@ const SECTIONS: Array<{
 }> = [
     { id: "theme", label: "Apariencia", description: "Tema y estilo general del CRM", icon: Palette },
     { id: "users", label: "Usuarios", description: "Accesos, roles y permisos", icon: Users, permission: "users.manage" },
-    { id: "ai", label: "Cerebro IA", description: "Claves y servicios de inteligencia", icon: Sparkles, permission: "ai.manage" },
+    { id: "ai", label: "Cerebro IA", description: "Claves y servicios de inteligencia", icon: Bot, permission: "ai.manage" },
     { id: "whatsapp", label: "Canal WhatsApp", description: "WhatsApp API oficial y conexion alternativa por QR", icon: WhatsAppIcon, permission: "integrations.manage" },
     { id: "calendar", label: "Calendario", description: "Google Calendar y recordatorios de citas", icon: CalendarDays, permissions: ["calendar.manage", "integrations.manage"] },
     { id: "specialists", label: "Especialistas", description: "Perfiles, agendas, servicios y bloqueos", icon: Stethoscope, permission: "specialists.manage" },
@@ -522,7 +521,7 @@ function SettingsWorkspace() {
 
             <div className="rounded-2xl border bg-card p-4 sm:p-5 md:p-7">
                 {activeSection === "operation" && (
-                    <div className="mb-6 flex w-full max-w-xl rounded-xl bg-muted/60 p-1">
+                    <div className="mb-6 flex w-full max-w-xl border-b">
                         {([
                             { id: "operation", label: "Operación" },
                             { id: "portal", label: "Portal" },
@@ -532,9 +531,9 @@ function SettingsWorkspace() {
                                 key={tab.id}
                                 type="button"
                                 onClick={() => setOperationTab(tab.id)}
-                                className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium transition ${
+                                className={`relative flex-1 px-3 py-3 text-sm font-medium transition ${
                                     operationTab === tab.id
-                                        ? "bg-background text-foreground shadow-sm"
+                                        ? "text-primary after:absolute after:inset-x-4 after:bottom-0 after:h-0.5 after:rounded-full after:bg-primary"
                                         : "text-muted-foreground hover:text-foreground"
                                 }`}
                             >
@@ -794,11 +793,7 @@ function SettingsWorkspace() {
                             </div>
                         </div>
 
-                        <div className="rounded-2xl border bg-muted/20 p-4 text-sm text-muted-foreground">
-                            Para {selectedOperationCountry.name}, los cobros permiten {paymentEnabledCurrencies.join(" / ")} y los telefonos usan {phoneCountry.callingCode} por defecto.
-                        </div>
-
-                        <div className="rounded-2xl border bg-muted/10 p-4">
+                        <div className="rounded-2xl border bg-background p-4">
                             <div>
                                 <h2 className="font-semibold">Datos del negocio</h2>
                                 <p className="text-sm text-muted-foreground">
@@ -866,29 +861,6 @@ function SettingsWorkspace() {
                                         <Label>Dirección del negocio</Label>
                                         <Input value={clinicAddress} onChange={(event) => setClinicAddress(event.target.value)} placeholder="Dirección, teléfono, ciudad..." />
                                     </div>
-                                    <div className="rounded-2xl border bg-primary/5 p-4 text-sm text-muted-foreground md:col-span-2">
-                                        Los perfiles, horarios y servicios de cada profesional se editan en la sección Especialistas.
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="mt-5 rounded-2xl border border-primary/20 bg-primary/5 p-4">
-                                <div className="flex items-start gap-3">
-                                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                                        <Sparkles className="h-4 w-4" />
-                                    </span>
-                                    <div>
-                                        <h3 className="font-semibold">Información automática para el asistente</h3>
-                                        <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                                            El asistente usa el nombre, giro, dirección, horarios, servicios, precios, duración y profesionales registrados en el CRM. No necesitas duplicarlos en el prompt ni en la base de conocimiento.
-                                        </p>
-                                    </div>
-                                </div>
-                                <div className="mt-4 grid gap-2 text-sm text-muted-foreground sm:grid-cols-2">
-                                    <p className="rounded-xl border bg-background px-3 py-2">Datos y horarios: <span className="font-medium text-foreground">Mi Negocio</span></p>
-                                    <p className="rounded-xl border bg-background px-3 py-2">Catálogo y duración: <span className="font-medium text-foreground">Servicios</span></p>
-                                    <p className="rounded-xl border bg-background px-3 py-2">Agenda por persona: <span className="font-medium text-foreground">Profesionales</span></p>
-                                    <p className="rounded-xl border bg-background px-3 py-2">Tono y excepciones: <span className="font-medium text-foreground">Asistente IA</span></p>
                                 </div>
                             </div>
 
@@ -903,15 +875,7 @@ function SettingsWorkspace() {
                             />
 
                             <div className="mt-5 rounded-2xl border bg-background p-4">
-                                <div className="flex items-start gap-3">
-                                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                                        <Clock3 className="h-4 w-4" />
-                                    </span>
-                                    <div>
-                                        <h3 className="font-semibold">Horario de atención del negocio</h3>
-                                        <p className="text-sm text-muted-foreground">Es la fuente única para la disponibilidad del portal y del calendario.</p>
-                                    </div>
-                                </div>
+                                <h3 className="font-semibold">Horario de atención del negocio</h3>
                                 <div className="mt-4 divide-y rounded-xl border">
                                     {BUSINESS_DAY_KEYS.map((day) => {
                                         const schedule = businessWeeklySchedule[day];
@@ -937,7 +901,7 @@ function SettingsWorkspace() {
                             </div>
                         </div>
 
-                        <div className="rounded-2xl border bg-muted/10 p-4">
+                        <div className="rounded-2xl border bg-background p-4">
                             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                                 <div>
                                     <h2 className="flex items-center gap-2 font-semibold">
