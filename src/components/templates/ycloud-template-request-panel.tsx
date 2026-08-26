@@ -1268,7 +1268,7 @@ function PhonePreview({
     };
 
     return (
-        <div className="rounded-[2rem] border-4 border-gray-800 dark:border-gray-600 bg-gray-800 shadow-2xl overflow-hidden relative" style={{ width: 290 }}>
+        <div className="relative overflow-hidden rounded-[2rem] border-4 border-black bg-black shadow-2xl" style={{ width: 290 }}>
             {/* Status bar */}
             <div className="bg-teal-700 px-4 pt-2 pb-0.5 flex items-center justify-between text-white text-[10px]">
                 <span>9:41</span>
@@ -1316,7 +1316,7 @@ function PhonePreview({
             </div>
 
             {/* Input bar */}
-            <div className="bg-[#F0F0F0] dark:bg-[#1F2C34] px-3 py-2 flex items-center gap-2">
+            <div className="flex items-center gap-2 bg-primary/5 px-3 py-2 dark:bg-[#1F2C34]">
                 <Smile className="h-4 w-4 text-gray-500" />
                 <div className="flex-1 bg-white dark:bg-[#2A3942] rounded-full px-3 py-1 text-[10px] text-gray-400">Type a message</div>
                 <div className="h-7 w-7 rounded-full bg-teal-600 flex items-center justify-center">

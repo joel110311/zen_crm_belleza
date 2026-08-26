@@ -118,7 +118,7 @@ export default async function ContactDetailsPage(props: { params: Promise<{ id: 
                 </div>
 
                 {/* Right Column: Timeline / History */}
-                <div className="md:col-span-8 lg:col-span-9 flex flex-col bg-gray-50 rounded-xl border p-6">
+                <div className="flex flex-col rounded-xl border bg-card p-6 md:col-span-8 lg:col-span-9">
                     <div className="flex items-center justify-between mb-6">
                         <h2 className="text-lg font-semibold">Actividad del cliente</h2>
                         <div className="flex gap-2">
@@ -132,7 +132,7 @@ export default async function ContactDetailsPage(props: { params: Promise<{ id: 
                         <div className="flex gap-4">
                             <div className="flex flex-col items-center">
                                 <div className="h-2 w-2 bg-blue-500 rounded-full" />
-                                <div className="w-px h-full bg-gray-200 my-1" />
+                                <div className="my-1 h-full w-px bg-primary/20" />
                             </div>
                             <div className="pb-8">
                                 <p className="text-sm font-medium">Cliente creado</p>
@@ -144,7 +144,7 @@ export default async function ContactDetailsPage(props: { params: Promise<{ id: 
 
                         <div className="flex gap-4 opacity-50">
                             <div className="flex flex-col items-center">
-                                <div className="h-2 w-2 bg-gray-300 rounded-full" />
+                                <div className="h-2 w-2 rounded-full bg-primary/30" />
                             </div>
                             <div>
                                 <p className="text-sm text-gray-500">Inicio de la conversación</p>

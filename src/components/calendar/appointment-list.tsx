@@ -27,7 +27,7 @@ export function AppointmentList({ appointments, onEdit, onDelete }: AppointmentL
     return (
         <div className="bg-white rounded-lg border overflow-hidden">
             <Table>
-                <TableHeader className="bg-slate-50">
+                <TableHeader className="bg-primary/[0.045]">
                     <TableRow>
                         <TableHead className="font-semibold text-slate-600">FECHA/HORA</TableHead>
                         <TableHead className="font-semibold text-slate-600">PACIENTE</TableHead>
@@ -62,7 +62,7 @@ export function AppointmentList({ appointments, onEdit, onDelete }: AppointmentL
                                                 : apt.status;
 
                         return (
-                            <TableRow key={apt.id} className="hover:bg-slate-50/50">
+                            <TableRow key={apt.id} className="hover:bg-primary/[0.035]">
                                 <TableCell>
                                     <div className="flex flex-col">
                                         <span className="font-bold text-slate-900">

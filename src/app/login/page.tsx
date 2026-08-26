@@ -32,10 +32,10 @@ export default function LoginPage() {
     }, []);
 
     return (
-        <div className="relative min-h-dvh overflow-hidden bg-[#f7f8f6] text-foreground">
+        <div className="relative min-h-dvh overflow-hidden bg-background text-foreground">
             <div aria-hidden="true" className="pointer-events-none absolute inset-0">
                 <div className="absolute -left-40 top-1/3 h-80 w-80 rounded-full bg-primary/[0.045] blur-3xl sm:h-[30rem] sm:w-[30rem]" />
-                <div className="absolute -right-40 bottom-0 h-96 w-96 rounded-full bg-[#dfe8df]/50 blur-3xl sm:h-[34rem] sm:w-[34rem]" />
+                <div className="absolute -right-40 bottom-0 h-96 w-96 rounded-full bg-primary/10 blur-3xl sm:h-[34rem] sm:w-[34rem]" />
                 <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-border to-transparent" />
             </div>
 
@@ -100,7 +100,7 @@ export default function LoginPage() {
                                     autoComplete="email"
                                     placeholder="tu@email.com"
                                     required
-                                    className="h-12 rounded-xl border-black/[0.08] bg-[#f2f5f8] px-4 text-base shadow-none placeholder:text-muted-foreground/70 focus-visible:border-primary focus-visible:ring-primary/15 sm:h-13"
+                                    className="h-12 rounded-xl border-primary/20 bg-card px-4 text-base shadow-none placeholder:text-muted-foreground/45 focus-visible:border-primary focus-visible:ring-primary/15 sm:h-13"
                                 />
                             </div>
 
@@ -116,7 +116,7 @@ export default function LoginPage() {
                                         autoComplete="current-password"
                                         placeholder="••••••••"
                                         required
-                                        className="h-12 rounded-xl border-black/[0.08] bg-[#f2f5f8] px-4 pr-12 text-base shadow-none placeholder:text-muted-foreground/70 focus-visible:border-primary focus-visible:ring-primary/15 sm:h-13"
+                                        className="h-12 rounded-xl border-primary/20 bg-card px-4 pr-12 text-base shadow-none placeholder:text-muted-foreground/45 focus-visible:border-primary focus-visible:ring-primary/15 sm:h-13"
                                     />
                                     <button
                                         type="button"

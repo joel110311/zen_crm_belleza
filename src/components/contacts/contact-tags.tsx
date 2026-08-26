@@ -50,7 +50,7 @@ export function ContactTags({ contactId, contactTags, dealTags }: ContactTagsPro
                         <Badge
                             key={tag}
                             variant="secondary"
-                            className="px-2.5 py-0.5 bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-200 flex items-center gap-1"
+                            className="flex items-center gap-1 border border-primary/20 bg-primary/5 px-2.5 py-0.5 text-primary hover:bg-primary/10"
                         >
                             {tag}
                             <button

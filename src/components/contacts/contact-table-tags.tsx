@@ -59,7 +59,7 @@ export function ContactTableTags({ contactId, tags }: ContactTableTagsProps) {
                 <Badge
                     key={tag}
                     variant="secondary"
-                    className="px-2 py-0.5 bg-gray-100 text-gray-600 border border-gray-200 text-[10px] font-medium group/tag relative pr-4"
+                    className="group/tag relative border border-primary/20 bg-primary/5 px-2 py-0.5 pr-4 text-[10px] font-medium text-primary"
                 >
                     {tag}
                     <button
@@ -80,7 +80,7 @@ export function ContactTableTags({ contactId, tags }: ContactTableTagsProps) {
                     <Button
                         variant="ghost"
                         size="icon"
-                        className="h-5 w-5 rounded-full hover:bg-gray-100 text-gray-400 hover:text-blue-600"
+                        className="h-5 w-5 rounded-full text-primary/70 hover:bg-primary/8 hover:text-primary"
                     >
                         <Plus className="h-3 w-3" />
                     </Button>

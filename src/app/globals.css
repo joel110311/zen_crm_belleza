@@ -159,7 +159,7 @@
 
 /* Light mode (still available but secondary) */
 :root {
-  --background: hsl(220 20% 97%);
+  --background: hsl(198 55% 98%);
   --foreground: hsl(222 47% 11%);
   --card: hsl(0 0% 100%);
   --card-foreground: hsl(222 47% 11%);
@@ -167,16 +167,16 @@
   --popover-foreground: hsl(222 47% 11%);
   --primary: hsl(221 83% 53%);
   --primary-foreground: hsl(0 0% 100%);
-  --secondary: hsl(220 14% 96%);
+  --secondary: hsl(198 48% 96%);
   --secondary-foreground: hsl(222 47% 11%);
-  --muted: hsl(220 14% 96%);
+  --muted: hsl(198 42% 97%);
   --muted-foreground: hsl(220 9% 46%);
-  --accent: hsl(220 14% 96%);
+  --accent: hsl(198 52% 94%);
   --accent-foreground: hsl(222 47% 11%);
   --destructive: hsl(0 72% 51%);
   --destructive-foreground: hsl(0 0% 100%);
-  --border: hsl(220 13% 91%);
-  --input: hsl(220 13% 91%);
+  --border: hsl(198 24% 84%);
+  --input: hsl(198 24% 84%);
   --ring: hsl(221 83% 53%);
   --radius: 0.75rem;
 
@@ -544,25 +544,25 @@ body {
 
 /* Color themes: clinic blue (default) and green */
 :root[data-color-theme="green"] {
-  --background: hsl(42 31% 96%);
+  --background: hsl(78 45% 98%);
   --foreground: hsl(72 25% 16%);
-  --card: hsl(45 38% 99%);
+  --card: hsl(0 0% 100%);
   --card-foreground: hsl(72 25% 16%);
-  --popover: hsl(45 38% 99%);
+  --popover: hsl(0 0% 100%);
   --popover-foreground: hsl(72 25% 16%);
   --primary: hsl(77 35% 25%);
   --primary-foreground: hsl(44 48% 97%);
-  --secondary: hsl(45 29% 91%);
+  --secondary: hsl(78 38% 96%);
   --secondary-foreground: hsl(72 25% 18%);
-  --muted: hsl(43 24% 92%);
+  --muted: hsl(78 32% 97%);
   --muted-foreground: hsl(66 10% 41%);
-  --accent: hsl(76 22% 89%);
+  --accent: hsl(78 35% 94%);
   --accent-foreground: hsl(72 29% 18%);
   --gold: hsl(42 53% 48%);
   --destructive: hsl(0 72% 49%);
   --destructive-foreground: hsl(0 0% 100%);
-  --border: hsl(45 18% 84%);
-  --input: hsl(45 18% 84%);
+  --border: hsl(77 20% 84%);
+  --input: hsl(77 20% 84%);
   --ring: hsl(77 35% 25%);
   --radius: 0.8rem;
   --shadow-soft: 0 1px 2px rgba(53, 59, 35, 0.04), 0 8px 24px -18px rgba(53, 59, 35, 0.24);
@@ -651,7 +651,7 @@ body {
 :root,
 :root[data-color-theme="clinic"],
 :root[data-color-theme="black"] {
-  --background: hsl(220 20% 96%);
+  --background: hsl(198 55% 98%);
   --foreground: hsl(222 47% 11%);
   --card: hsl(0 0% 100%);
   --card-foreground: hsl(222 47% 11%);
@@ -659,16 +659,16 @@ body {
   --popover-foreground: hsl(222 47% 11%);
   --primary: hsl(198 49% 44%);
   --primary-foreground: hsl(0 0% 100%);
-  --secondary: hsl(220 14% 93%);
+  --secondary: hsl(198 48% 96%);
   --secondary-foreground: hsl(222 47% 11%);
-  --muted: hsl(220 14% 93%);
+  --muted: hsl(198 42% 97%);
   --muted-foreground: hsl(220 10% 42%);
-  --accent: hsl(220 16% 89%);
+  --accent: hsl(198 52% 94%);
   --accent-foreground: hsl(222 47% 11%);
   --destructive: hsl(0 72% 49%);
   --destructive-foreground: hsl(0 0% 100%);
-  --border: hsl(220 15% 84%);
-  --input: hsl(220 15% 84%);
+  --border: hsl(198 24% 84%);
+  --input: hsl(198 24% 84%);
   --ring: hsl(198 49% 44%);
   --gold: hsl(42 53% 48%);
 
@@ -693,10 +693,10 @@ body {
   --chat-outbound-border: rgba(103, 166, 191, 0.62);
   --chat-outbound-bg: linear-gradient(180deg, rgba(229, 242, 247, 0.98) 0%, rgba(216, 235, 242, 0.98) 52%, rgba(204, 227, 236, 0.98) 100%);
 
-  --scrollbar-track: hsl(220 16% 90%);
-  --scrollbar-thumb: hsl(220 12% 67%);
-  --scrollbar-thumb-hover: hsl(220 12% 55%);
-  --scrollbar-thumb-border: hsl(220 16% 90%);
+  --scrollbar-track: hsl(198 42% 96%);
+  --scrollbar-thumb: hsl(198 33% 68%);
+  --scrollbar-thumb-hover: hsl(198 42% 52%);
+  --scrollbar-thumb-border: hsl(198 42% 96%);
 }
 
 :root.dark,
@@ -760,7 +760,7 @@ body {
 
   body {
     @apply bg-background text-foreground antialiased;
-    background-image: linear-gradient(135deg, hsl(45 38% 98%) 0%, hsl(42 31% 96%) 52%, hsl(72 15% 94%) 100%);
+    background-image: linear-gradient(135deg, hsl(198 70% 99%) 0%, hsl(198 55% 98%) 52%, hsl(198 45% 96%) 100%);
     font-size: 14px;
     line-height: 1.45;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
@@ -789,11 +789,11 @@ body {
 :root body,
 :root[data-color-theme="clinic"] body,
 :root[data-color-theme="black"] body {
-  background-image: radial-gradient(circle at 0% 0%, hsl(221 32% 97%) 0%, hsl(220 20% 96%) 44%, hsl(220 16% 92%) 100%);
+  background-image: radial-gradient(circle at 0% 0%, hsl(198 70% 99%) 0%, hsl(198 55% 98%) 44%, hsl(198 45% 96%) 100%);
 }
 
 :root[data-color-theme="green"] body {
-  background-image: linear-gradient(135deg, hsl(45 38% 98%) 0%, hsl(42 31% 96%) 52%, hsl(72 15% 94%) 100%);
+  background-image: linear-gradient(135deg, hsl(78 55% 99%) 0%, hsl(78 45% 98%) 52%, hsl(78 35% 96%) 100%);
 }
 
 :root.dark body,

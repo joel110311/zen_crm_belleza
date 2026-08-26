@@ -11,7 +11,6 @@ import {
     Pencil,
     Plus,
     Scissors,
-    Star,
     Trash2,
     Upload,
     UserRound,
@@ -270,7 +269,6 @@ export function ServicesCatalog({ initialData }: { initialData: CatalogPayload }
                                                     setServiceDialogOpen(true);
                                                 }}
                                                 onDelete={() => removeService(service)}
-                                                onFeaturedChange={(value) => updateFlags(service, { isFeatured: value })}
                                                 onActiveChange={(value) => updateFlags(service, { isActive: value })}
                                             />
                                         ))}
@@ -332,7 +330,7 @@ export function ServicesCatalog({ initialData }: { initialData: CatalogPayload }
     );
 }
 
-function ServiceCard({ service, pending, onEdit, onDelete, onFeaturedChange, onActiveChange }: { service: Service; pending: boolean; onEdit: () => void; onDelete: () => void; onFeaturedChange: (value: boolean) => void; onActiveChange: (value: boolean) => void }) {
+function ServiceCard({ service, pending, onEdit, onDelete, onActiveChange }: { service: Service; pending: boolean; onEdit: () => void; onDelete: () => void; onActiveChange: (value: boolean) => void }) {
     const assignedSpecialist = service.specialists[0]?.specialist;
     const remainingSpecialists = Math.max(0, service.specialists.length - 1);
     const specialistNames = service.specialists
@@ -340,12 +338,12 @@ function ServiceCard({ service, pending, onEdit, onDelete, onFeaturedChange, onA
         .join(", ");
 
     return (
-        <article className={cn("rounded-xl border bg-background p-2.5 shadow-sm transition-shadow hover:shadow-md", !service.isActive && "opacity-65")}>
+        <article className={cn("rounded-xl border bg-card p-2.5 shadow-sm transition-[border-color,box-shadow] hover:border-primary/30 hover:shadow-md", !service.isActive && "border-dashed opacity-70")}>
             <div className="flex min-w-0 items-start gap-2.5">
                 {service.imageUrl ? (
                     <img src={service.imageUrl} alt="" className="h-10 w-10 shrink-0 rounded-lg border object-cover" />
                 ) : (
-                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border bg-muted/35 text-muted-foreground">
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-primary/15 bg-primary/5 text-primary">
                         <ImageIcon className="h-4 w-4" />
                     </span>
                 )}
@@ -353,14 +351,13 @@ function ServiceCard({ service, pending, onEdit, onDelete, onFeaturedChange, onA
                     <h3 className="truncate text-sm font-semibold leading-5 text-foreground">{service.name}</h3>
                     <p className="truncate text-xs leading-4 text-muted-foreground" title={service.description || "Sin descripción"}>{service.description || "Sin descripción"}</p>
                 </div>
-                <button type="button" onClick={() => onFeaturedChange(!service.isFeatured)} disabled={pending} className={cn("shrink-0 rounded-md p-1", service.isFeatured ? "text-amber-500" : "text-muted-foreground hover:text-amber-500")} aria-label={service.isFeatured ? "Quitar de destacados" : "Marcar como destacado"}><Star className={cn("h-4 w-4", service.isFeatured && "fill-current")} /></button>
             </div>
             <div className="mt-2 flex min-w-0 items-center gap-2 border-t border-border pt-2">
                 <span className="inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground"><Clock3 className="h-3.5 w-3.5" /> {service.durationMinutes} min</span>
                 {service.showPrice ? (
                     <span className="shrink-0 text-sm font-bold text-foreground">{formatMoney(service.price, service.currency)}</span>
                 ) : (
-                    <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">Precio oculto</span>
+                    <span className="shrink-0 rounded-full border border-primary/15 bg-primary/5 px-1.5 py-0.5 text-[10px] font-medium text-primary">Precio oculto</span>
                 )}
                 <span
                     className="ml-auto inline-flex min-w-0 items-center gap-1 rounded-full bg-primary/8 px-1.5 py-0.5 text-[10px] font-medium text-primary"
@@ -436,14 +433,14 @@ function ServiceDialog({ open, onOpenChange, form, setForm, categories, speciali
                 <div className="grid gap-4 py-2">
                     <div className="rounded-xl border border-border p-3">
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                            <div className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-xl border bg-muted/35">
+                            <div className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-primary/15 bg-primary/5">
                                 {form.imageUrl ? <img src={form.imageUrl} alt="Vista previa del servicio" className="h-full w-full object-cover" /> : <ImageIcon className="h-7 w-7 text-muted-foreground" />}
                             </div>
                             <div className="min-w-0 flex-1">
                                 <Label>Foto del servicio (opcional)</Label>
                                 <p className="mt-1 text-xs text-muted-foreground">Se muestra en el listado del portal de reservas.</p>
                                 <div className="mt-3 flex flex-wrap gap-2">
-                                    <label className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-lg border bg-background px-3 text-sm font-medium hover:bg-muted/50">
+                                    <label className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-lg border bg-card px-3 text-sm font-medium hover:border-primary/40 hover:bg-primary/5">
                                         {isUploadingImage ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
                                         {form.imageUrl ? "Cambiar foto" : "Subir foto"}
                                         <input type="file" accept="image/*" className="hidden" onChange={uploadImage} disabled={isUploadingImage} />
@@ -507,7 +504,7 @@ function ServiceDialog({ open, onOpenChange, form, setForm, categories, speciali
                             {specialists.map((specialist) => {
                                 const selected = form.specialistIds.includes(specialist.id);
                                 return (
-                                    <button type="button" key={specialist.id} onClick={() => toggleSpecialist(specialist.id)} className={cn("flex items-center gap-3 rounded-xl border p-3 text-left transition-colors", selected ? "border-primary bg-primary/10" : "border-border bg-background hover:bg-muted/50", !specialist.isActive && "opacity-55")}>
+                                    <button type="button" key={specialist.id} onClick={() => toggleSpecialist(specialist.id)} className={cn("flex items-center gap-3 rounded-xl border bg-card p-3 text-left transition-colors", selected ? "border-primary bg-primary/10" : "border-border hover:border-primary/35 hover:bg-primary/5", !specialist.isActive && "border-dashed opacity-65")}>
                                         <span className={cn("flex h-5 w-5 items-center justify-center rounded-md border", selected ? "border-primary bg-primary text-primary-foreground" : "border-border")}>{selected ? <Check className="h-3.5 w-3.5" /> : null}</span>
                                         <span className="min-w-0">
                                             <span className="block truncate text-sm font-semibold">{specialistName(specialist)}</span>
@@ -532,4 +529,4 @@ function CategoryDialog({ open, onOpenChange, form, setForm, pending, onSubmit }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) { return <div className="space-y-2"><Label>{label}</Label>{children}</div>; }
 
-function EmptyState({ title, description, actionLabel, onAction }: { title: string; description: string; actionLabel: string; onAction: () => void }) { return <div className="flex min-h-64 flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-muted/20 p-8 text-center"><span className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary"><Scissors className="h-6 w-6" /></span><h3 className="font-semibold">{title}</h3><p className="mt-1 max-w-md text-sm text-muted-foreground">{description}</p><Button className="mt-4" onClick={onAction}><Plus className="mr-2 h-4 w-4" />{actionLabel}</Button></div>; }
+function EmptyState({ title, description, actionLabel, onAction }: { title: string; description: string; actionLabel: string; onAction: () => void }) { return <div className="flex min-h-64 flex-col items-center justify-center rounded-2xl border border-dashed border-primary/25 bg-card p-8 text-center"><span className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary"><Scissors className="h-6 w-6" /></span><h3 className="font-semibold">{title}</h3><p className="mt-1 max-w-md text-sm text-muted-foreground">{description}</p><Button className="mt-4" onClick={onAction}><Plus className="mr-2 h-4 w-4" />{actionLabel}</Button></div>; }

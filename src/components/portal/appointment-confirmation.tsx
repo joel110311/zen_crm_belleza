@@ -114,7 +114,7 @@ export function AppointmentConfirmation({ token, appointment }: Props) {
     };
 
     return (
-        <div className="min-h-screen bg-slate-50 px-4 py-8">
+        <div className="min-h-screen bg-background px-4 py-8">
             <main className="mx-auto max-w-2xl rounded-2xl border bg-card p-6 shadow-sm">
                 <div className="flex items-start justify-between gap-4 border-b pb-5">
                     <div>

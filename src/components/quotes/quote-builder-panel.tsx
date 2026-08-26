@@ -977,7 +977,7 @@ export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", on
                                             </div>
                                         </header>
 
-                                        <div className="mt-7 h-px w-full bg-slate-200" />
+                                        <div className="mt-7 h-px w-full bg-primary/20" />
 
                                         <section className="grid grid-cols-2 gap-10 py-5 text-sm">
                                             <div className="space-y-1.5">
@@ -1043,7 +1043,7 @@ export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", on
                                                     <span>{formatQuoteCurrency(ivaAmount)}</span>
                                                 </div>
                                             ) : null}
-                                            <div className="h-px bg-slate-900" />
+                                            <div className="h-px bg-foreground" />
                                             <div className="flex justify-between text-lg font-black uppercase text-slate-950">
                                                 <span>Total</span>
                                                 <span>{formatQuoteCurrency(total)}</span>
@@ -1065,7 +1065,7 @@ export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", on
                                                     </div>
                                                 </div>
                                                 <div className="self-end pb-2 text-center text-xs text-slate-500">
-                                                    <div className="mx-auto mb-3 h-px w-48 bg-slate-400" />
+                                                    <div className="mx-auto mb-3 h-px w-48 bg-primary/35" />
                                                     <p className="font-black text-slate-800">{renderedVariables.agente || companyLabel}</p>
                                                     <p>Responsable de la cotizacion</p>
                                                 </div>
@@ -1221,7 +1221,7 @@ export function QuoteBuilderPanel({ initialContact, agentName, mode = "full", on
                                                 ) : null}
                                             </div>
                                             <div className="self-start justify-self-center pt-8 pr-10 text-center text-xs text-slate-500">
-                                                <div className="mx-auto mb-2 h-px w-44 bg-slate-400" />
+                                                <div className="mx-auto mb-2 h-px w-44 bg-primary/35" />
                                                 <p className="font-bold text-slate-800">{renderedVariables.agente || companyName}</p>
                                                 <p>Responsable de la cotizacion</p>
                                             </div>

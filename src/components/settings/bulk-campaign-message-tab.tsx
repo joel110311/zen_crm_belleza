@@ -527,7 +527,7 @@ export function BulkCampaignMessageTab({
                                         className="max-h-56 rounded-2xl object-contain"
                                     />
                                 ) : (
-                                    <div className="flex h-44 items-center justify-center rounded-2xl bg-slate-100 text-slate-400">
+                                    <div className="flex h-44 items-center justify-center rounded-2xl bg-primary/5 text-primary/45">
                                         <FileImage className="h-9 w-9" />
                                     </div>
                                 )

@@ -64,14 +64,14 @@ export function WhatsAppTemplatePreview({
     return (
         <div
             className={cn(
-                "mx-auto w-full rounded-[2.35rem] bg-white p-2.5 shadow-[0_28px_70px_-36px_rgba(15,23,42,0.34)] ring-1 ring-slate-200/80",
+                "mx-auto w-full rounded-[2.35rem] bg-white p-2.5 shadow-[0_28px_70px_-36px_rgba(15,23,42,0.34)] ring-1 ring-primary/20",
                 isCompact ? "max-w-[360px]" : "max-w-[428px]",
                 className,
             )}
         >
-            <div className="overflow-hidden rounded-[1.95rem] border border-slate-200 bg-white">
-                <div className="relative border-b border-slate-100 bg-white px-4 pb-3 pt-2.5">
-                    <div className="absolute left-1/2 top-2 h-6 w-28 -translate-x-1/2 rounded-full bg-slate-100 shadow-inner" />
+            <div className="overflow-hidden rounded-[1.95rem] border border-primary/20 bg-white">
+                <div className="relative border-b border-primary/10 bg-white px-4 pb-3 pt-2.5">
+                    <div className="absolute left-1/2 top-2 h-6 w-28 -translate-x-1/2 rounded-full bg-black" />
                     <div className="mb-3 flex items-center justify-between text-slate-700">
                         <span className="text-[13px] font-semibold tracking-tight">23:02</span>
                         <div className="flex items-center gap-1.5 text-slate-600">
@@ -122,7 +122,7 @@ export function WhatsAppTemplatePreview({
                                         ) : (
                                             <div
                                                 className={cn(
-                                                    "flex w-full items-center justify-center rounded-[1rem] bg-slate-100 text-slate-400",
+                                                    "flex w-full items-center justify-center rounded-[1rem] bg-primary/5 text-primary/45",
                                                     isCompact ? "h-32" : "h-44",
                                                 )}
                                             >
@@ -134,7 +134,7 @@ export function WhatsAppTemplatePreview({
 
                                 {type === "document" ? (
                                     <div className="px-3 pt-3">
-                                        <div className="flex items-center gap-3 rounded-[1rem] border border-slate-200 bg-slate-50 px-3 py-3">
+                                        <div className="flex items-center gap-3 rounded-[1rem] border border-primary/15 bg-primary/[0.035] px-3 py-3">
                                             <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-sky-50 text-sky-600">
                                                 <FileText className="h-5 w-5" />
                                             </div>
@@ -167,14 +167,14 @@ export function WhatsAppTemplatePreview({
                         <div>
                             <div className="flex items-center gap-2 rounded-[1.7rem] bg-white px-3 py-2 shadow-[0_20px_40px_-28px_rgba(15,23,42,0.22)]">
                                 <Plus className="h-4.5 w-4.5 text-sky-500" />
-                                <div className="flex-1 rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-[12px] text-slate-400">
+                                <div className="flex-1 rounded-full border border-primary/15 bg-primary/[0.035] px-4 py-2 text-[12px] text-primary/50">
                                     Type a message
                                 </div>
                                 <Smile className="h-4.5 w-4.5 text-sky-500" />
                                 <Camera className="h-4.5 w-4.5 text-sky-500" />
                                 <Mic className="h-4.5 w-4.5 text-emerald-500" />
                             </div>
-                            <div className="mx-auto mt-4 h-1.5 w-20 rounded-full bg-slate-300/80" />
+                            <div className="mx-auto mt-4 h-1.5 w-20 rounded-full bg-primary/35" />
                         </div>
                     ) : null}
                 </div>

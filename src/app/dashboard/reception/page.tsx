@@ -70,15 +70,15 @@ function statusTone(status: string) {
     if (status === "in_progress") return "bg-blue-50 text-blue-700 border-blue-200";
     if (status === "waiting" || status === "called") return "bg-amber-50 text-amber-700 border-amber-200";
     if (status === "cancelled" || status === "no_show") return "bg-red-50 text-red-700 border-red-200";
-    return "bg-slate-50 text-slate-700 border-slate-200";
+    return "border-primary/20 bg-primary/5 text-primary";
 }
 
 function reminderTone(status: string) {
     if (status === "sent") return "border-emerald-200 bg-emerald-50 text-emerald-700";
     if (status === "failed") return "border-red-200 bg-red-50 text-red-700";
     if (status === "queued" || status === "sending") return "border-blue-200 bg-blue-50 text-blue-700";
-    if (status === "skipped" || status === "cancelled") return "border-slate-200 bg-slate-50 text-slate-500";
-    return "border-slate-200 bg-slate-50 text-slate-700";
+    if (status === "skipped" || status === "cancelled") return "border-destructive/20 bg-destructive/5 text-destructive";
+    return "border-primary/20 bg-primary/5 text-primary";
 }
 
 function reminderStatusLabel(status: string) {
@@ -460,7 +460,7 @@ export default function ReceptionPage() {
                                         {appointment.source === "portal" ? <Badge variant="outline">Portal</Badge> : null}
                                         {appointment.confirmationStatus === "confirmed" ? <Badge variant="outline">Confirmada</Badge> : null}
                                         {appointmentStarted ? (
-                                            <Badge variant="outline" className="gap-1 border-slate-200 bg-slate-50 text-slate-600">
+                                            <Badge variant="outline" className="gap-1 border-primary/20 bg-primary/5 text-primary">
                                                 <LockKeyhole className="h-3 w-3" />
                                                 Cita vencida
                                             </Badge>

@@ -464,7 +464,7 @@ export function TemplateManagerPanel() {
                                             className="max-h-52 rounded-xl object-contain"
                                         />
                                     ) : (
-                                        <div className="flex h-44 items-center justify-center rounded-xl bg-slate-100 text-slate-400">
+                                        <div className="flex h-44 items-center justify-center rounded-xl bg-primary/5 text-primary/45">
                                             <FileImage className="h-8 w-8" />
                                         </div>
                                     )
@@ -572,7 +572,7 @@ export function TemplateManagerPanel() {
                                                     className="max-h-52 w-full rounded-lg object-cover"
                                                 />
                                             ) : (
-                                                <div className="flex h-40 items-center justify-center rounded-lg bg-slate-100 text-slate-400">
+                                                <div className="flex h-40 items-center justify-center rounded-lg bg-primary/5 text-primary/45">
                                                     <FileImage className="h-8 w-8" />
                                                 </div>
                                             )

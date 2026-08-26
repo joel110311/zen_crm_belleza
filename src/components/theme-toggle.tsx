@@ -37,14 +37,14 @@ export function ThemeToggle() {
                     )}
                     onClick={() => setTheme("light")}
                 >
-                    <div className="space-y-2 rounded-md bg-[#ecedef] p-2">
+                    <div className="space-y-2 rounded-md bg-primary/5 p-2">
                         <div className="space-y-2 rounded-md bg-white p-2 shadow-sm">
-                            <div className="h-2 w-[80px] rounded-lg bg-[#ecedef]" />
-                            <div className="h-2 w-[100px] rounded-lg bg-[#ecedef]" />
+                            <div className="h-2 w-[80px] rounded-lg bg-primary/15" />
+                            <div className="h-2 w-[100px] rounded-lg bg-primary/15" />
                         </div>
                         <div className="flex items-center space-x-2 rounded-md bg-white p-2 shadow-sm">
-                            <div className="h-4 w-4 rounded-full bg-[#ecedef]" />
-                            <div className="h-2 w-[100px] rounded-lg bg-[#ecedef]" />
+                            <div className="h-4 w-4 rounded-full bg-primary/15" />
+                            <div className="h-2 w-[100px] rounded-lg bg-primary/15" />
                         </div>
                     </div>
                     <div className="p-2 text-center text-sm font-medium">Claro</div>
@@ -57,14 +57,14 @@ export function ThemeToggle() {
                     )}
                     onClick={() => setTheme("dark")}
                 >
-                    <div className="space-y-2 rounded-md bg-slate-950 p-2">
-                        <div className="space-y-2 rounded-md bg-slate-800 p-2 shadow-sm">
-                            <div className="h-2 w-[80px] rounded-lg bg-slate-400" />
-                            <div className="h-2 w-[100px] rounded-lg bg-slate-400" />
+                    <div className="space-y-2 rounded-md bg-black p-2">
+                        <div className="space-y-2 rounded-md bg-primary/20 p-2 shadow-sm">
+                            <div className="h-2 w-[80px] rounded-lg bg-primary" />
+                            <div className="h-2 w-[100px] rounded-lg bg-primary" />
                         </div>
-                        <div className="flex items-center space-x-2 rounded-md bg-slate-800 p-2 shadow-sm">
-                            <div className="h-4 w-4 rounded-full bg-slate-400" />
-                            <div className="h-2 w-[100px] rounded-lg bg-slate-400" />
+                        <div className="flex items-center space-x-2 rounded-md bg-primary/20 p-2 shadow-sm">
+                            <div className="h-4 w-4 rounded-full bg-primary" />
+                            <div className="h-2 w-[100px] rounded-lg bg-primary" />
                         </div>
                     </div>
                     <div className="p-2 text-center text-sm font-medium">Oscuro</div>
@@ -77,7 +77,7 @@ export function ThemeToggle() {
                     )}
                     onClick={() => setTheme("system")}
                 >
-                    <div className="flex h-full flex-col justify-center items-center space-y-2 rounded-md bg-slate-100 p-2 dark:bg-slate-950">
+                    <div className="flex h-full flex-col justify-center items-center space-y-2 rounded-md bg-primary/5 p-2 dark:bg-black">
                         <Laptop className="h-10 w-10 text-muted-foreground" />
                     </div>
                     <div className="p-2 text-center text-sm font-medium">Sistema</div>

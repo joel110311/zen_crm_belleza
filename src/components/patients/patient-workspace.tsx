@@ -2465,7 +2465,7 @@ function RecipeLayoutEditorPanel({
     };
 
     return (
-        <div className="flex h-full min-h-0 flex-col bg-slate-100">
+        <div className="flex h-full min-h-0 flex-col bg-background">
             <div className="flex h-16 shrink-0 items-center justify-between border-b bg-background px-4 shadow-sm">
                 <Button variant="ghost" onClick={onBack} className="gap-2">
                     <ArrowRight className="h-4 w-4 rotate-180" />
@@ -2588,7 +2588,7 @@ function RecipeLayoutEditorPanel({
                     </div>
                 </aside>
 
-                <main className="min-w-0 overflow-auto bg-slate-200 p-6">
+                <main className="min-w-0 overflow-auto bg-primary/[0.035] p-6">
                     <div className="mb-4 flex items-center justify-between">
                         <p className="text-sm text-slate-700">Vista previa (arrastra elementos)</p>
                         <div className="flex rounded-full bg-white p-1 shadow-sm">
@@ -2782,7 +2782,7 @@ function RecipePrintDialog({
                         onReset={handleResetLayout}
                     />
                 ) : (
-                    <div className="flex h-full min-h-0 flex-col bg-slate-100">
+                    <div className="flex h-full min-h-0 flex-col bg-background">
                         <div className="flex min-h-16 shrink-0 flex-col gap-3 border-b bg-background px-4 py-3 shadow-sm lg:flex-row lg:items-center lg:justify-between lg:py-0">
                             <Button variant="ghost" onClick={() => onOpenChange(false)} className="gap-2">
                                 <ArrowRight className="h-4 w-4 rotate-180" />
@@ -2964,7 +2964,7 @@ function OpticalPrescriptionSheet({
 
                 <section className="mt-6 overflow-hidden rounded-2xl border border-slate-300">
                     <table className="w-full border-collapse text-[14px]">
-                        <thead className="bg-slate-50 text-[12px] uppercase tracking-wide text-slate-600">
+                        <thead className="bg-primary/[0.045] text-[12px] uppercase tracking-wide text-slate-600">
                             <tr>
                                 <th className="border-b border-r border-slate-300 px-3 py-3 text-left">Ojo</th>
                                 <th className="border-b border-r border-slate-300 px-3 py-3">Esfera</th>
@@ -3017,7 +3017,7 @@ function OpticalPrescriptionSheet({
                 <footer className="absolute bottom-[48px] left-[48px] right-[48px] grid grid-cols-2 items-end gap-8 text-[12px]">
                     <p className="whitespace-pre-wrap text-slate-700">{clinicProfile.clinicAddress}</p>
                     <div className="text-center">
-                        <div className="mx-auto mb-2 h-px w-48 bg-slate-500" />
+                        <div className="mx-auto mb-2 h-px w-48 bg-primary/40" />
                         <p className="font-medium">{professional.doctorName}</p>
                         <p>{professional.doctorProfessionalLicense ? `Ced. Prof. ${professional.doctorProfessionalLicense}` : "Ced. Prof. __________"}</p>
                     </div>
@@ -3092,7 +3092,7 @@ function OpticalPrescriptionPrintDialog({
                 className="h-[94vh] max-w-none gap-0 overflow-hidden p-0 sm:max-w-none"
                 style={{ width: "min(1320px, calc(100vw - 32px))", maxWidth: "calc(100vw - 32px)" }}
             >
-                <div className="flex h-full min-h-0 flex-col bg-slate-100">
+                <div className="flex h-full min-h-0 flex-col bg-background">
                     <div className="flex min-h-16 shrink-0 flex-col gap-3 border-b bg-background px-4 py-3 shadow-sm lg:flex-row lg:items-center lg:justify-between lg:py-0">
                         <Button variant="ghost" onClick={() => onOpenChange(false)} className="gap-2">
                             <ArrowRight className="h-4 w-4 rotate-180" />
@@ -5052,7 +5052,7 @@ function FilePreview({
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4" onClick={onClose}>
             <div className="flex max-h-[90vh] w-full max-w-5xl flex-col" onClick={(event) => event.stopPropagation()}>
-                <div className="flex items-center justify-between rounded-t-xl bg-slate-900 p-4">
+                <div className="flex items-center justify-between rounded-t-xl bg-black p-4">
                     <span className="max-w-[50%] truncate font-medium text-white">{file.name}</span>
                     <div className="flex items-center gap-2">
                         {file.type?.startsWith("image/") ? (
@@ -5071,7 +5071,7 @@ function FilePreview({
                         </button>
                     </div>
                 </div>
-                <div className="flex flex-1 items-center justify-center overflow-auto rounded-b-xl bg-slate-800 p-4">
+                <div className="flex flex-1 items-center justify-center overflow-auto rounded-b-xl bg-black p-4">
                     {file.type?.startsWith("image/") ? (
                         <img src={file.data} alt={file.name} className="object-contain transition-transform" style={{ transform: `scale(${zoom})`, maxHeight: zoom > 1 ? "none" : "70vh" }} />
                     ) : file.type === "application/pdf" ? (

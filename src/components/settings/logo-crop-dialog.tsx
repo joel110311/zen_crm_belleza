@@ -181,7 +181,7 @@ export function LogoCropDialog({
                             onPointerMove={handlePointerMove}
                             onPointerUp={stopDragging}
                             onPointerCancel={stopDragging}
-                            className="relative aspect-square w-[min(100%,420px,48dvh)] touch-none cursor-grab select-none overflow-hidden rounded-[2rem] border bg-[#e9ebe8] shadow-inner active:cursor-grabbing"
+                            className="relative aspect-square w-[min(100%,420px,48dvh)] touch-none cursor-grab select-none overflow-hidden rounded-[2rem] border border-primary/15 bg-primary/5 shadow-inner active:cursor-grabbing"
                         >
                             {sourceUrl ? (
                                 <img
