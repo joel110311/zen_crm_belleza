@@ -154,6 +154,20 @@ const APPOINTMENT_CANCEL_CONFIRMATION_PATTERN =
 const APPOINTMENT_CANCEL_COMPLETED_PATTERN =
     /\b(cita|reserva)\b.{0,50}\b(qued[oó]|est[aá])\b.{0,30}\b(cancelada|anulada)\b/i;
 
+const APPOINTMENT_CREATED_COMPLETED_PATTERN =
+    /\b(tu\s+)?(cita|reserva)\b.{0,50}\b(qued[oó]|est[aá])\b.{0,30}\b(agendada|reservada|confirmada)\b/i;
+
+const SAME_SPECIALIST_PATTERN =
+    /\b(mismo|misma)\s+(especialista|profesional|persona)|\bcon\s+(el|la)\s+mism[oa]\b/i;
+
+const NEW_BOOKING_CONTEXT_PATTERNS = [
+    /\b(otra|nueva|segunda)\s+(cita|reserva)\b/i,
+    /\b(otro|otra|diferente)\s+(dia|fecha|servicio|tratamiento)\b/i,
+    /\b(mejor|ahora|en\s+vez\s+de|cambiar|cambiemos)\b.{0,80}\b(lunes|martes|miercoles|jueves|viernes|sabado|domingo|dia|fecha|servicio|tratamiento|corte|cabello|unas|pestanas|cejas|barba|facial|masaje|spa|manicure|pedicure)\b/i,
+];
+
+const ACTIVE_BOOKING_CONTEXT_GAP_MS = 12 * 60 * 60 * 1000;
+
 const AMBIGUOUS_RELATIVE_WEEKDAY_PATTERN =
     /\b(?:el\s+)?(?:(proximo|próximo|siguiente)\s+(lunes|martes|miercoles|miércoles|jueves|viernes|sabado|sábado|domingo)|(lunes|martes|miercoles|miércoles|jueves|viernes|sabado|sábado|domingo)\s+(proximo|próximo|siguiente))\b/i;
 
@@ -249,6 +263,47 @@ function hasAppointmentContext(
     // ("si", "ese horario" o una transcripcion de audio como "a la una").
     // El planificador decide despues si realmente contienen una confirmacion.
     return looksLikeDateOrTimeAnswer(latestUserMessage) || latestUserMessage.trim().length <= 160;
+}
+
+function isCompletedBookingReply(text: string) {
+    return APPOINTMENT_CREATED_COMPLETED_PATTERN.test(text) ||
+        APPOINTMENT_RESCHEDULE_COMPLETED_PATTERN.test(text) ||
+        APPOINTMENT_CANCEL_COMPLETED_PATTERN.test(text);
+}
+
+function startsNewBookingContext(text: string) {
+    const normalized = normalizeCatalogText(text);
+    return NEW_BOOKING_CONTEXT_PATTERNS.some((pattern) => pattern.test(normalized));
+}
+
+function getCurrentBookingInboundMessages(
+    messages: Array<{ content: string; direction: string; senderType: string | null; createdAt: Date }>,
+    latestUserMessage: string,
+) {
+    const ordered = [...messages].sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime());
+    const scopedMessages: string[] = [];
+    let newerMessageAt = ordered.find((message) =>
+        message.direction === "inbound" && message.content === latestUserMessage,
+    )?.createdAt || new Date();
+
+    for (const message of ordered) {
+        if (newerMessageAt.getTime() - message.createdAt.getTime() > ACTIVE_BOOKING_CONTEXT_GAP_MS) break;
+        if (
+            (message.direction === "outbound" || message.senderType === "bot") &&
+            isCompletedBookingReply(message.content)
+        ) break;
+
+        if (message.direction === "inbound") {
+            if (!scopedMessages.includes(message.content)) scopedMessages.push(message.content);
+            if (startsNewBookingContext(message.content) && !SAME_SPECIALIST_PATTERN.test(message.content)) break;
+        }
+        newerMessageAt = message.createdAt;
+    }
+
+    return [
+        latestUserMessage,
+        ...scopedMessages.filter((message) => message !== latestUserMessage),
+    ];
 }
 
 function normalizeCatalogText(value: string) {
@@ -1392,14 +1447,36 @@ export async function maybeHandleAppointmentBooking(
     const eligibleSpecialists = assignedSpecialists.length > 0
         ? assignedSpecialists
         : activeSpecialists;
-    const previousInboundMessages = conversation.messages
-        .filter((message) => message.direction === "inbound" && message.content !== latestUserMessage)
-        .map((message) => message.content);
+    const bookingInboundMessages = getCurrentBookingInboundMessages(
+        conversation.messages,
+        latestUserMessage,
+    );
+    const previousInboundMessages = bookingInboundMessages.slice(1);
     let selectedCrmSpecialist = findSpecialistByExplicitPreference(
         latestUserMessage,
         previousInboundMessages,
         eligibleSpecialists,
     );
+
+    if (
+        !selectedCrmSpecialist &&
+        SAME_SPECIALIST_PATTERN.test(latestUserMessage) &&
+        conversation.contactId &&
+        eligibleSpecialists.length > 0
+    ) {
+        const previousAppointment = await prisma.appointment.findFirst({
+            where: {
+                contactId: conversation.contactId,
+                specialistId: { in: eligibleSpecialists.map((specialist) => specialist.id) },
+                status: { notIn: ["cancelled", "no_show"] },
+            },
+            orderBy: { createdAt: "desc" },
+            select: { specialistId: true },
+        });
+        selectedCrmSpecialist = eligibleSpecialists.find((specialist) =>
+            specialist.id === previousAppointment?.specialistId,
+        ) || null;
+    }
 
     const shouldAskForCrmSpecialist = !selectedCrmSpecialist && (
         (specialistAssignmentMode === "ask_always" && eligibleSpecialists.length > 0) ||
@@ -1441,7 +1518,7 @@ export async function maybeHandleAppointmentBooking(
                 source.calendarId === selectedCrmSpecialist?.googleCalendarSource?.calendarId,
             ) || null
             : null
-        : await findGoogleSpecialistByMention([latestUserMessage, ...previousInboundMessages].join("\n"));
+        : await findGoogleSpecialistByMention(bookingInboundMessages.join("\n"));
 
     if (
         !selectedCrmSpecialist &&
