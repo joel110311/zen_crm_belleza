@@ -1,4 +1,4 @@
-export const BUSINESS_POLICIES_VERSION = 3 as const;
+export const BUSINESS_POLICIES_VERSION = 4 as const;
 
 export const BEAUTY_BUSINESS_TYPES = [
     "integrated_beauty",
@@ -23,6 +23,14 @@ export const HUMAN_ESCALATION_TRIGGERS = [
 ] as const;
 export type HumanEscalationTrigger = (typeof HUMAN_ESCALATION_TRIGGERS)[number];
 
+export const SPECIALIST_ASSIGNMENT_MODES = [
+    "ask_always",
+    "ask_when_multiple",
+    "first_available",
+    "least_busy",
+] as const;
+export type SpecialistAssignmentMode = (typeof SPECIALIST_ASSIGNMENT_MODES)[number];
+
 export type BusinessPolicies = {
     version: typeof BUSINESS_POLICIES_VERSION;
     identity: {
@@ -35,6 +43,7 @@ export type BusinessPolicies = {
         mapsUrl: string;
     };
     scheduling: {
+        specialistAssignmentMode: SpecialistAssignmentMode;
         askTimePreference: boolean;
         allowSameDay: boolean;
         minimumLeadHours: number;
@@ -89,6 +98,7 @@ export const EMPTY_BUSINESS_POLICIES: BusinessPolicies = {
         mapsUrl: "",
     },
     scheduling: {
+        specialistAssignmentMode: "ask_when_multiple",
         askTimePreference: true,
         allowSameDay: true,
         minimumLeadHours: 0,
@@ -197,6 +207,11 @@ export function normalizeBusinessPolicies(value?: unknown): BusinessPolicies {
                 : "",
         },
         scheduling: {
+            specialistAssignmentMode: oneOf(
+                scheduling.specialistAssignmentMode,
+                SPECIALIST_ASSIGNMENT_MODES,
+                "ask_when_multiple",
+            ),
             askTimePreference: typeof scheduling.askTimePreference === "boolean" ? scheduling.askTimePreference : true,
             allowSameDay: typeof scheduling.allowSameDay === "boolean" ? scheduling.allowSameDay : true,
             minimumLeadHours: clampNumber(scheduling.minimumLeadHours, 0, 0, 168),
@@ -300,6 +315,13 @@ export function compileBusinessPolicies(value?: unknown) {
             ? "- Preferencia horaria: cuando el cliente no indique una hora, pregunta primero si prefiere mañana o tarde y después consulta disponibilidad real."
             : "- Preferencia horaria: si falta la hora, consulta y ofrece opciones reales cercanas sin obligar a elegir mañana o tarde.",
     );
+    const specialistAssignmentRule = {
+        ask_always: "pregunta con qué especialista desea atenderse antes de confirmar la cita, incluso cuando sólo haya uno apto",
+        ask_when_multiple: "respeta cualquier preferencia explícita; si hay varios especialistas aptos pregunta cuál prefiere, y si sólo hay uno asígnalo",
+        first_available: "respeta cualquier preferencia explícita; si no la hay asigna al especialista apto con la primera disponibilidad real",
+        least_busy: "respeta cualquier preferencia explícita; si no la hay asigna al especialista apto con menor carga de citas y disponibilidad real",
+    }[policies.scheduling.specialistAssignmentMode];
+    lines.push(`- Asignación de especialista: ${specialistAssignmentRule}. Nunca asignes al azar.`);
     lines.push(`- Agenda: requiere ${policies.scheduling.minimumLeadHours} hora(s) de anticipación, permite reservar hasta ${policies.scheduling.maximumAdvanceDays} día(s) adelante y deja ${policies.scheduling.bufferMinutes} minuto(s) entre citas.`);
     if (!policies.scheduling.allowSameDay) {
         lines.push("- Agenda: no ofrezcas citas para el mismo día.");

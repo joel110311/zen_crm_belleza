@@ -1,6 +1,8 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { generateCompletion } from "@/lib/ai/openai";
+import { normalizeBusinessPolicies, type SpecialistAssignmentMode } from "@/lib/ai/business-policies";
+import { getSystemSettingsOrDefaults } from "@/lib/system-settings";
 import {
     AppointmentSchedulingError,
     cancelManagedAppointment,
@@ -279,15 +281,183 @@ function resolveCatalogService(
     return null;
 }
 
-function findSpecialistByMention(text: string, specialists: BookingSpecialist[]) {
+function specialistPreferenceScore(
+    text: string,
+    specialist: BookingSpecialist,
+    allowBareAnswer: boolean,
+    aliases: string[] = [],
+) {
     const normalizedText = normalizeCatalogText(text);
-    return specialists.find((specialist) => {
-        const names = [specialist.name, specialist.displayName]
-            .filter((value): value is string => Boolean(value))
-            .map(normalizeCatalogText)
-            .filter(Boolean);
-        return names.some((name) => normalizedText.includes(name));
-    }) || null;
+    const names = [...new Set([specialist.name, specialist.displayName, ...aliases]
+        .filter((value): value is string => Boolean(value))
+        .map(normalizeCatalogText)
+        .filter(Boolean))];
+    let bestScore = -1;
+
+    for (const name of names) {
+        if (allowBareAnswer && (
+            normalizedText === name ||
+            normalizedText === `${name} por favor` ||
+            normalizedText === `el ${name}` ||
+            normalizedText === `la ${name}`
+        )) {
+            bestScore = Math.max(bestScore, 10_000);
+        }
+
+        const negativePhrases = [`no con ${name}`, `sin ${name}`, `no quiero ${name}`];
+        if (negativePhrases.some((phrase) => normalizedText.includes(phrase))) continue;
+
+        const positivePhrases = [
+            `con ${name}`,
+            `prefiero ${name}`,
+            `quiero ${name}`,
+            `que me atienda ${name}`,
+            `que me atienda el ${name}`,
+            `que me atienda la ${name}`,
+            `especialista ${name}`,
+            `profesional ${name}`,
+        ];
+        for (const phrase of positivePhrases) {
+            const index = normalizedText.lastIndexOf(phrase);
+            if (index >= 0) bestScore = Math.max(bestScore, index);
+        }
+    }
+
+    return bestScore;
+}
+
+function findSpecialistByExplicitPreference(
+    latestUserMessage: string,
+    previousInboundMessages: string[],
+    specialists: BookingSpecialist[],
+) {
+    const messages = [latestUserMessage, ...previousInboundMessages.filter((message) => message !== latestUserMessage)];
+    const preferredNames = specialists.map((specialist) =>
+        normalizeCatalogText(specialist.displayName || specialist.name),
+    );
+    const uniqueFirstNameAliases = new Map<string, string[]>();
+    for (const [index, specialist] of specialists.entries()) {
+        const firstName = preferredNames[index]?.split(" ")[0];
+        if (firstName && firstName.length >= 3 && preferredNames.filter((name) => name.split(" ")[0] === firstName).length === 1) {
+            uniqueFirstNameAliases.set(specialist.id, [firstName]);
+        }
+    }
+    for (const [messageIndex, message] of messages.entries()) {
+        const matches = specialists
+            .map((specialist) => ({
+                specialist,
+                score: specialistPreferenceScore(
+                    message,
+                    specialist,
+                    messageIndex === 0,
+                    uniqueFirstNameAliases.get(specialist.id),
+                ),
+            }))
+            .filter((entry) => entry.score >= 0)
+            .sort((left, right) => right.score - left.score);
+        if (matches[0]) return matches[0].specialist;
+    }
+    return null;
+}
+
+async function selectAutomaticSpecialist(input: {
+    mode: Extract<SpecialistAssignmentMode, "first_available" | "least_busy">;
+    specialists: BookingSpecialist[];
+    localDate?: string | null;
+    localTime?: string | null;
+    durationMinutes: number;
+    config: Awaited<ReturnType<typeof getBusinessHoursConfig>>;
+    bookingContext: Awaited<ReturnType<typeof getGoogleCalendarBookingContext>>;
+    slotHoldOwnerKey: string;
+}) {
+    const { mode, specialists, localDate, localTime, durationMinutes, config, bookingContext } = input;
+    if (specialists.length <= 1) return specialists[0] || null;
+
+    const appointmentCounts = async (start?: Date, end?: Date) => {
+        const counts = await prisma.appointment.groupBy({
+            by: ["specialistId"],
+            where: {
+                specialistId: { in: specialists.map((specialist) => specialist.id) },
+                status: { notIn: ["cancelled", "no_show"] },
+                startTime: start && end ? { gte: start, lt: end } : { gte: new Date() },
+            },
+            _count: { _all: true },
+        });
+        return new Map(counts.map((entry) => [entry.specialistId, entry._count._all]));
+    };
+
+    if (!localDate) {
+        if (mode === "first_available") return specialists[0];
+        const counts = await appointmentCounts();
+        return [...specialists].sort((left, right) =>
+            (counts.get(left.id) || 0) - (counts.get(right.id) || 0),
+        )[0] || null;
+    }
+
+    const requestedStart = localTime
+        ? zonedDateTimeToUtc(localDate, localTime, config.timeZone)
+        : null;
+    const availabilityRows = [] as Array<{
+        specialist: BookingSpecialist;
+        slots: Date[];
+        dayStart: Date;
+        dayEnd: Date;
+        originalIndex: number;
+    }>;
+
+    for (const [originalIndex, specialist] of specialists.entries()) {
+        const mappedCalendar = specialist.googleCalendarSource?.calendarId
+            ? bookingContext.allSources.find((source) => source.calendarId === specialist.googleCalendarSource?.calendarId)
+            : null;
+        const availability = await getAvailableSlotsForDate(
+            localDate,
+            durationMinutes * 60 * 1000,
+            config,
+            {
+                calendarIds: mappedCalendar?.calendarId
+                    ? [mappedCalendar.calendarId]
+                    : bookingContext.availabilitySources.map((source) => source.calendarId),
+                specialistId: specialist.id,
+                limit: 96,
+                slotHoldOwnerKey: input.slotHoldOwnerKey,
+            },
+        );
+        availabilityRows.push({
+            specialist,
+            slots: availability.slots,
+            dayStart: availability.start,
+            dayEnd: availability.end,
+            originalIndex,
+        });
+    }
+
+    const availableAtRequestedTime = requestedStart
+        ? availabilityRows.filter((entry) => entry.slots.some((slot) => slot.getTime() === requestedStart.getTime()))
+        : [];
+    const rowsWithAvailability = availabilityRows.filter((entry) => entry.slots.length > 0);
+    const candidates = availableAtRequestedTime.length > 0
+        ? availableAtRequestedTime
+        : rowsWithAvailability.length > 0
+            ? rowsWithAvailability
+            : availabilityRows;
+
+    if (mode === "first_available") {
+        return [...candidates].sort((left, right) => {
+            const leftTime = left.slots[0]?.getTime() ?? Number.MAX_SAFE_INTEGER;
+            const rightTime = right.slots[0]?.getTime() ?? Number.MAX_SAFE_INTEGER;
+            return leftTime - rightTime || left.originalIndex - right.originalIndex;
+        })[0]?.specialist || null;
+    }
+
+    const dayStart = availabilityRows[0]?.dayStart;
+    const dayEnd = availabilityRows[0]?.dayEnd;
+    const counts = await appointmentCounts(dayStart, dayEnd);
+    return [...candidates].sort((left, right) => {
+        const loadDifference = (counts.get(left.specialist.id) || 0) - (counts.get(right.specialist.id) || 0);
+        const leftTime = left.slots[0]?.getTime() ?? Number.MAX_SAFE_INTEGER;
+        const rightTime = right.slots[0]?.getTime() ?? Number.MAX_SAFE_INTEGER;
+        return loadDifference || leftTime - rightTime || left.originalIndex - right.originalIndex;
+    })[0]?.specialist || null;
 }
 
 function hasAppointmentRescheduleIntent(text: string) {
@@ -1202,11 +1372,11 @@ export async function maybeHandleAppointmentBooking(
     if (planner.action === "ignore") {
         return { kind: "none", reply: null };
     }
-    const specialistContextText = [
+    const bookingContextText = [
         latestUserMessage,
         ...conversation.messages.map((message) => message.content),
     ].join("\n");
-    const selectedService = resolveCatalogService(planner, services, specialistContextText);
+    const selectedService = resolveCatalogService(planner, services, bookingContextText);
     if (!selectedService) {
         return {
             kind: "missing",
@@ -1215,17 +1385,27 @@ export async function maybeHandleAppointmentBooking(
     }
     const durationMinutes = Math.min(Math.max(selectedService.durationMinutes, 5), 480);
     const bookingContext = await getGoogleCalendarBookingContext();
+    const settings = await getSystemSettingsOrDefaults();
+    const specialistAssignmentMode = normalizeBusinessPolicies(settings.businessPolicies)
+        .scheduling.specialistAssignmentMode;
     const assignedSpecialists = selectedService.specialists.map((entry) => entry.specialist);
     const eligibleSpecialists = assignedSpecialists.length > 0
         ? assignedSpecialists
         : activeSpecialists;
-    let selectedCrmSpecialist = findSpecialistByMention(specialistContextText, eligibleSpecialists);
+    const previousInboundMessages = conversation.messages
+        .filter((message) => message.direction === "inbound" && message.content !== latestUserMessage)
+        .map((message) => message.content);
+    let selectedCrmSpecialist = findSpecialistByExplicitPreference(
+        latestUserMessage,
+        previousInboundMessages,
+        eligibleSpecialists,
+    );
 
-    if (!selectedCrmSpecialist && eligibleSpecialists.length === 1) {
-        selectedCrmSpecialist = eligibleSpecialists[0];
-    }
-
-    if (!selectedCrmSpecialist && eligibleSpecialists.length > 1) {
+    const shouldAskForCrmSpecialist = !selectedCrmSpecialist && (
+        (specialistAssignmentMode === "ask_always" && eligibleSpecialists.length > 0) ||
+        (specialistAssignmentMode === "ask_when_multiple" && eligibleSpecialists.length > 1)
+    );
+    if (shouldAskForCrmSpecialist) {
         return {
             kind: "missing",
             reply: buildSpecialistReply(eligibleSpecialists.map((specialist) => ({
@@ -1235,21 +1415,61 @@ export async function maybeHandleAppointmentBooking(
         };
     }
 
-    let selectedSpecialist = selectedCrmSpecialist?.googleCalendarSource?.calendarId
-        ? bookingContext.allSources.find((source) =>
-            source.calendarId === selectedCrmSpecialist?.googleCalendarSource?.calendarId,
-        ) || null
-        : await findGoogleSpecialistByMention(specialistContextText);
+    if (!selectedCrmSpecialist && eligibleSpecialists.length === 1) {
+        selectedCrmSpecialist = eligibleSpecialists[0];
+    }
 
-    if (!selectedCrmSpecialist && !selectedSpecialist && bookingContext.specialists.length === 1) {
+    if (
+        !selectedCrmSpecialist &&
+        (specialistAssignmentMode === "first_available" || specialistAssignmentMode === "least_busy")
+    ) {
+        selectedCrmSpecialist = await selectAutomaticSpecialist({
+            mode: specialistAssignmentMode,
+            specialists: eligibleSpecialists,
+            localDate: planner.localDate,
+            localTime: planner.localTime,
+            durationMinutes,
+            config,
+            bookingContext,
+            slotHoldOwnerKey: conversation.id,
+        });
+    }
+
+    let selectedSpecialist = selectedCrmSpecialist
+        ? selectedCrmSpecialist.googleCalendarSource?.calendarId
+            ? bookingContext.allSources.find((source) =>
+                source.calendarId === selectedCrmSpecialist?.googleCalendarSource?.calendarId,
+            ) || null
+            : null
+        : await findGoogleSpecialistByMention([latestUserMessage, ...previousInboundMessages].join("\n"));
+
+    if (
+        !selectedCrmSpecialist &&
+        !selectedSpecialist &&
+        bookingContext.specialists.length === 1 &&
+        specialistAssignmentMode !== "ask_always"
+    ) {
         selectedSpecialist = bookingContext.specialists[0];
     }
 
-    if (!selectedCrmSpecialist && !selectedSpecialist && bookingContext.specialists.length > 1) {
+    const shouldAskForGoogleSpecialist = !selectedCrmSpecialist && !selectedSpecialist && (
+        (specialistAssignmentMode === "ask_always" && bookingContext.specialists.length > 0) ||
+        (specialistAssignmentMode === "ask_when_multiple" && bookingContext.specialists.length > 1)
+    );
+    if (shouldAskForGoogleSpecialist) {
         return {
             kind: "missing",
             reply: buildSpecialistReply(bookingContext.specialists),
         };
+    }
+
+    if (
+        !selectedCrmSpecialist &&
+        !selectedSpecialist &&
+        bookingContext.specialists.length > 0 &&
+        (specialistAssignmentMode === "first_available" || specialistAssignmentMode === "least_busy")
+    ) {
+        selectedSpecialist = bookingContext.specialists[0];
     }
 
     const targetCalendar = selectedSpecialist || bookingContext.writeTarget;
