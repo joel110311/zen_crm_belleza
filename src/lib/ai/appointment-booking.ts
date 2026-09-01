@@ -103,6 +103,8 @@ const APPOINTMENT_AVAILABILITY_PATTERNS = [
 const APPOINTMENT_FOLLOW_UP_PROMPTS = [
     /\b(que|qué)\s+d[ií]a\b.{0,80}\b(cita|agendar|calendario|horarios libres|disponibilidad real)\b/i,
     /\b(cita|agendar|calendario|horarios libres|disponibilidad real)\b.{0,80}\b(que|qué)\s+d[ií]a\b/i,
+    /\b(consultar|revisar|ver)\b.{0,60}\bdisponibilidad\b.{0,80}\b(d[ií]a|fecha|hoy|mañana|manana)\b/i,
+    /\b(d[ií]a|fecha|hoy|mañana|manana)\b.{0,80}\b(consultar|revisar|ver)\b.{0,60}\bdisponibilidad\b/i,
     /\b(horario|hora)\s+que\s+prefieras\b/i,
     /\bresponde\s+con\s+el\s+horario\b/i,
     /\b(confirmar|apartar|reservar)\b.{0,70}\b(cita|horario)\b/i,
