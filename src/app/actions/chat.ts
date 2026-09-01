@@ -997,6 +997,21 @@ function buildEscalationCustomerReply() {
     return "Para darte una respuesta precisa, te voy a canalizar con un asesor humano y en un momento te atenderemos por aqui.";
 }
 
+function claimsUnverifiedAppointmentAvailability(reply: string) {
+    const normalized = normalizeCatalogComparableText(reply);
+    const claimsAvailability = /\b(disponibilidad|disponibles?|horarios? libres?|espacios? libres?)\b/.test(normalized);
+    const containsSpecificTime = /\b(?:[01]?\d|2[0-3])(?::[0-5]\d)?\s*(?:a\.?\s*m\.?|p\.?\s*m\.?)\b/i.test(reply);
+    return claimsAvailability && containsSpecificTime;
+}
+
+function buildVerifiedAvailabilityFallbackReply() {
+    return [
+        "*Necesito consultar la agenda real antes de ofrecerte una hora.*",
+        "",
+        "Dime el servicio que deseas y el día; revisaré su duración, la profesional compatible y todos los espacios libres.",
+    ].join("\n");
+}
+
 function buildEscalationAlertMessage(params: {
     brandName?: string | null;
     contact: {
@@ -1962,6 +1977,14 @@ async function maybeSendAutomatedReply(
         }
 
         if (!reply) return;
+
+        if (
+            replyFromModel &&
+            appointmentResult.kind === "none" &&
+            claimsUnverifiedAppointmentAvailability(reply)
+        ) {
+            reply = buildVerifiedAvailabilityFallbackReply();
+        }
 
         const shouldEscalate =
             replyFromModel &&

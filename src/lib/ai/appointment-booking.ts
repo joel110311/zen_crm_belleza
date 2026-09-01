@@ -113,8 +113,11 @@ const APPOINTMENT_FOLLOW_UP_PROMPTS = [
     /\b(horarios?)\b.{0,60}\b(disponibles?|libres?)\b/i,
     /\b(mañana|manana|tarde)\b.{0,80}\b(disponibilidad|agenda|horario)\b/i,
     /\b(confirmar|confirma|confirmame|confírmame)\b.{0,60}\b(fecha exacta|fecha|dia|día)\b/i,
-    /\b(que|qué|cual|cuál)\b.{0,30}\bservicio\b.{0,40}\b(deseas|quieres|buscas|necesitas)\b/i,
-    /\bdime\b.{0,25}\bservicio\b/i,
+    /\b(que|qué|cual|cuál)\b.{0,40}\bservicios?\b.{0,50}\b(deseas|quieres|buscas|necesitas|interesa)\b/i,
+    /\b(dime|indica(?:me)?|elige|selecciona)\b.{0,45}\bservicios?\b/i,
+    /\b(que|qué)\b.{0,25}\b(te gustaria|te gustaría|quieres)\b.{0,25}\b(hacerte|realizarte)\b/i,
+    /(?:que|qué)\s+servicios?\s+te\s+(?:interesa|gustaria|gustaría)/i,
+    /(?:que|qué)\s+te\s+(?:gustaria|gustaría)\s+(?:hacerte|realizarte)/i,
     /\b(con quien|con quién|profesional|especialista)\b.{0,50}\b(prefieres|deseas|quieres|cita)\b/i,
 ];
 
@@ -209,6 +212,16 @@ function getLastAssistantMessage(
     )?.content || "";
 }
 
+function getRecentAssistantMessages(
+    messages: Array<{ content: string; direction: string; senderType: string | null }>,
+    limit = 5,
+) {
+    return messages
+        .filter((message) => message.direction === "outbound" || message.senderType === "bot")
+        .slice(0, limit)
+        .map((message) => message.content);
+}
+
 function assistantRequestedAppointmentDetail(text: string) {
     return APPOINTMENT_FOLLOW_UP_PROMPTS.some((pattern) => pattern.test(text));
 }
@@ -226,7 +239,7 @@ function hasAppointmentContext(
         return false;
     }
 
-    if (!assistantRequestedAppointmentDetail(lastAssistantMessage)) {
+    if (!getRecentAssistantMessages(messages).some(assistantRequestedAppointmentDetail)) {
         return false;
     }
 
@@ -618,7 +631,7 @@ Cliente: ${latestUserMessage}
                 excludeAppointmentId: appointment.id,
                 specialistId: appointment.specialistId,
                 calendarIds: appointment.googleCalendarId ? [appointment.googleCalendarId] : undefined,
-                limit: 6,
+                limit: 96,
                 slotHoldOwnerKey: conversation.id,
             },
         );
@@ -860,17 +873,29 @@ function buildDateAvailabilityReply(
         ].join("\n");
     }
 
+    const ranges = availability.slots.reduce<Array<{ first: Date; last: Date }>>((groups, slot) => {
+        const previous = groups.at(-1);
+        if (previous && slot.getTime() - previous.last.getTime() === 15 * 60 * 1000) {
+            previous.last = slot;
+        } else {
+            groups.push({ first: slot, last: slot });
+        }
+        return groups;
+    }, []);
+    const formatSlot = (slot: Date) => formatDateTimeInZone(slot, config.timeZone, "es-MX", {
+        hour: "numeric",
+        minute: "2-digit",
+    });
+
     return [
         `*Si hay disponibilidad para el ${dateLabel}.*`,
         "",
-        "*Horarios libres:*",
-        ...availability.slots.map((slot, index) =>
-            `${index + 1}. ${formatDateTimeInZone(slot, config.timeZone, "es-MX", {
-                hour: "numeric",
-                minute: "2-digit",
-            })}`,
-        ),
+        "*Horas de inicio disponibles:*",
+        ...ranges.map((range) => range.first.getTime() === range.last.getTime()
+            ? `- ${formatSlot(range.first)}`
+            : `- De ${formatSlot(range.first)} a ${formatSlot(range.last)}`),
         "",
+        "Dentro de esos rangos puedes elegir inicios cada 15 minutos.",
         "Responde con el horario que prefieras y lo confirmo en calendario.",
     ].join("\n");
 }
@@ -1242,7 +1267,7 @@ export async function maybeHandleAppointmentBooking(
                 {
                     calendarIds: blockingCalendarIds,
                     specialistId: selectedCrmSpecialist?.id,
-                    limit: 6,
+                    limit: 96,
                     slotHoldOwnerKey: conversation.id,
                 },
             );
