@@ -394,6 +394,14 @@ function getGoogleEventContactId(event: GoogleCalendarEvent) {
     return event.extendedProperties?.private?.crmContactId || null;
 }
 
+function getGoogleEventPatientId(event: GoogleCalendarEvent) {
+    return event.extendedProperties?.private?.crmPatientId || null;
+}
+
+function getGoogleEventSpecialistId(event: GoogleCalendarEvent) {
+    return event.extendedProperties?.private?.crmSpecialistId || null;
+}
+
 function parseTimedEventDate(value?: GoogleEventDateTime) {
     if (value?.dateTime) {
         return new Date(value.dateTime);
@@ -413,6 +421,7 @@ function buildGoogleCalendarEventPayload(
         meetLink?: string | null;
         contactId?: string | null;
         patientId?: string | null;
+        specialistId?: string | null;
     },
     timeZone: string,
 ) {
@@ -439,6 +448,7 @@ function buildGoogleCalendarEventPayload(
                 crmAppointmentId: appointment.id,
                 ...(appointment.contactId ? { crmContactId: appointment.contactId } : {}),
                 ...(appointment.patientId ? { crmPatientId: appointment.patientId } : {}),
+                ...(appointment.specialistId ? { crmSpecialistId: appointment.specialistId } : {}),
             },
         },
         ...(requestMeet
@@ -520,12 +530,15 @@ async function applyGoogleEventToCrm(
         meetLink: extractMeetLink(event) || existing?.meetLink || null,
         meetStatus: extractMeetLink(event) ? "generated" : existing?.meetStatus || "none",
         visitMode: extractMeetLink(event) ? "virtual" : existing?.visitMode || "presencial",
-        specialistName: source.isSpecialist
+        // An explicit CRM assignment is authoritative. The calendar mapping is
+        // only a fallback for events that originated directly in Google.
+        specialistName: existing?.specialistName || (source.isSpecialist
             ? normalizeSpecialistName(source.specialistName, source.summary)
-            : null,
-        specialistId: linkedSpecialist?.id || existing?.specialistId || null,
+            : null),
+        specialistId: getGoogleEventSpecialistId(event) || existing?.specialistId || linkedSpecialist?.id || null,
         googleEventUpdatedAt: event.updated ? new Date(event.updated) : null,
         contactId: getGoogleEventContactId(event) || existing?.contactId || undefined,
+        patientId: getGoogleEventPatientId(event) || existing?.patientId || undefined,
         userId: existing?.userId || undefined,
     };
 
@@ -1132,10 +1145,10 @@ export async function syncAppointmentToGoogleCalendar(appointmentId: string) {
                 googleCalendarId: targetCalendarId,
                 googleCalendarName: targetSource?.summary || appointment.googleCalendarName || targetCalendarId,
                 googleCalendarColor: normalizeHexColor(targetSource?.backgroundColor),
-                specialistName: targetSource?.isSpecialist
+                specialistName: appointment.specialistName || (targetSource?.isSpecialist
                     ? normalizeSpecialistName(targetSource.specialistName, targetSource.summary)
-                    : appointment.specialistName || null,
-                specialistId: linkedSpecialist?.id || appointment.specialistId || null,
+                    : null),
+                specialistId: appointment.specialistId || linkedSpecialist?.id || null,
                 meetLink,
                 meetStatus: meetLink ? "generated" : appointment.meetStatus,
                 googleEventUpdatedAt: data.updated ? new Date(data.updated) : null,

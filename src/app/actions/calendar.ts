@@ -55,7 +55,10 @@ async function validateLinkedPatient(patientId: string | undefined | null) {
 
     const patient = await prisma.patient.findUnique({
         where: { id: cleanPatientId },
-        select: { id: true },
+        select: {
+            id: true,
+            contactId: true,
+        },
     });
 
     if (!patient) {
@@ -65,7 +68,11 @@ async function validateLinkedPatient(patientId: string | undefined | null) {
         };
     }
 
-    return { success: true as const, patientId: cleanPatientId };
+    return {
+        success: true as const,
+        patientId: patient.id,
+        contactId: patient.contactId,
+    };
 }
 
 export async function getAppointments() {
@@ -327,6 +334,7 @@ export async function createAppointment(data: {
         const appointment = await createManagedAppointment({
             ...data,
             patientId: patientValidation.patientId,
+            contactId: data.contactId || patientValidation.contactId || undefined,
         });
         await syncAppointmentReminders(appointment.id);
         revalidateCalendarSurfaces();
@@ -378,6 +386,9 @@ export async function updateAppointment(id: string, data: {
             const patientValidation = await validateLinkedPatient(nextData.patientId);
             if (!patientValidation.success) return patientValidation;
             nextData.patientId = patientValidation.patientId;
+            // A patient may exist before its CRM contact is generated. Passing
+            // an empty value intentionally clears a stale contact association.
+            nextData.contactId = patientValidation.contactId || "";
         }
 
         const appointment = await updateManagedAppointment(id, nextData);

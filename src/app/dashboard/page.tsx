@@ -326,6 +326,7 @@ async function getDashboardData(params: {
                         firstName: true,
                         lastName: true,
                         phone: true,
+                        contactId: true,
                         _count: { select: { appointments: true } },
                     },
                 },
@@ -1199,7 +1200,8 @@ function AppointmentsPanel({
                         const hasAssignedClient = Boolean(appointment.patientId || appointment.contactId) && !isGenericClient;
                         const specialistName = appointment.specialist?.displayName || appointment.specialist?.name || appointment.specialistName || "Sin asignar";
                         const appointmentCount = appointment.patient?._count.appointments || 1;
-                        const contactHref = appointment.contactId ? `/dashboard/contacts/${appointment.contactId}` : null;
+                        const linkedContactId = appointment.contactId || appointment.patient?.contactId;
+                        const contactHref = linkedContactId ? `/dashboard/contacts/${linkedContactId}` : null;
                         const appointmentDate = getOperationDateKey(appointment.startTime, operationContext.timeZone);
 
                         return (
@@ -1212,8 +1214,12 @@ function AppointmentsPanel({
                                         {getInitials(displayName)}
                                     </span>
                                     <div className="min-w-0">
-                                        {hasAssignedClient && contactHref ? (
-                                            <Link href={contactHref} className="block truncate font-bold text-foreground hover:text-primary">{displayName}</Link>
+                                        {hasAssignedClient ? (
+                                            contactHref ? (
+                                                <Link href={contactHref} className="block truncate font-bold text-foreground hover:text-primary">{displayName}</Link>
+                                            ) : (
+                                                <span className="block truncate font-bold text-foreground">{displayName}</span>
+                                            )
                                         ) : (
                                             <span className="block truncate font-bold text-foreground">Sin cliente asignado</span>
                                         )}
