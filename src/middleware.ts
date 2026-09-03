@@ -40,7 +40,10 @@ export async function middleware(req: NextRequest) {
         "/api/health",
         "/api/operation-context",
     ];
-    const isPublicPath = publicPaths.some((path) => pathname.startsWith(path));
+    // The canonical application URL is the public acquisition page.  It must
+    // bypass this authentication middleware just like /signup; otherwise the
+    // page component never gets a chance to render the registration CTA.
+    const isPublicPath = pathname === "/" || publicPaths.some((path) => pathname.startsWith(path));
 
     if (isPublicPath) {
         return NextResponse.next();
