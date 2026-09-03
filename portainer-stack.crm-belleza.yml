@@ -32,6 +32,35 @@ services:
       - META_WHATSAPP_REGISTRATION_PIN=${META_WHATSAPP_REGISTRATION_PIN:-}
       - META_WEBHOOK_VERIFY_TOKEN=${META_WEBHOOK_VERIFY_TOKEN:-}
       - META_WEBHOOK_BASE_URL=https://${APP_DOMAIN}
+      - RESEND_API_KEY=${RESEND_API_KEY:-}
+      - EMAIL_FROM=${EMAIL_FROM:-}
+      - EMAIL_REPLY_TO=${EMAIL_REPLY_TO:-}
+      - TURNSTILE_SITE_KEY=${TURNSTILE_SITE_KEY:-}
+      - TURNSTILE_SECRET_KEY=${TURNSTILE_SECRET_KEY:-}
+      - TURNSTILE_EXPECTED_HOSTNAME=${TURNSTILE_EXPECTED_HOSTNAME:-}
+      - CONTROL_DATABASE_URL=${CONTROL_DATABASE_URL:-}
+      - MULTITENANT_RUNTIME_ENABLED=${MULTITENANT_RUNTIME_ENABLED:-false}
+      - MULTITENANT_AUTH_ENABLED=${MULTITENANT_AUTH_ENABLED:-false}
+      - MULTITENANT_PUBLIC_SIGNUP_ENABLED=${MULTITENANT_PUBLIC_SIGNUP_ENABLED:-false}
+      - MULTITENANT_INVITATIONS_ENABLED=${MULTITENANT_INVITATIONS_ENABLED:-false}
+      - MULTITENANT_PUBLIC_PORTAL_ENABLED=${MULTITENANT_PUBLIC_PORTAL_ENABLED:-false}
+      - MULTITENANT_CHANNELS_ENABLED=${MULTITENANT_CHANNELS_ENABLED:-false}
+      - MULTITENANT_PRIVATE_STORAGE_ENABLED=${MULTITENANT_PRIVATE_STORAGE_ENABLED:-false}
+      - SECURITY_HASH_SALT=${SECURITY_HASH_SALT:-}
+      - TENANT_CREDENTIALS_ENCRYPTION_KEY=${TENANT_CREDENTIALS_ENCRYPTION_KEY:-}
+      - TENANT_CREDENTIALS_KEY_VERSION=${TENANT_CREDENTIALS_KEY_VERSION:-1}
+      - CHANNEL_STATE_SIGNING_SECRET=${CHANNEL_STATE_SIGNING_SECRET:-}
+      - MULTITENANT_WUZAPI_BASE_URL=${MULTITENANT_WUZAPI_BASE_URL:-}
+      - MULTITENANT_WUZAPI_WEBHOOK_HMAC_KEY=${MULTITENANT_WUZAPI_WEBHOOK_HMAC_KEY:-}
+      - TENANT_STORAGE_S3_ENDPOINT=${TENANT_STORAGE_S3_ENDPOINT:-}
+      - TENANT_STORAGE_S3_REGION=${TENANT_STORAGE_S3_REGION:-us-east-1}
+      - TENANT_STORAGE_S3_BUCKET=${TENANT_STORAGE_S3_BUCKET:-}
+      - TENANT_STORAGE_S3_ACCESS_KEY_ID=${TENANT_STORAGE_S3_ACCESS_KEY_ID:-}
+      - TENANT_STORAGE_S3_SECRET_ACCESS_KEY=${TENANT_STORAGE_S3_SECRET_ACCESS_KEY:-}
+      - TENANT_STORAGE_S3_SESSION_TOKEN=${TENANT_STORAGE_S3_SESSION_TOKEN:-}
+      - TENANT_STORAGE_S3_FORCE_PATH_STYLE=${TENANT_STORAGE_S3_FORCE_PATH_STYLE:-true}
+      - TENANT_STORAGE_REQUIRE_ANTIVIRUS=${TENANT_STORAGE_REQUIRE_ANTIVIRUS:-false}
+      - TENANT_STORAGE_MAX_UPLOAD_BYTES=${TENANT_STORAGE_MAX_UPLOAD_BYTES:-26214400}
       - TZ=${TZ:-America/Mexico_City}
       - PORT=3000
       - HOSTNAME=0.0.0.0
@@ -52,7 +81,7 @@ services:
           "CMD",
           "node",
           "-e",
-          "fetch('http://127.0.0.1:3000/api/health').then((res)=>process.exit(res.ok?0:1)).catch(()=>process.exit(1))",
+          "fetch('http://127.0.0.1:3000/api/health?scope=ready').then((res)=>process.exit(res.ok?0:1)).catch(()=>process.exit(1))",
         ]
       interval: 30s
       timeout: 10s
@@ -74,6 +103,75 @@ services:
         - "traefik.http.routers.zencrm-belleza.tls.certresolver=letsencryptresolver"
         - "traefik.http.services.zencrm-belleza.loadbalancer.server.port=3000"
         - "traefik.docker.network=SociosNet"
+
+  belleza-tenant-provisioner:
+    image: ghcr.io/joel110311/zen_crm_belleza:latest
+    command: ["sh", "-c", "node migrate-control-plane.mjs && while true; do node provision-tenant.mjs --drain || true; sleep ${PROVISIONER_POLL_SECONDS:-15}; done"]
+    environment:
+      - CONTROL_DATABASE_URL=${CONTROL_DATABASE_URL:-}
+      - TENANT_POSTGRES_ADMIN_URL=${TENANT_POSTGRES_ADMIN_URL:-}
+      - CONTROL_DATABASE_REQUIRE_LEAST_PRIVILEGE=${CONTROL_DATABASE_REQUIRE_LEAST_PRIVILEGE:-true}
+      - TENANT_POSTGRES_CLUSTER_KEY=${TENANT_POSTGRES_CLUSTER_KEY:-primary}
+      - TENANT_CREDENTIALS_ENCRYPTION_KEY=${TENANT_CREDENTIALS_ENCRYPTION_KEY:-}
+      - TENANT_CREDENTIALS_KEY_VERSION=${TENANT_CREDENTIALS_KEY_VERSION:-1}
+      - TENANT_TRIAL_DAYS=${TENANT_TRIAL_DAYS:-7}
+      - PROVISIONER_POLL_SECONDS=${PROVISIONER_POLL_SECONDS:-15}
+      - TZ=${TZ:-America/Mexico_City}
+    networks:
+      - SociosNet
+    depends_on:
+      - belleza-crm-db
+    healthcheck:
+      test: ["CMD", "node", "-e", "const{Pool}=require('pg');const p=new Pool({connectionString:process.env.CONTROL_DATABASE_URL});p.query('SELECT 1').then(()=>p.end()).then(()=>process.exit(0)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      restart_policy:
+        condition: on-failure
+
+  belleza-tenant-worker:
+    image: ghcr.io/joel110311/zen_crm_belleza:latest
+    command: ["sh", "-c", "while true; do node tenant-work-worker.mjs --drain || true; sleep ${TENANT_WORKER_POLL_SECONDS:-10}; done"]
+    environment:
+      - CONTROL_DATABASE_URL=${CONTROL_DATABASE_URL:-}
+      - TENANT_CREDENTIALS_ENCRYPTION_KEY=${TENANT_CREDENTIALS_ENCRYPTION_KEY:-}
+      - TENANT_CREDENTIALS_KEY_VERSION=${TENANT_CREDENTIALS_KEY_VERSION:-1}
+      - TENANT_WORKER_POLL_SECONDS=${TENANT_WORKER_POLL_SECONDS:-10}
+      - TENANT_WORKER_STALE_SECONDS=${TENANT_WORKER_STALE_SECONDS:-300}
+      - TENANT_WORKER_MAX_DRAIN=${TENANT_WORKER_MAX_DRAIN:-100}
+      - TENANT_STORAGE_S3_ENDPOINT=${TENANT_STORAGE_S3_ENDPOINT:-}
+      - TENANT_STORAGE_S3_REGION=${TENANT_STORAGE_S3_REGION:-us-east-1}
+      - TENANT_STORAGE_S3_BUCKET=${TENANT_STORAGE_S3_BUCKET:-}
+      - TENANT_STORAGE_S3_ACCESS_KEY_ID=${TENANT_STORAGE_S3_ACCESS_KEY_ID:-}
+      - TENANT_STORAGE_S3_SECRET_ACCESS_KEY=${TENANT_STORAGE_S3_SECRET_ACCESS_KEY:-}
+      - TENANT_STORAGE_S3_SESSION_TOKEN=${TENANT_STORAGE_S3_SESSION_TOKEN:-}
+      - TENANT_STORAGE_S3_FORCE_PATH_STYLE=${TENANT_STORAGE_S3_FORCE_PATH_STYLE:-true}
+      - TZ=${TZ:-America/Mexico_City}
+    networks:
+      - SociosNet
+    depends_on:
+      - belleza-crm-db
+    healthcheck:
+      test: ["CMD", "node", "-e", "const{Pool}=require('pg');const p=new Pool({connectionString:process.env.CONTROL_DATABASE_URL});p.query('SELECT 1').then(()=>p.end()).then(()=>process.exit(0)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      restart_policy:
+        condition: on-failure
 
   belleza-whatsapp-gateway:
     image: asternic/wuzapi:sha-9487eca

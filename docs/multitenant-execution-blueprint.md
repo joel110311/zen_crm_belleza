@@ -456,9 +456,9 @@ El dashboard responsive y una PWA instalable validan navegación móvil, offline
 
 Este checklist es el camino restante hasta beta pública. Ninguna credencial se guarda en Git.
 
-### R0 — Activar correo transaccional y alta pública en staging
+### R0 — Activar correo transaccional y alta pública
 
-Estado: **en curso**.
+Estado: **desplegado; falta la certificación manual del recorrido completo**.
 
 - [x] Verificar `synapselogik.com` en Resend.
 - [x] Preparar `EMAIL_FROM=SynapseLogik CRM <soporte@synapselogik.com>`.
@@ -470,17 +470,18 @@ Estado: **en curso**.
 - [x] Desplegar primero con `MULTITENANT_PUBLIC_SIGNUP_ENABLED=false`.
 - [x] Probar entrega real desde `soporte@synapselogik.com`, firma del dominio y `Reply-To: contacto@synapselogik.com`.
 - [x] Probar localmente vencimiento y consumo único del enlace de verificación; repetir la prueba con correo real después del despliegue.
+- [x] Activar `MULTITENANT_PUBLIC_SIGNUP_ENABLED=true` después de crear el control plane y comprobar el readiness remoto.
 
 ### R1 — Desplegar la plataforma base en `app.synapselogik.com`
 
 - [x] Crear DNS/proxy/TLS para `app.synapselogik.com`.
 - [x] Validar localmente la imagen candidata con Next/TypeScript/ESLint, Compose y un build Docker completo; no se publicó la imagen.
-- [ ] Cambiar `AUTH_URL` y `APP_BASE_URL` a `https://app.synapselogik.com` al desplegar la nueva plataforma.
+- [x] Cambiar `AUTH_URL` y `APP_BASE_URL` a `https://app.synapselogik.com` al desplegar la nueva plataforma.
 - [x] Validar en local la creación automática de una base limpia de control plane y sus seis migraciones.
-- [ ] Desplegar web, provisioner y `tenant-worker` como procesos separados.
+- [x] Desplegar web, provisioner y `tenant-worker` como procesos separados.
 - [x] Diseñar y verificar que `TENANT_POSTGRES_ADMIN_URL` se entregue sólo al provisioner; la web nunca recibe permisos DDL.
-- [ ] Configurar cifrado de credenciales, almacenamiento S3 privado y secretos de webhooks fuera de la imagen Docker.
-- [ ] Añadir health checks y alertas para web, provisioner, worker, cola y PostgreSQL.
+- [~] Configurar cifrado de credenciales y secretos de webhooks fuera de la imagen Docker. El cifrado ya está configurado; el bucket S3 privado se mantiene apagado hasta elegir el proveedor y hacer una prueba de carga.
+- [~] Añadir health checks y alertas para web, provisioner, worker, cola y PostgreSQL. El readiness remoto y los health checks de los tres procesos están activos; faltan alertas externas y una política de backup.
 
 ### R2 — Certificar el recorrido de autoservicio
 
@@ -489,6 +490,8 @@ Estado: **en curso**.
 - [x] Confirmar localmente que el trial comienza cuando la DB queda `READY`, no al llenar el formulario; repetir como smoke test desplegado.
 - [x] Validar localmente recuperación de contraseña y revocación de sesiones; repetir con correo real desplegado.
 - [ ] Medir tiempo de alta y mantenerlo visible si el provisionamiento tarda.
+
+Consulta [`multitenant-beta-smoke-test.md`](./multitenant-beta-smoke-test.md) para ejecutar y registrar esta prueba sin introducir datos de clientes reales durante la validación técnica.
 
 ### R3 — Certificar funciones tenant ya construidas
 
@@ -536,4 +539,4 @@ Estado: **en curso**.
 
 ## Próxima unidad de trabajo
 
-Completar **R1**: publicar la imagen candidata ya validada, migrar una base limpia de control plane y desplegar web, `provisioner` y `tenant-worker` con el signup todavía apagado. En ese corte se cambian `AUTH_URL` y `APP_BASE_URL` a `https://app.synapselogik.com`. Después se termina **R0/R2** con la prueba real correo → verificación → aprovisionamiento → wizard, y sólo con evidencia satisfactoria se abre el signup; luego se retoma **M8/R5 — Stripe**.
+Ejecutar **R2** con una persona de prueba: correo → verificación → inicio de sesión → aprovisionamiento → wizard → dashboard. El dominio canónico ya es `app.synapselogik.com`; web, control plane, provisionador y worker están activos con una réplica cada uno, y el readiness remoto confirma ambas bases. La prueba requiere que la persona complete Turnstile en el navegador; ese desafío no se automatiza. Después se retoma **M8/R5 — Stripe** y se habilitan portal, invitaciones, canales y almacenamiento privado de uno en uno, con sus credenciales y pruebas correspondientes.
