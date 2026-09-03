@@ -29,6 +29,14 @@ export function ImageViewer({ conversation, messages, initialMessageId, onClose 
 
     const [currentIndex, setCurrentIndex] = useState(initialIndex);
 
+    const handleNext = useCallback(() => {
+        if (currentIndex < imageMessages.length - 1) setCurrentIndex(prev => prev + 1);
+    }, [currentIndex, imageMessages.length]);
+
+    const handlePrev = useCallback(() => {
+        if (currentIndex > 0) setCurrentIndex(prev => prev - 1);
+    }, [currentIndex]);
+
     // Handle escape key
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
@@ -38,7 +46,7 @@ export function ImageViewer({ conversation, messages, initialMessageId, onClose 
         };
         window.addEventListener("keydown", handleKeyDown);
         return () => window.removeEventListener("keydown", handleKeyDown);
-    }, [currentIndex, imageMessages.length]);
+    }, [handleNext, handlePrev, onClose]);
 
     if (imageMessages.length === 0) return null;
 
@@ -73,14 +81,6 @@ export function ImageViewer({ conversation, messages, initialMessageId, onClose 
     const isOutbound = currentMsg.direction === "outbound";
     const senderName = isOutbound ? "Tú" : (conversation.contact?.name || formatPhone(conversation.contact?.phone) || "Desconocido");
     const senderInitials = senderName.charAt(0).toUpperCase();
-
-    const handleNext = () => {
-        if (currentIndex < imageMessages.length - 1) setCurrentIndex(prev => prev + 1);
-    };
-
-    const handlePrev = () => {
-        if (currentIndex > 0) setCurrentIndex(prev => prev - 1);
-    };
 
     const handleDownload = () => {
         // Native download approach

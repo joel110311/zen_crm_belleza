@@ -272,7 +272,7 @@ export async function getPipelineData() {
 
         // --- N+1 Optimization ---
         // Extract all unique contact IDs from the deals
-        const contactIds = [...new Set(deals.map((d: any) => d.contactId).filter(Boolean))] as string[];
+        const contactIds = [...new Set(deals.map((deal) => deal.contactId).filter((id): id is string => Boolean(id)))];
 
         // Fetch all relevant conversations & their latest message in ONE single query
         const conversations = await prisma.conversation.findMany({
@@ -297,7 +297,7 @@ export async function getPipelineData() {
         }
 
         // Apply the map to the deals in memory
-        const dealsWithMessage = deals.map((deal: any) => {
+        const dealsWithMessage = deals.map((deal) => {
             const lastMessage = deal.contactId ? (lastMessageMap.get(deal.contactId) || null) : null;
             return { ...deal, lastMessage };
         });

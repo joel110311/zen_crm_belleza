@@ -42,7 +42,12 @@ export default async function TenantLayout({
 
     return (
         <div className="apple-workspace min-h-dvh bg-background" data-apple-workspace>
-            <TenantShell tenantSlug={tenant.slug} displayName={tenant.displayName} role={tenant.role}>
+            <TenantShell
+                tenantSlug={tenant.slug}
+                displayName={tenant.displayName}
+                userName={tenant.actor.name || tenant.actor.email}
+                role={tenant.role}
+            >
                 <ApplePageTransition>{children}</ApplePageTransition>
             </TenantShell>
         </div>

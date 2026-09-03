@@ -9,6 +9,7 @@ import { getSpecialists } from "@/app/actions/specialists";
 import { BigCalendar } from "@/components/calendar/big-calendar";
 import { AppointmentList } from "@/components/calendar/appointment-list";
 import { AppointmentDialog } from "@/components/calendar/appointment-dialog";
+import type { SelectedAppointmentEvent } from "@/components/calendar/appointment-dialog";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Calendar as CalendarIcon, Filter, LayoutList, Plus } from "lucide-react";
@@ -34,7 +35,9 @@ const STATUS_FILTER_OPTIONS = [
     { id: "no_show", label: "No asistió" },
 ] as const;
 
-function normalizeAppointments(data: any[]) {
+type CalendarAppointment = Awaited<ReturnType<typeof getAppointments>>[number];
+
+function normalizeAppointments(data: CalendarAppointment[]) {
     const now = new Date();
     return data.map((apt) => {
         if (apt.status === "scheduled" && new Date(apt.endTime) < now) {
@@ -44,7 +47,7 @@ function normalizeAppointments(data: any[]) {
     });
 }
 
-function appointmentMatchesSpecialist(appointment: any, specialist: Awaited<ReturnType<typeof getSpecialists>>[number]) {
+function appointmentMatchesSpecialist(appointment: CalendarAppointment, specialist: Awaited<ReturnType<typeof getSpecialists>>[number]) {
     const appointmentSpecialistName = appointment.specialistName || appointment.specialist?.displayName || appointment.specialist?.name;
     return appointment.specialistId === specialist.id ||
         appointment.specialist?.id === specialist.id ||
@@ -61,8 +64,6 @@ function parseCalendarDate(value: string | null) {
     const date = new Date(year, month - 1, day, 12, 0, 0);
     return Number.isNaN(date.getTime()) ? undefined : date;
 }
-
-type CalendarAppointment = Awaited<ReturnType<typeof getAppointments>>[number];
 
 function appointmentToSelectedEvent(appointment: CalendarAppointment) {
     return {
@@ -98,6 +99,8 @@ function appointmentToSelectedEvent(appointment: CalendarAppointment) {
     };
 }
 
+type CalendarSelectedEvent = SelectedAppointmentEvent;
+
 export default function CalendarPage() {
     const searchParams = useSearchParams();
     const initialCalendarDate = useMemo(() => parseCalendarDate(searchParams.get("date")), [searchParams]);
@@ -113,17 +116,17 @@ export default function CalendarPage() {
     const currentRole = sessionStatus === "loading" ? null : normalizeRole(sessionUser?.role);
     const canChooseSpecialistView = currentRole === "ADMINISTRADOR";
     const isProfessional = currentRole === "PROFESIONAL";
-    const [appointments, setAppointments] = useState<any[]>([]);
+    const [appointments, setAppointments] = useState<CalendarAppointment[]>([]);
     const [specialists, setSpecialists] = useState<Awaited<ReturnType<typeof getSpecialists>>>([]);
     const [activeSpecialistFilter, setActiveSpecialistFilter] = useState("all");
     const [activeStatusFilter, setActiveStatusFilter] = useState("all");
     const [activeView, setActiveView] = useState<"list" | "calendar">("calendar");
     const [isDialogOpen, setIsDialogOpen] = useState(false);
-    const [selectedEvent, setSelectedEvent] = useState<any>(null);
+    const [selectedEvent, setSelectedEvent] = useState<CalendarSelectedEvent | null>(null);
     const [selectedSlot, setSelectedSlot] = useState<{ start: Date; end: Date } | null>(null);
     const [businessHours, setBusinessHours] = useState(() => normalizeBusinessHours());
 
-    const applyAppointmentsState = useCallback((data: any[]) => {
+    const applyAppointmentsState = useCallback((data: CalendarAppointment[]) => {
         setAppointments(normalizeAppointments(data));
     }, []);
 
@@ -140,7 +143,10 @@ export default function CalendarPage() {
     }, [applyAppointmentsState]);
 
     useEffect(() => {
-        void fetchAppointments();
+        const timer = window.setTimeout(() => {
+            void fetchAppointments();
+        }, 0);
+        return () => window.clearTimeout(timer);
     }, [fetchAppointments]);
 
     const currentUserSpecialist = useMemo(
@@ -167,22 +173,18 @@ export default function CalendarPage() {
         return options;
     }, [specialists]);
 
-    useEffect(() => {
-        if (isProfessional) {
-            setActiveSpecialistFilter(currentUserSpecialist?.id || NO_SPECIALIST_FILTER);
-            return;
-        }
-
-        if (!canChooseSpecialistView) {
-            setActiveSpecialistFilter("all");
-            return;
-        }
-
-        if (activeSpecialistFilter === "all") return;
-        if (!specialistFilterOptions.some((option) => option.id === activeSpecialistFilter)) {
-            setActiveSpecialistFilter("all");
-        }
+    const requiredSpecialistFilter = useMemo(() => {
+        if (isProfessional) return currentUserSpecialist?.id || NO_SPECIALIST_FILTER;
+        if (!canChooseSpecialistView) return "all";
+        if (activeSpecialistFilter !== "all" && !specialistFilterOptions.some((option) => option.id === activeSpecialistFilter)) return "all";
+        return null;
     }, [activeSpecialistFilter, canChooseSpecialistView, currentUserSpecialist?.id, isProfessional, specialistFilterOptions]);
+
+    useEffect(() => {
+        if (!requiredSpecialistFilter || requiredSpecialistFilter === activeSpecialistFilter) return;
+        const timer = window.setTimeout(() => setActiveSpecialistFilter(requiredSpecialistFilter), 0);
+        return () => window.clearTimeout(timer);
+    }, [activeSpecialistFilter, requiredSpecialistFilter]);
 
     const specialistFilteredAppointments = useMemo(() => {
         if (!currentRole) {
@@ -235,7 +237,7 @@ export default function CalendarPage() {
             .sort((left, right) => new Date(left.startTime).getTime() - new Date(right.startTime).getTime());
     }, [businessHours.timeZone, filteredAppointments]);
 
-    const handleEdit = (appointment: any) => {
+    const handleEdit = (appointment: CalendarAppointment) => {
         setSelectedEvent(appointmentToSelectedEvent(appointment));
         setSelectedSlot(null);
         setIsDialogOpen(true);
@@ -272,7 +274,7 @@ export default function CalendarPage() {
         setIsDialogOpen(true);
     };
 
-    const handleSelectEvent = (event: any) => {
+    const handleSelectEvent = (event: CalendarSelectedEvent) => {
         setSelectedEvent(event);
         setSelectedSlot(null);
         setIsDialogOpen(true);

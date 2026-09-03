@@ -16,10 +16,10 @@ export async function GET() {
         // Serialize dates
         const serialized = {
             stages: data.stages,
-            deals: data.deals.map((d: any) => ({
-                ...d,
-                createdAt: d.createdAt instanceof Date ? d.createdAt.toISOString() : String(d.createdAt),
-                updatedAt: d.updatedAt instanceof Date ? d.updatedAt.toISOString() : String(d.updatedAt),
+            deals: data.deals.map((deal) => ({
+                ...deal,
+                createdAt: deal.createdAt instanceof Date ? deal.createdAt.toISOString() : String(deal.createdAt),
+                updatedAt: deal.updatedAt instanceof Date ? deal.updatedAt.toISOString() : String(deal.updatedAt),
             })),
         };
 

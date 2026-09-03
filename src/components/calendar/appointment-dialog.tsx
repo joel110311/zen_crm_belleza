@@ -47,7 +47,7 @@ type PatientPickerItem = Awaited<ReturnType<typeof getPatientsForPicker>>[number
 type SpecialistPickerItem = Awaited<ReturnType<typeof getSpecialists>>[number];
 type BookingService = Awaited<ReturnType<typeof getActiveServicesForBooking>>[number];
 
-type SelectedAppointmentEvent = {
+export type SelectedAppointmentEvent = {
     id: string;
     title: string;
     start: Date;
@@ -69,6 +69,11 @@ type SelectedAppointmentEvent = {
         paymentCurrency?: string | null;
         remindersOptOut?: boolean | null;
         googleCalendarId?: string | null;
+        googleCalendarColor?: string | null;
+        googleCalendarName?: string | null;
+        specialistName?: string | null;
+        status?: string | null;
+        confirmationStatus?: string | null;
     };
 };
 

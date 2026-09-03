@@ -39,8 +39,8 @@ export function PhonePrefixInput({
 
     useEffect(() => {
         if (defaultCountry) {
-            setResolvedDefaultCountry(defaultCountry);
-            return;
+            const timer = window.setTimeout(() => setResolvedDefaultCountry(defaultCountry), 0);
+            return () => window.clearTimeout(timer);
         }
 
         let active = true;
@@ -59,8 +59,11 @@ export function PhonePrefixInput({
 
     useEffect(() => {
         const parsed = parsePhoneByCountry(value, resolvedDefaultCountry);
-        setSelectedCountry(parsed.country.code);
-        setLocalNumber(parsed.nationalNumber);
+        const timer = window.setTimeout(() => {
+            setSelectedCountry(parsed.country.code);
+            setLocalNumber(parsed.nationalNumber);
+        }, 0);
+        return () => window.clearTimeout(timer);
     }, [resolvedDefaultCountry, value]);
 
     const orderedCountries = useMemo(

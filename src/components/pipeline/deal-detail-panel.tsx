@@ -72,11 +72,14 @@ export function DealDetailPanel({ deal, onClose, onUpdate, onDelete }: DealDetai
 
     // Only reset the form when the user opens a different lead.
     useEffect(() => {
-        setEditTitle(deal.title);
-        setEditValue(deal.value.toString());
-        setEditNotes(deal.notes || "");
-        setEditPriority(deal.priority);
-        setDealTagIds(deal.dealTags?.map((dt) => dt.tag.id) || []);
+        const timer = window.setTimeout(() => {
+            setEditTitle(deal.title);
+            setEditValue(deal.value.toString());
+            setEditNotes(deal.notes || "");
+            setEditPriority(deal.priority);
+            setDealTagIds(deal.dealTags?.map((dt) => dt.tag.id) || []);
+        }, 0);
+        return () => window.clearTimeout(timer);
     }, [deal.id]);
 
     const handleSave = () => {

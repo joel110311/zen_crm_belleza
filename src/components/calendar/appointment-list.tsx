@@ -6,10 +6,13 @@ import { Button } from "@/components/ui/button";
 import { Edit2, Trash2, Video } from "lucide-react";
 import { useOperationContext } from "@/components/shared/use-operation-context";
 import { formatDateInOperationZone, formatTimeInOperationZone } from "@/lib/operation-dates";
+import type { getAppointments } from "@/app/actions/calendar";
+
+type CalendarAppointment = Awaited<ReturnType<typeof getAppointments>>[number];
 
 interface AppointmentListProps {
-    appointments: any[];
-    onEdit: (apt: any) => void;
+    appointments: CalendarAppointment[];
+    onEdit: (apt: CalendarAppointment) => void;
     onDelete: (id: string) => void;
 }
 

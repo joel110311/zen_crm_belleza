@@ -69,15 +69,15 @@ export async function searchGlobal(term: string): Promise<SearchResult> {
         ]);
 
         return {
-            contacts: contacts.map((c: any) => ({
-                ...c,
-                avatar: c.whatsappAvatarUrl || undefined,
+            contacts: contacts.map((contact) => ({
+                ...contact,
+                avatar: contact.whatsappAvatarUrl || undefined,
             })),
-            deals: deals.map((d: any) => ({
-                id: d.id,
-                title: d.title,
-                value: d.value,
-                stageName: d.stage.name,
+            deals: deals.map((deal) => ({
+                id: deal.id,
+                title: deal.title,
+                value: deal.value,
+                stageName: deal.stage.name,
             })),
         };
     } catch (error) {

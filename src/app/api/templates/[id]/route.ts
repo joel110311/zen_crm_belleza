@@ -14,7 +14,7 @@ export async function PATCH(
         const session = await auth();
         const forbidden = ensurePermissionResponse(session, "templates.manage", "No tienes permiso para administrar plantillas.");
         if (forbidden) return forbidden;
-        const templateRepo = prisma.template as any;
+        const templateRepo = prisma.template;
 
         const { id } = await params;
         const body = await request.json();
@@ -92,7 +92,7 @@ export async function DELETE(
         const session = await auth();
         const forbidden = ensurePermissionResponse(session, "templates.manage", "No tienes permiso para administrar plantillas.");
         if (forbidden) return forbidden;
-        const templateRepo = prisma.template as any;
+        const templateRepo = prisma.template;
 
         const { id } = await params;
         await templateRepo.delete({ where: { id } });

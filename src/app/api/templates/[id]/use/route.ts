@@ -17,7 +17,7 @@ export async function POST(
         const session = await auth();
         const unauthorized = ensureAuthenticated(session);
         if (unauthorized) return unauthorized;
-        const templateRepo = prisma.template as any;
+        const templateRepo = prisma.template;
 
         const { id } = await params;
         const template = await templateRepo.update({

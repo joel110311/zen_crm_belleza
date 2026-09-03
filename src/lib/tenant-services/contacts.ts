@@ -1,5 +1,4 @@
 import "server-only";
-import { randomUUID } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import {
     assertTenantPermission,
@@ -34,8 +33,7 @@ const CONTACT_LIST_INCLUDE = {
         take: 3,
         select: { id: true, title: true, startTime: true, endTime: true, status: true, confirmationStatus: true },
     },
-    patients: { select: { id: true, patientNumber: true, firstName: true, lastName: true } },
-    _count: { select: { appointments: true, conversations: true, deals: true, patients: true } },
+    _count: { select: { appointments: true, conversations: true, deals: true } },
 } satisfies Prisma.ContactInclude;
 
 function searchWhere(query: string): Prisma.ContactWhereInput {
@@ -81,7 +79,7 @@ export async function getContact(context: TenantServiceContext, rawId: unknown) 
         include: {
             ...CONTACT_LIST_INCLUDE,
             deals: { orderBy: { updatedAt: "desc" }, include: { stage: true, dealTags: { include: { tag: true } } } },
-            appointments: { orderBy: { startTime: "desc" }, include: { specialist: true, service: true, patient: true } },
+            appointments: { orderBy: { startTime: "desc" }, include: { specialist: true, service: true } },
         },
     });
     if (!contact) throw new TenantServiceError("NOT_FOUND", "El contacto ya no existe.");
@@ -107,16 +105,6 @@ export async function createContact(context: TenantServiceContext, rawInput: unk
     const data = contactData(rawInput);
     return context.db.$transaction(async (tx) => {
         const contact = await tx.contact.create({ data: data as Prisma.ContactUncheckedCreateInput });
-        await tx.patient.create({
-            data: {
-                patientNumber: `CLI-${randomUUID().replace(/-/g, "").slice(0, 12).toUpperCase()}`,
-                firstName: contact.name || "Cliente",
-                lastName: contact.lastName || "",
-                phone: contact.phone,
-                email: contact.email,
-                contactId: contact.id,
-            },
-        });
         return tx.contact.findUniqueOrThrow({ where: { id: contact.id }, include: CONTACT_LIST_INCLUDE });
     });
 }
@@ -129,15 +117,6 @@ export async function updateContact(context: TenantServiceContext, rawId: unknow
     const data = contactData(rawInput, true);
     return context.db.$transaction(async (tx) => {
         await tx.contact.update({ where: { id }, data });
-        await tx.patient.updateMany({
-            where: { contactId: id },
-            data: {
-                firstName: data.name,
-                lastName: data.lastName === null ? "" : data.lastName,
-                phone: data.phone,
-                email: data.email,
-            },
-        });
         return tx.contact.findUniqueOrThrow({ where: { id }, include: CONTACT_LIST_INCLUDE });
     });
 }
@@ -147,7 +126,7 @@ export async function deleteContact(context: TenantServiceContext, rawId: unknow
     const id = identifier(rawId);
     const contact = await context.db.contact.findUnique({
         where: { id },
-        include: { _count: { select: { appointments: true, conversations: true, deals: true, patients: true, cashMovements: true, paymentLinks: true } } },
+        include: { _count: { select: { appointments: true, conversations: true, deals: true, cashMovements: true, paymentLinks: true } } },
     });
     if (!contact) throw new TenantServiceError("NOT_FOUND", "El contacto ya no existe.");
     const history = Object.values(contact._count).reduce((sum, count) => sum + count, 0);

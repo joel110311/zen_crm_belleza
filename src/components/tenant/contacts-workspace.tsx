@@ -11,7 +11,7 @@ import { useTenantRole } from "@/components/tenant/tenant-shell";
 type Contact = {
     id: string; name: string | null; lastName: string | null; phone: string; email: string | null;
     company: string | null; status: string; tags: string[]; updatedAt: string;
-    _count: { appointments: number; conversations: number; deals: number; patients: number };
+    _count: { appointments: number; conversations: number; deals: number };
     deals: Array<{ stage: { name: string; color: string } }>;
 };
 type ContactPage = { items: Contact[]; page: number; pageSize: number; total: number };
@@ -48,7 +48,7 @@ export function ContactsWorkspace({ tenantSlug }: { tenantSlug: string }) {
                 name: form.get("name"), lastName: form.get("lastName"), phone: form.get("phone"),
                 email: form.get("email"), company: form.get("company"), status: "customer", tags: ["Cliente"],
             }) });
-            formElement.reset(); setShowForm(false); setSuccess("Contacto y ficha de paciente creados."); await load();
+            formElement.reset(); setShowForm(false); setSuccess("Cliente agregado."); await load();
         } catch (saveError) { setError(saveError instanceof Error ? saveError.message : "No se pudo crear el contacto."); }
         finally { setSaving(false); }
     }

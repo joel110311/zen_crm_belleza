@@ -41,8 +41,10 @@ export function NewContactDialog() {
             setOpen(false);
             setPhone("");
         } else {
-            // @ts-ignore
-            toast({ title: "Error", description: result?.error || "No se pudo crear el cliente.", variant: "destructive" });
+            const message = result && "error" in result && typeof result.error === "string"
+                ? result.error
+                : "No se pudo crear el cliente.";
+            toast({ title: "Error", description: message, variant: "destructive" });
         }
     }
 

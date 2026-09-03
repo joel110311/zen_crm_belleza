@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
         const session = await auth();
         const unauthorized = ensureAuthenticatedResponse(session);
         if (unauthorized) return unauthorized;
-        const templateRepo = prisma.template as any;
+        const templateRepo = prisma.template;
 
         const { searchParams } = new URL(request.url);
         const activeOnly = searchParams.get("activeOnly") === "true";
@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
         if (forbidden) return forbidden;
 
         const body = await request.json();
-        const templateRepo = prisma.template as any;
+        const templateRepo = prisma.template;
         const name = String(body.name || "").trim();
         const content = String(body.content || "").trim();
         const type = String(body.type || "text").trim();

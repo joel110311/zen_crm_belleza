@@ -9,7 +9,7 @@ import { requireTenantRuntimeContext } from "@/lib/tenant-context";
 import { getTenantSystemSettingsOrDefaults } from "@/lib/tenant-system-settings";
 import { normalizeBusinessPolicies } from "@/lib/ai/business-policies";
 import { TenantOnboardingWizard } from "./onboarding-wizard";
-import { isMultitenantChannelsEnabled, isMultitenantInvitationsEnabled } from "@/lib/multitenant-features";
+import { isMultitenantChannelsEnabled } from "@/lib/multitenant-features";
 
 export const dynamic = "force-dynamic";
 
@@ -66,7 +66,6 @@ export default async function TenantOnboardingPage({
         <TenantOnboardingWizard
           tenantSlug={tenant.slug}
           ownerName={tenant.actor.name || ""}
-          invitationsEnabled={isMultitenantInvitationsEnabled()}
           channelsEnabled={isMultitenantChannelsEnabled()}
           initial={{
             business: {

@@ -8,16 +8,16 @@ export function ResourcePage({ title, description, action, children }: {
     children: ReactNode;
 }) {
     return (
-        <main className="min-h-dvh bg-muted/25 px-4 py-6 sm:px-7 sm:py-8">
-            <div className="mx-auto max-w-7xl">
-                <header className="flex flex-col gap-4 border-b pb-6 sm:flex-row sm:items-end sm:justify-between">
+        <main className="mx-auto w-full max-w-[1500px] pb-5">
+            <div className="overflow-hidden rounded-[22px] border bg-card">
+                <header className="flex flex-col gap-4 border-b px-5 py-5 sm:flex-row sm:items-end sm:justify-between sm:px-6">
                     <div>
-                        <h1 className="text-3xl font-semibold tracking-tight">{title}</h1>
-                        <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">{description}</p>
+                        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{title}</h1>
+                        <p className="mt-1.5 max-w-2xl text-sm leading-6 text-muted-foreground">{description}</p>
                     </div>
                     {action}
                 </header>
-                <div className="mt-6">{children}</div>
+                <div className="bg-muted/20 px-5 py-5 sm:px-6 sm:py-6">{children}</div>
             </div>
         </main>
     );

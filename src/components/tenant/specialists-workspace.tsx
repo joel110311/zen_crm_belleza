@@ -15,7 +15,7 @@ type Specialist = {
     services: Array<{ service: { id: string; name: string; isActive: boolean } }>;
 };
 
-export function SpecialistsWorkspace({ tenantSlug }: { tenantSlug: string }) {
+export function SpecialistsWorkspace({ tenantSlug, embedded = false }: { tenantSlug: string; embedded?: boolean }) {
     const role = useTenantRole();
     const canManage = role === "OWNER" || role === "ADMIN";
     const api = tenantApiBase(tenantSlug);
@@ -55,9 +55,9 @@ export function SpecialistsWorkspace({ tenantSlug }: { tenantSlug: string }) {
         catch (saveError) { setError(saveError instanceof Error ? saveError.message : "No se pudo actualizar."); }
     }
 
-    return (
-        <ResourcePage title="Equipo" description="Profesionales, especialidades y disponibilidad del negocio." action={canManage ? <Button onClick={() => setShowForm((value) => !value)}><Plus className="mr-2 size-4" />Nuevo profesional</Button> : undefined}>
-            <div className="space-y-5">
+    const content = (
+        <div className="space-y-5">
+                {embedded && canManage ? <div className="flex justify-end"><Button onClick={() => setShowForm((value) => !value)}><Plus className="mr-2 size-4" />Nuevo profesional</Button></div> : null}
                 <Feedback error={error} success={success} />
                 {showForm ? <form onSubmit={create} className="grid gap-4 rounded-2xl border bg-card p-5 shadow-sm sm:grid-cols-2 lg:grid-cols-3">
                     <Field label="Nombre"><Input required name="name" maxLength={160} /></Field>
@@ -76,7 +76,14 @@ export function SpecialistsWorkspace({ tenantSlug }: { tenantSlug: string }) {
                         {canManage ? <Button className="mt-5 w-full" variant="outline" size="sm" onClick={() => void toggle(item)}><Power className="mr-2 size-4" />{item.isActive ? "Desactivar" : "Activar"}</Button> : null}
                     </article>)}</div>
                 )}
-            </div>
+        </div>
+    );
+
+    if (embedded) return content;
+
+    return (
+        <ResourcePage title="Equipo" description="Profesionales, especialidades y disponibilidad del negocio." action={canManage ? <Button onClick={() => setShowForm((value) => !value)}><Plus className="mr-2 size-4" />Nuevo profesional</Button> : undefined}>
+            {content}
         </ResourcePage>
     );
 }

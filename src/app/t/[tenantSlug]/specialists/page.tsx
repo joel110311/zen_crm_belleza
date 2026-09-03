@@ -1,6 +1,6 @@
-import { SpecialistsWorkspace } from "@/components/tenant/specialists-workspace";
+import { redirect } from "next/navigation";
 
 export default async function TenantSpecialistsPage({ params }: { params: Promise<{ tenantSlug: string }> }) {
     const { tenantSlug } = await params;
-    return <SpecialistsWorkspace tenantSlug={tenantSlug} />;
+    redirect(`/t/${tenantSlug}/settings?tab=team`);
 }

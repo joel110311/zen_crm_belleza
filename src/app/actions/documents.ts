@@ -5,20 +5,24 @@ import { revalidatePath } from "next/cache";
 import { requirePermission } from "@/lib/authz";
 
 import { generateEmbedding } from "@/lib/ai/openai";
-// Polyfill DOMMatrix for pdf-parse in Node environment
-// @ts-ignore
-if (!global.DOMMatrix) {
-    // @ts-ignore
-    global.DOMMatrix = class DOMMatrix {
+import { PDFParse } from "pdf-parse";
+
+if (!("DOMMatrix" in globalThis)) {
+    class DOMMatrixPolyfill {
+        a: number;
+        b: number;
+        c: number;
+        d: number;
+        e: number;
+        f: number;
+
         constructor() {
-            // @ts-ignore
             this.a = 1; this.b = 0; this.c = 0; this.d = 1; this.e = 0; this.f = 0;
         }
         toString() { return "matrix(1, 0, 0, 1, 0, 0)"; }
-    };
+    }
+    Object.defineProperty(globalThis, "DOMMatrix", { configurable: true, value: DOMMatrixPolyfill });
 }
-
-const pdf = require("pdf-parse");
 
 export async function uploadDocument(formData: FormData) {
     await requirePermission("ai.manage");
@@ -32,8 +36,13 @@ export async function uploadDocument(formData: FormData) {
         const buffer = Buffer.from(await file.arrayBuffer());
 
         if (file.type === "application/pdf") {
-            const data = await pdf(buffer);
-            textContent = data.text;
+            const parser = new PDFParse({ data: buffer });
+            try {
+                const data = await parser.getText();
+                textContent = data.text;
+            } finally {
+                await parser.destroy();
+            }
         } else {
             // Assume text/plain or similar
             textContent = buffer.toString("utf-8");

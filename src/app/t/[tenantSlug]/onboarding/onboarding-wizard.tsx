@@ -27,7 +27,6 @@ import {
   type BusinessDayKey,
 } from "@/lib/calendar/business-hours";
 import type { BusinessPolicies } from "@/lib/ai/business-policies";
-import { TeamInvitationManager } from "@/components/tenant/team-invitation-manager";
 import { TenantChannelSetup } from "@/components/tenant/tenant-channel-setup";
 
 type InitialData = {
@@ -74,7 +73,6 @@ type WizardProps = {
   tenantSlug: string;
   ownerName: string;
   initial: InitialData;
-  invitationsEnabled: boolean;
   channelsEnabled: boolean;
 };
 type StepKey =
@@ -136,7 +134,6 @@ export function TenantOnboardingWizard({
   tenantSlug,
   ownerName,
   initial,
-  invitationsEnabled,
   channelsEnabled,
 }: WizardProps) {
   const [completedSteps, setCompletedSteps] = useState(() =>
@@ -348,8 +345,8 @@ export function TenantOnboardingWizard({
         </h1>
         <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">
           Las políticas, el catálogo inicial y la presentación del portal
-          quedaron guardados dentro de la base aislada de este negocio. Equipo y
-          canales se pueden terminar más adelante.
+          quedaron guardados. Puedes completar el equipo y los canales desde
+          Configuración cuando lo necesites.
         </p>
         <div className="mt-7 flex flex-wrap gap-3">
           <Button asChild>
@@ -906,7 +903,7 @@ export function TenantOnboardingWizard({
           >
             <StepHeading
               title="Portal de reservas"
-              description="Define la presentación y los servicios que se mostrarán. La vista previa usa estos mismos datos aislados."
+              description="Define la presentación y los servicios que se mostrarán en tu portal de reservas."
             />
             <div className="grid gap-5 sm:grid-cols-2">
               <Field label="Nombre visible">
@@ -1027,16 +1024,16 @@ export function TenantOnboardingWizard({
           <div className="space-y-6">
             <StepHeading
               title="Equipo"
-              description="Invita por correo con el rol correcto. La aceptación crea una membresía idempotente y los profesionales obtienen su perfil local al primer acceso."
+              description="El equipo se administra desde Configuración. Ahí agregas cada profesional, su especialidad, disponibilidad y servicios."
             />
-            <TeamInvitationManager
-              tenantSlug={tenantSlug}
-              enabled={invitationsEnabled}
-              onConfigured={() => void saveStep("team", { mode: "complete" })}
-            />
+            <div className="rounded-2xl border bg-muted/30 p-5">
+              <p className="font-medium">Configura a tu ritmo</p>
+              <p className="mt-1 text-sm leading-6 text-muted-foreground">Puedes continuar con la publicación y agregar profesionales después. No se enviarán invitaciones ni correos automáticos.</p>
+              <Button asChild className="mt-4" variant="outline"><Link href={`/t/${tenantSlug}/settings?tab=team`}>Abrir configuración del equipo</Link></Button>
+            </div>
             <StepFooter
               saving={saving}
-              label="Configurar equipo después"
+              label="Continuar sin configurar equipo"
               onBack={stepBack}
               onNext={() => void saveStep("team", { mode: "skip" })}
             />

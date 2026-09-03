@@ -33,6 +33,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Generated clients and bundled agent examples are not maintained application source.
+    "src/generated/**",
+    ".agent/**",
   ]),
 ]);
 

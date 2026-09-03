@@ -1,14 +1,16 @@
 "use client";
 
 import React, { useCallback, useMemo, useState } from "react";
-import { Calendar, dateFnsLocalizer, EventProps, View, Views } from "react-big-calendar";
+import { Calendar, dateFnsLocalizer, EventProps, SlotInfo, ToolbarProps, View, Views } from "react-big-calendar";
 import withDragAndDrop from "react-big-calendar/lib/addons/dragAndDrop";
+import type { EventInteractionArgs } from "react-big-calendar/lib/addons/dragAndDrop";
 import { format, getDay, parse, startOfWeek } from "date-fns";
 import { es } from "date-fns/locale";
 import "react-big-calendar/lib/css/react-big-calendar.css";
 import "react-big-calendar/lib/addons/dragAndDrop/styles.css";
 
 import { updateAppointment } from "@/app/actions/calendar";
+import type { SelectedAppointmentEvent } from "@/components/calendar/appointment-dialog";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
 import {
@@ -38,30 +40,9 @@ const localizer = dateFnsLocalizer({
     locales,
 });
 
-// @ts-ignore react-big-calendar's DnD wrapper has incomplete generic typing.
-const DragAndDropCalendar = withDragAndDrop(Calendar);
+const DragAndDropCalendar = withDragAndDrop<CalendarEvent>(Calendar);
 
-interface CalendarEvent {
-    id: string;
-    title: string;
-    start: Date;
-    end: Date;
-    notes?: string;
-    resource?: {
-        contact?: unknown;
-        patient?: unknown;
-        user?: unknown;
-        status?: string;
-        confirmationStatus?: string;
-        visitMode?: string;
-        meetLink?: string;
-        paymentStatus?: string;
-        googleCalendarColor?: string;
-        googleCalendarName?: string;
-        specialistName?: string;
-        googleCalendarId?: string;
-    };
-}
+type CalendarEvent = SelectedAppointmentEvent;
 
 interface BigCalendarProps {
     initialEvents: CalendarEvent[];
@@ -187,16 +168,16 @@ export function BigCalendar({
         [businessHours.timeZone, onAppointmentTimeChange, onMutationSettled, replaceEvent, toast],
     );
 
-    const onEventResize: any = useCallback(
-        async ({ event, start, end }: { event: CalendarEvent; start: Date; end: Date }) => {
-            await handleEventTimeChange(event, start, end, "Cita actualizada");
+    const onEventResize = useCallback(
+        async ({ event, start, end }: EventInteractionArgs<CalendarEvent>) => {
+            await handleEventTimeChange(event, new Date(start), new Date(end), "Cita actualizada");
         },
         [handleEventTimeChange],
     );
 
-    const onEventDrop: any = useCallback(
-        async ({ event, start, end }: { event: CalendarEvent; start: Date; end: Date }) => {
-            await handleEventTimeChange(event, start, end, "Cita reprogramada");
+    const onEventDrop = useCallback(
+        async ({ event, start, end }: EventInteractionArgs<CalendarEvent>) => {
+            await handleEventTimeChange(event, new Date(start), new Date(end), "Cita reprogramada");
         },
         [handleEventTimeChange],
     );
@@ -237,7 +218,7 @@ export function BigCalendar({
         );
     };
 
-    const CustomToolbar = (toolbar: any) => {
+    const CustomToolbar = (toolbar: ToolbarProps<CalendarEvent>) => {
         const goToBack = () => toolbar.onNavigate("PREV");
         const goToNext = () => toolbar.onNavigate("NEXT");
         const goToToday = () => toolbar.onNavigate("TODAY");
@@ -303,8 +284,8 @@ export function BigCalendar({
             <DragAndDropCalendar
                 localizer={localizer}
                 events={events}
-                startAccessor={(event: any) => event.start}
-                endAccessor={(event: any) => event.end}
+                startAccessor="start"
+                endAccessor="end"
                 style={{ height: "100%" }}
                 views={[Views.MONTH, Views.WEEK, Views.DAY]}
                 view={view}
@@ -315,7 +296,7 @@ export function BigCalendar({
                 resizable
                 onEventDrop={onEventDrop}
                 onEventResize={onEventResize}
-                onSelectSlot={(slot: any) => {
+                onSelectSlot={(slot: SlotInfo) => {
                     const slotDateKey = getLocalCalendarDateKey(slot.start);
                     const todayKey = getOperationTodayKey(businessHours.timeZone);
                     const startUtc = localWallDateToOperationUtc(slot.start, businessHours.timeZone);
@@ -332,7 +313,7 @@ export function BigCalendar({
                     }
                     onSelectSlot(slot);
                 }}
-                onSelectEvent={(event: any) => onSelectEvent({
+                onSelectEvent={(event: CalendarEvent) => onSelectEvent({
                     ...event,
                     start: localWallDateToOperationUtc(event.start, businessHours.timeZone),
                     end: localWallDateToOperationUtc(event.end, businessHours.timeZone),
@@ -348,7 +329,7 @@ export function BigCalendar({
                 }}
                 components={{
                     toolbar: CustomToolbar,
-                    event: CustomEvent as any,
+                    event: CustomEvent,
                 }}
                 culture="es"
                 step={15}

@@ -165,9 +165,13 @@ export function FunnelEditorDialog({
 
     useEffect(() => {
         if (open && !wasOpenRef.current) {
-            setDraft(buildDraftFromStages(stages));
-            setError(null);
-            setActiveDragId(null);
+            const timer = window.setTimeout(() => {
+                setDraft(buildDraftFromStages(stages));
+                setError(null);
+                setActiveDragId(null);
+            }, 0);
+            wasOpenRef.current = open;
+            return () => window.clearTimeout(timer);
         }
 
         wasOpenRef.current = open;

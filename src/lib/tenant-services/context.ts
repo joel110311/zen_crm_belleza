@@ -8,8 +8,6 @@ export type TenantPermission =
     | "specialists.write"
     | "contacts.read"
     | "contacts.write"
-    | "patients.read"
-    | "patients.write"
     | "calendar.read"
     | "calendar.write"
     | "pipeline.read"
@@ -28,25 +26,25 @@ export type TenantServiceContext = TenantRuntimeContext & {
 const ROLE_PERMISSIONS: Record<TenantRuntimeContext["role"], readonly TenantPermission[]> = {
     OWNER: [
         "services.read", "services.write", "specialists.read", "specialists.write",
-        "contacts.read", "contacts.write", "patients.read", "patients.write",
+        "contacts.read", "contacts.write",
         "calendar.read", "calendar.write", "pipeline.read", "pipeline.write",
         "team.read", "team.write",
         "channels.read", "channels.write", "files.read", "files.write",
     ],
     ADMIN: [
         "services.read", "services.write", "specialists.read", "specialists.write",
-        "contacts.read", "contacts.write", "patients.read", "patients.write",
+        "contacts.read", "contacts.write",
         "calendar.read", "calendar.write", "pipeline.read", "pipeline.write",
         "team.read", "team.write",
         "channels.read", "channels.write", "files.read", "files.write",
     ],
     RECEPTION: [
         "services.read", "specialists.read", "contacts.read", "contacts.write",
-        "patients.read", "patients.write", "calendar.read", "calendar.write", "pipeline.read", "pipeline.write",
+        "calendar.read", "calendar.write", "pipeline.read", "pipeline.write",
         "files.read", "files.write",
     ],
     PROFESSIONAL: [
-        "services.read", "specialists.read", "contacts.read", "patients.read", "patients.write",
+        "services.read", "specialists.read", "contacts.read",
         "calendar.read", "calendar.write",
         "files.read", "files.write",
     ],

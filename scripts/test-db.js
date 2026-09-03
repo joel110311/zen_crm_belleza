@@ -1,7 +1,6 @@
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
-
 async function main() {
+    const { PrismaClient } = await import("@prisma/client");
+    const prisma = new PrismaClient();
     try {
         console.log('Connecting to database...');
         const stages = await prisma.pipelineStage.findMany();
@@ -18,4 +17,4 @@ async function main() {
     }
 }
 
-main();
+void main();
