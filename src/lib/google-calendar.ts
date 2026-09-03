@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
-import { getSystemSettingsOrDefaults, withSettingsDefaults } from "@/lib/system-settings";
+import { getSystemSettingsOrDefaults } from "@/lib/system-settings";
+import { withSettingsDefaults } from "@/lib/system-settings-defaults";
 import {
     decryptGoogleToken,
     encryptGoogleToken,

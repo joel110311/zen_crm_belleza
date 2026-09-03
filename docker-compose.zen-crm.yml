@@ -1,6 +1,6 @@
 services:
   zen-crm:
-    image: ghcr.io/joel110311/zen_crm_oftalmo:latest
+    image: ${APP_IMAGE:-ghcr.io/joel110311/zen_crm_belleza:latest}
     environment:
       - DATABASE_URL=postgresql://zencrm:${POSTGRES_PASSWORD}@${CRM_DB_HOST:-zen-crm-db}:5432/${POSTGRES_DB}
       - WHATSAPP_GATEWAY_URL=http://whatsapp-gateway:8080
@@ -22,9 +22,48 @@ services:
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
       - GOOGLE_TOKEN_ENCRYPTION_KEY=${GOOGLE_TOKEN_ENCRYPTION_KEY}
       - PUBLIC_SUPPORT_EMAIL=${PUBLIC_SUPPORT_EMAIL:-}
+      - META_APP_ID=${META_APP_ID:-}
+      - META_APP_SECRET=${META_APP_SECRET:-}
+      - META_EMBEDDED_SIGNUP_CONFIG_ID=${META_EMBEDDED_SIGNUP_CONFIG_ID:-}
+      - META_TECH_PROVIDER_SOLUTION_ID=${META_TECH_PROVIDER_SOLUTION_ID:-}
+      - META_GRAPH_API_VERSION=${META_GRAPH_API_VERSION:-v26.0}
+      - META_WHATSAPP_REGISTRATION_PIN=${META_WHATSAPP_REGISTRATION_PIN:-}
+      - META_WEBHOOK_VERIFY_TOKEN=${META_WEBHOOK_VERIFY_TOKEN:-}
+      - META_WEBHOOK_BASE_URL=${META_WEBHOOK_BASE_URL:-${APP_BASE_URL}}
       - AUTH_URL=${AUTH_URL}
       - APP_BASE_URL=${APP_BASE_URL}
+      - RESEND_API_KEY=${RESEND_API_KEY:-}
+      - EMAIL_FROM=${EMAIL_FROM:-}
+      - EMAIL_REPLY_TO=${EMAIL_REPLY_TO:-}
+      - TURNSTILE_SITE_KEY=${TURNSTILE_SITE_KEY:-}
+      - TURNSTILE_SECRET_KEY=${TURNSTILE_SECRET_KEY:-}
+      - TURNSTILE_EXPECTED_HOSTNAME=${TURNSTILE_EXPECTED_HOSTNAME:-}
+      # Keep all multitenant switches off for legacy stacks. The new app stack
+      # supplies the control plane URL and the tenant credential key via secrets.
+      - CONTROL_DATABASE_URL=${CONTROL_DATABASE_URL:-}
+      - MULTITENANT_RUNTIME_ENABLED=${MULTITENANT_RUNTIME_ENABLED:-false}
+      - MULTITENANT_AUTH_ENABLED=${MULTITENANT_AUTH_ENABLED:-false}
+      - MULTITENANT_PUBLIC_SIGNUP_ENABLED=${MULTITENANT_PUBLIC_SIGNUP_ENABLED:-false}
+      - MULTITENANT_INVITATIONS_ENABLED=${MULTITENANT_INVITATIONS_ENABLED:-false}
+      - MULTITENANT_PUBLIC_PORTAL_ENABLED=${MULTITENANT_PUBLIC_PORTAL_ENABLED:-false}
+      - MULTITENANT_CHANNELS_ENABLED=${MULTITENANT_CHANNELS_ENABLED:-false}
+      - MULTITENANT_PRIVATE_STORAGE_ENABLED=${MULTITENANT_PRIVATE_STORAGE_ENABLED:-false}
+      - SECURITY_HASH_SALT=${SECURITY_HASH_SALT:-}
+      - TENANT_CREDENTIALS_ENCRYPTION_KEY=${TENANT_CREDENTIALS_ENCRYPTION_KEY:-}
+      - TENANT_CREDENTIALS_KEY_VERSION=${TENANT_CREDENTIALS_KEY_VERSION:-1}
       - WHATSAPP_WEBHOOK_BASE_URL=${WHATSAPP_WEBHOOK_BASE_URL}
+      - CHANNEL_STATE_SIGNING_SECRET=${CHANNEL_STATE_SIGNING_SECRET:-}
+      - MULTITENANT_WUZAPI_BASE_URL=${MULTITENANT_WUZAPI_BASE_URL:-}
+      - MULTITENANT_WUZAPI_WEBHOOK_HMAC_KEY=${MULTITENANT_WUZAPI_WEBHOOK_HMAC_KEY:-}
+      - TENANT_STORAGE_S3_ENDPOINT=${TENANT_STORAGE_S3_ENDPOINT:-}
+      - TENANT_STORAGE_S3_REGION=${TENANT_STORAGE_S3_REGION:-us-east-1}
+      - TENANT_STORAGE_S3_BUCKET=${TENANT_STORAGE_S3_BUCKET:-}
+      - TENANT_STORAGE_S3_ACCESS_KEY_ID=${TENANT_STORAGE_S3_ACCESS_KEY_ID:-}
+      - TENANT_STORAGE_S3_SECRET_ACCESS_KEY=${TENANT_STORAGE_S3_SECRET_ACCESS_KEY:-}
+      - TENANT_STORAGE_S3_SESSION_TOKEN=${TENANT_STORAGE_S3_SESSION_TOKEN:-}
+      - TENANT_STORAGE_S3_FORCE_PATH_STYLE=${TENANT_STORAGE_S3_FORCE_PATH_STYLE:-true}
+      - TENANT_STORAGE_REQUIRE_ANTIVIRUS=${TENANT_STORAGE_REQUIRE_ANTIVIRUS:-false}
+      - TENANT_STORAGE_MAX_UPLOAD_BYTES=${TENANT_STORAGE_MAX_UPLOAD_BYTES:-26214400}
       - TZ=${TZ:-America/Mexico_City}
       - PORT=3000
       - HOSTNAME=0.0.0.0
@@ -66,16 +105,93 @@ services:
         - "traefik.http.services.${STACK_SLUG:-zen-crm}.loadbalancer.server.port=3000"
         - "traefik.docker.network=${TRAEFIK_NETWORK:-SociosNet}"
 
+  # A separate worker owns CREATEDB, CREATEROLE and tenant migrations. It is
+  # the only service that receives the administrative PostgreSQL URL.
+  provisioner:
+    image: ${APP_IMAGE:-ghcr.io/joel110311/zen_crm_belleza:latest}
+    command: ["sh", "-c", "node migrate-control-plane.mjs && while true; do node provision-tenant.mjs --drain || true; sleep ${PROVISIONER_POLL_SECONDS:-15}; done"]
+    environment:
+      - CONTROL_DATABASE_URL=${CONTROL_DATABASE_URL:-}
+      - TENANT_POSTGRES_ADMIN_URL=${TENANT_POSTGRES_ADMIN_URL:-}
+      - CONTROL_DATABASE_REQUIRE_LEAST_PRIVILEGE=${CONTROL_DATABASE_REQUIRE_LEAST_PRIVILEGE:-true}
+      - TENANT_POSTGRES_CLUSTER_KEY=${TENANT_POSTGRES_CLUSTER_KEY:-primary}
+      - TENANT_CREDENTIALS_ENCRYPTION_KEY=${TENANT_CREDENTIALS_ENCRYPTION_KEY:-}
+      - TENANT_CREDENTIALS_KEY_VERSION=${TENANT_CREDENTIALS_KEY_VERSION:-1}
+      - TENANT_TRIAL_DAYS=${TENANT_TRIAL_DAYS:-7}
+      - PROVISIONER_POLL_SECONDS=${PROVISIONER_POLL_SECONDS:-15}
+      - TZ=${TZ:-America/Mexico_City}
+    networks:
+      - traefik-public
+    depends_on:
+      - zen-crm-db
+    healthcheck:
+      test: ["CMD", "node", "-e", "const{Pool}=require('pg');const p=new Pool({connectionString:process.env.CONTROL_DATABASE_URL});p.query('SELECT 1').then(()=>p.end()).then(()=>process.exit(0)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "5"
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
+  # Dedicated queue consumer. It deliberately has no legacy database URL or public/uploads
+  # volume, so a retry cannot fall back to the single-tenant runtime.
+  tenant-worker:
+    image: ${APP_IMAGE:-ghcr.io/joel110311/zen_crm_belleza:latest}
+    command: ["sh", "-c", "while true; do node tenant-work-worker.mjs --drain || true; sleep ${TENANT_WORKER_POLL_SECONDS:-10}; done"]
+    environment:
+      - CONTROL_DATABASE_URL=${CONTROL_DATABASE_URL:-}
+      - TENANT_CREDENTIALS_ENCRYPTION_KEY=${TENANT_CREDENTIALS_ENCRYPTION_KEY:-}
+      - TENANT_CREDENTIALS_KEY_VERSION=${TENANT_CREDENTIALS_KEY_VERSION:-1}
+      - TENANT_WORKER_POLL_SECONDS=${TENANT_WORKER_POLL_SECONDS:-10}
+      - TENANT_WORKER_STALE_SECONDS=${TENANT_WORKER_STALE_SECONDS:-300}
+      - TENANT_WORKER_MAX_DRAIN=${TENANT_WORKER_MAX_DRAIN:-100}
+      - TENANT_STORAGE_S3_ENDPOINT=${TENANT_STORAGE_S3_ENDPOINT:-}
+      - TENANT_STORAGE_S3_REGION=${TENANT_STORAGE_S3_REGION:-us-east-1}
+      - TENANT_STORAGE_S3_BUCKET=${TENANT_STORAGE_S3_BUCKET:-}
+      - TENANT_STORAGE_S3_ACCESS_KEY_ID=${TENANT_STORAGE_S3_ACCESS_KEY_ID:-}
+      - TENANT_STORAGE_S3_SECRET_ACCESS_KEY=${TENANT_STORAGE_S3_SECRET_ACCESS_KEY:-}
+      - TENANT_STORAGE_S3_SESSION_TOKEN=${TENANT_STORAGE_S3_SESSION_TOKEN:-}
+      - TENANT_STORAGE_S3_FORCE_PATH_STYLE=${TENANT_STORAGE_S3_FORCE_PATH_STYLE:-true}
+      - TZ=${TZ:-America/Mexico_City}
+    networks:
+      - traefik-public
+    depends_on:
+      - zen-crm-db
+    healthcheck:
+      test: ["CMD", "node", "-e", "const{Pool}=require('pg');const p=new Pool({connectionString:process.env.CONTROL_DATABASE_URL});p.query('SELECT 1').then(()=>p.end()).then(()=>process.exit(0)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "5"
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
   whatsapp-gateway:
     image: asternic/wuzapi:sha-9487eca
+    # Existing installations must migrate the WuzAPI database or reconnect their
+    # WhatsApp sessions before switching this service to the dedicated database.
     environment:
       - WUZAPI_ADMIN_TOKEN=${WUZAPI_ADMIN_TOKEN}
       - WUZAPI_GLOBAL_ENCRYPTION_KEY=${WUZAPI_GLOBAL_ENCRYPTION_KEY}
       - WUZAPI_GLOBAL_HMAC_KEY=${WUZAPI_GLOBAL_HMAC_KEY}
-      - DB_USER=zencrm
-      - DB_PASSWORD=${POSTGRES_PASSWORD}
-      - DB_NAME=${POSTGRES_DB}
-      - DB_HOST=${WUZAPI_DB_HOST:-zen-crm-db}
+      - DB_USER=${WUZAPI_DB_USER:-wuzapi}
+      - DB_PASSWORD=${WUZAPI_DB_PASSWORD:?Define WUZAPI_DB_PASSWORD}
+      - DB_NAME=${WUZAPI_DB_NAME:-wuzapi}
+      - DB_HOST=${WUZAPI_DB_HOST:-whatsapp-db}
       - DB_PORT=5432
       - DB_SSLMODE=false
       - TZ=${TZ:-America/Mexico_City}
@@ -83,6 +199,8 @@ services:
       - SESSION_DEVICE_NAME=${SESSION_DEVICE_NAME:-Zen CRM}
     networks:
       - traefik-public
+    depends_on:
+      - whatsapp-db
     logging:
       driver: "json-file"
       options:
@@ -94,7 +212,7 @@ services:
         condition: on-failure
 
   zen-crm-db:
-    image: ghcr.io/joel110311/zen_crm_oftalmo_db:latest
+    image: ${DB_IMAGE:-ghcr.io/joel110311/zen_crm_belleza_db:latest}
     environment:
       - POSTGRES_USER=zencrm
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
@@ -124,9 +242,37 @@ services:
           cpus: "0.5"
           memory: 512M
 
+  whatsapp-db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=${WUZAPI_DB_USER:-wuzapi}
+      - POSTGRES_PASSWORD=${WUZAPI_DB_PASSWORD:?Define WUZAPI_DB_PASSWORD}
+      - POSTGRES_DB=${WUZAPI_DB_NAME:-wuzapi}
+      - TZ=${TZ:-America/Mexico_City}
+    volumes:
+      - wuzapi_db_data:/var/lib/postgresql/data
+    networks:
+      - traefik-public
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${WUZAPI_DB_USER:-wuzapi} -d ${WUZAPI_DB_NAME:-wuzapi}"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "5"
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
 volumes:
   zen_crm_db_data:
   zen_crm_uploads:
+  wuzapi_db_data:
 
 networks:
   traefik-public:

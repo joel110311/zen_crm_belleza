@@ -1,0 +1,669 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../../src/generated/control-plane"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum TenantStatus {
+  PROVISIONING
+  READY
+  SUSPENDED
+  ARCHIVED
+  FAILED
+}
+
+enum ProvisioningStatus {
+  PENDING
+  RUNNING
+  SUCCEEDED
+  FAILED
+  RETRY_WAIT
+  CANCELLED
+}
+
+enum BillingStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  UNPAID
+  CANCELED
+  INCOMPLETE
+}
+
+enum TenantAccessMode {
+  FULL
+  READ_ONLY
+  BILLING_ONLY
+  SUSPENDED
+}
+
+enum TenantRole {
+  OWNER
+  ADMIN
+  PROFESSIONAL
+  RECEPTION
+}
+
+enum TenantDomainType {
+  PLATFORM_SUBDOMAIN
+  CUSTOM
+  LEGACY
+}
+
+enum TenantDatabaseStatus {
+  ALLOCATED
+  CREATING
+  MIGRATING
+  READY
+  FAILED
+  DECOMMISSIONED
+}
+
+enum SubscriptionProvider {
+  STRIPE
+  PADDLE
+}
+
+enum BillingInterval {
+  MONTHLY
+  ANNUAL
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  UNPAID
+  CANCELED
+  INCOMPLETE
+  INCOMPLETE_EXPIRED
+  PAUSED
+}
+
+enum ProvisioningJobKind {
+  CREATE_TENANT_DATABASE
+  MIGRATE_TENANT_DATABASE
+  SEED_TENANT_DATABASE
+  DELETE_TENANT_DATABASE
+}
+
+enum WebhookProvider {
+  STRIPE
+  META
+  WUZAPI
+}
+
+enum WebhookProcessingStatus {
+  RECEIVED
+  PROCESSING
+  PROCESSED
+  FAILED
+  IGNORED
+}
+
+enum ChannelProvider {
+  META_CLOUD
+  WUZAPI
+}
+
+enum ChannelConnectionStatus {
+  PENDING
+  CONNECTED
+  DISCONNECTED
+  FAILED
+}
+
+/** Work is claimed only by the dedicated worker, never by a web request. */
+enum TenantWorkKind {
+  WEBHOOK_EVENT
+  OUTBOUND_MESSAGE
+  APPOINTMENT_REMINDER
+  CAMPAIGN_DISPATCH
+  AI_TASK
+  MAINTENANCE
+}
+
+enum TenantWorkStatus {
+  QUEUED
+  RUNNING
+  RETRY_WAIT
+  SUCCEEDED
+  DEAD_LETTER
+  CANCELLED
+}
+
+enum DevicePlatform {
+  IOS
+  ANDROID
+  WEB
+}
+
+enum SignupIntentStatus {
+  PENDING
+  VERIFIED
+  EXPIRED
+  CANCELLED
+}
+
+enum EmailDeliveryStatus {
+  PENDING
+  SENT
+  FAILED
+  SUPPRESSED
+}
+
+enum TenantInvitationStatus {
+  PENDING
+  ACCEPTED
+  REVOKED
+  EXPIRED
+}
+
+/**
+ * The local specialist projection can be retried without changing a membership.
+ */
+enum ProfessionalProfileProjectionStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+}
+
+model User {
+  id                        String               @id @default(cuid())
+  email                     String               @unique
+  name                      String?
+  passwordHash              String?
+  emailVerifiedAt           DateTime?
+  securityVersion           Int                  @default(1)
+  isPlatformAdmin           Boolean              @default(false)
+  createdAt                 DateTime             @default(now())
+  updatedAt                 DateTime             @updatedAt
+  memberships               TenantMembership[]
+  createdTenants            Tenant[]             @relation("TenantCreator")
+  deviceInstalls            DeviceInstallation[]
+  auditEvents               AuditLog[]           @relation("AuditActor")
+  signupIntents             SignupIntent[]       @relation("SignupIntentVerifiedUser")
+  legalAcceptances          LegalAcceptance[]    @relation("LegalAcceptanceUser")
+  emailDeliveries           EmailDelivery[]      @relation("EmailDeliveryUser")
+  passwordResetTokens       PasswordResetToken[]
+  sentTenantInvitations     TenantInvitation[]   @relation("TenantInvitationInviter")
+  acceptedTenantInvitations TenantInvitation[]   @relation("TenantInvitationAcceptor")
+  channelConnectionStates   ChannelConnectionState[] @relation("ChannelConnectionStateRequester")
+}
+
+model Tenant {
+  id                 String               @id @default(cuid())
+  slug               String               @unique
+  displayName        String
+  legalName          String?
+  timeZone           String               @default("America/Mexico_City")
+  status             TenantStatus         @default(PROVISIONING)
+  provisioningStatus ProvisioningStatus   @default(PENDING)
+  billingStatus      BillingStatus        @default(TRIALING)
+  accessMode         TenantAccessMode     @default(FULL)
+  createdByUserId    String?
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  createdBy          User?                @relation("TenantCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  memberships        TenantMembership[]
+  domains            TenantDomain[]
+  database           TenantDatabase?
+  trial              Trial?
+  subscriptions      Subscription[]
+  entitlements       BillingEntitlement[]
+  provisioningJobs   ProvisioningJob[]
+  webhookEvents      WebhookEvent[]
+  channelConnections ChannelConnection[]
+  channelConnectionStates ChannelConnectionState[]
+  workItems          TenantWorkItem[]
+  deviceInstalls     DeviceInstallation[]
+  auditEvents        AuditLog[]
+  signupIntent       SignupIntent?        @relation("SignupIntentTenant")
+  invitations        TenantInvitation[]
+
+  @@index([status, provisioningStatus])
+  @@index([billingStatus, accessMode])
+}
+
+model TenantMembership {
+  id        String     @id @default(cuid())
+  userId    String
+  tenantId  String
+  role      TenantRole @default(RECEPTION)
+  isActive  Boolean    @default(true)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, tenantId])
+  @@index([tenantId, isActive])
+}
+
+/**
+ * A capability to join one tenant. The browser/email token is HMAC-hashed before it
+ * reaches this table; invitations never carry a password or a tenant runtime URL.
+ */
+model TenantInvitation {
+  id                              String                               @id @default(cuid())
+  tenantId                        String
+  email                           String
+  role                            TenantRole
+  tokenHash                       String                               @unique
+  expiresAt                       DateTime
+  status                          TenantInvitationStatus               @default(PENDING)
+  invitedByUserId                 String
+  acceptedByUserId                String?
+  idempotencyKey                  String                               @unique
+  professionalProfile             Json?
+  professionalProfileStatus       ProfessionalProfileProjectionStatus?
+  professionalProfileError        String?
+  professionalProfileSpecialistId String?
+  acceptedAt                      DateTime?
+  revokedAt                       DateTime?
+  createdAt                       DateTime                             @default(now())
+  updatedAt                       DateTime                             @updatedAt
+  tenant                          Tenant                               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  invitedBy                       User                                 @relation("TenantInvitationInviter", fields: [invitedByUserId], references: [id], onDelete: Restrict)
+  acceptedBy                      User?                                @relation("TenantInvitationAcceptor", fields: [acceptedByUserId], references: [id], onDelete: SetNull)
+  emailDeliveries                 EmailDelivery[]
+
+  @@index([tenantId, email, status])
+  @@index([tenantId, status, expiresAt])
+  @@index([acceptedByUserId, status])
+  @@index([expiresAt])
+}
+
+model TenantDomain {
+  id         String           @id @default(cuid())
+  tenantId   String
+  host       String           @unique
+  type       TenantDomainType @default(CUSTOM)
+  isPrimary  Boolean          @default(false)
+  verifiedAt DateTime?
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+  tenant     Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, isPrimary])
+}
+
+model TenantDatabase {
+  id                      String               @id @default(cuid())
+  tenantId                String               @unique
+  clusterKey              String
+  databaseName            String
+  runtimeUrlCiphertext    Bytes
+  runtimeSecretKeyVersion Int
+  status                  TenantDatabaseStatus @default(ALLOCATED)
+  schemaVersion           String?
+  lastMigratedAt          DateTime?
+  lastError               String?
+  createdAt               DateTime             @default(now())
+  updatedAt               DateTime             @updatedAt
+  tenant                  Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([clusterKey, databaseName])
+  @@index([clusterKey, status])
+}
+
+model Plan {
+  id                   String         @id @default(cuid())
+  slug                 String         @unique
+  name                 String
+  description          String?
+  currency             String         @default("MXN")
+  monthlyAmountCents   Int?
+  annualAmountCents    Int?
+  stripeMonthlyPriceId String?        @unique
+  stripeAnnualPriceId  String?        @unique
+  limits               Json           @default("{}")
+  features             Json           @default("{}")
+  isActive             Boolean        @default(true)
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+  subscriptions        Subscription[]
+  prices               BillingPrice[]
+}
+
+model BillingPrice {
+  id              String               @id @default(cuid())
+  planId          String
+  provider        SubscriptionProvider
+  interval        BillingInterval
+  externalPriceId String
+  currency        String               @default("MXN")
+  countryCode     String?
+  isActive        Boolean              @default(true)
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+  plan            Plan                 @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, externalPriceId])
+  @@index([planId, provider, interval, isActive])
+  @@index([countryCode, isActive])
+}
+
+model Trial {
+  id          String    @id @default(cuid())
+  tenantId    String    @unique
+  startsAt    DateTime
+  endsAt      DateTime
+  convertedAt DateTime?
+  expiredAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([endsAt])
+}
+
+model Subscription {
+  id                     String               @id @default(cuid())
+  tenantId               String
+  planId                 String?
+  provider               SubscriptionProvider @default(STRIPE)
+  providerCustomerId     String?
+  providerSubscriptionId String?              @unique
+  status                 SubscriptionStatus
+  currentPeriodStartsAt  DateTime?
+  currentPeriodEndsAt    DateTime?
+  cancelAtPeriodEnd      Boolean              @default(false)
+  canceledAt             DateTime?
+  createdAt              DateTime             @default(now())
+  updatedAt              DateTime             @updatedAt
+  tenant                 Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  plan                   Plan?                @relation(fields: [planId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, status])
+  @@index([provider, providerCustomerId])
+}
+
+model BillingEntitlement {
+  id        String    @id @default(cuid())
+  tenantId  String
+  key       String
+  value     Json
+  source    String
+  expiresAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, key])
+  @@index([expiresAt])
+}
+
+model BillingEvent {
+  id                  String               @id @default(cuid())
+  provider            SubscriptionProvider
+  providerEventId     String
+  eventType           String
+  apiVersion          String?
+  payload             Json
+  receivedAt          DateTime             @default(now())
+  processingStartedAt DateTime?
+  processedAt         DateTime?
+  processingError     String?
+
+  @@unique([provider, providerEventId])
+}
+
+model ProvisioningJob {
+  id             String              @id @default(cuid())
+  tenantId       String
+  kind           ProvisioningJobKind
+  idempotencyKey String              @unique
+  status         ProvisioningStatus  @default(PENDING)
+  step           String?
+  payload        Json                @default("{}")
+  result         Json?
+  error          String?
+  attempts       Int                 @default(0)
+  maxAttempts    Int                 @default(5)
+  lockedAt       DateTime?
+  lockedBy       String?
+  nextRunAt      DateTime            @default(now())
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  tenant         Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([status, nextRunAt])
+  @@index([tenantId, kind])
+}
+
+model WebhookEvent {
+  id              String                  @id @default(cuid())
+  tenantId        String?
+  provider        WebhookProvider
+  providerEventId String
+  status          WebhookProcessingStatus @default(RECEIVED)
+  payload         Json
+  processingError String?
+  receivedAt      DateTime                @default(now())
+  processedAt     DateTime?
+  tenant          Tenant?                 @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+
+  @@unique([provider, providerEventId])
+  @@index([status, receivedAt])
+  @@index([tenantId, provider])
+}
+
+model ChannelConnection {
+  id                String                  @id @default(cuid())
+  tenantId          String
+  provider          ChannelProvider
+  externalAccountId String
+  status            ChannelConnectionStatus @default(PENDING)
+  secretCiphertext  Bytes?
+  secretKeyVersion  Int?
+  routeSecretHash   String?
+  connectedAt       DateTime?
+  disconnectedAt    DateTime?
+  lastWebhookAt     DateTime?
+  lastError         String?
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+  tenant            Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, externalAccountId])
+  @@index([tenantId, provider, status])
+}
+
+/**
+ * One short-lived, signed capability for a provider connection flow. The signed value is
+ * stored only as an HMAC hash, so a leaked control-plane backup cannot complete a connection.
+ */
+model ChannelConnectionState {
+  id                String          @id @default(cuid())
+  tenantId          String
+  requestedByUserId String
+  provider          ChannelProvider
+  stateHash         String          @unique
+  expiresAt         DateTime
+  consumedAt        DateTime?
+  createdAt         DateTime        @default(now())
+  tenant            Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  requestedBy       User            @relation("ChannelConnectionStateRequester", fields: [requestedByUserId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, provider, expiresAt])
+  @@index([requestedByUserId, expiresAt])
+}
+
+/**
+ * Durable cross-tenant work queue. `payload` never contains a database URL or a plaintext
+ * provider credential; the worker resolves both only after it has claimed the item.
+ */
+model TenantWorkItem {
+  id             String           @id @default(cuid())
+  tenantId       String
+  kind           TenantWorkKind
+  recordId       String?
+  idempotencyKey String           @unique
+  payload        Json             @default("{}")
+  status         TenantWorkStatus @default(QUEUED)
+  attempts       Int              @default(0)
+  maxAttempts    Int              @default(8)
+  availableAt    DateTime         @default(now())
+  lockedAt       DateTime?
+  lockedBy       String?
+  heartbeatAt    DateTime?
+  completedAt    DateTime?
+  failedAt       DateTime?
+  lastError      String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  tenant         Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([status, availableAt])
+  @@index([tenantId, kind, status])
+  @@index([lockedAt])
+}
+
+model DeviceInstallation {
+  id                  String         @id @default(cuid())
+  userId              String
+  tenantId            String
+  platform            DevicePlatform
+  pushTokenCiphertext Bytes
+  pushTokenHash       String         @unique
+  appVersion          String?
+  lastSeenAt          DateTime       @default(now())
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+  user                User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant              Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, platform])
+  @@index([userId, tenantId])
+}
+
+model AuditLog {
+  id           String   @id @default(cuid())
+  tenantId     String?
+  actorUserId  String?
+  action       String
+  resourceType String
+  resourceId   String?
+  metadata     Json     @default("{}")
+  ipHash       String?
+  createdAt    DateTime @default(now())
+  tenant       Tenant?  @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  actor        User?    @relation("AuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@index([resourceType, resourceId])
+}
+
+/**
+ * A pending public registration. No tenant exists until the email token is consumed.
+ */
+model SignupIntent {
+  id               String             @id @default(cuid())
+  email            String
+  name             String?
+  displayName      String
+  requestedSlug    String
+  timeZone         String             @default("America/Mexico_City")
+  passwordHash     String
+  tokenHash        String             @unique
+  expiresAt        DateTime
+  status           SignupIntentStatus @default(PENDING)
+  idempotencyKey   String             @unique
+  utm              Json               @default("{}")
+  ipHash           String?
+  fingerprintHash  String?
+  verifiedAt       DateTime?
+  consumedAt       DateTime?
+  userId           String?            @unique
+  tenantId         String?            @unique
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  user             User?              @relation("SignupIntentVerifiedUser", fields: [userId], references: [id], onDelete: SetNull)
+  tenant           Tenant?            @relation("SignupIntentTenant", fields: [tenantId], references: [id], onDelete: SetNull)
+  legalAcceptances LegalAcceptance[]
+  emailDeliveries  EmailDelivery[]
+
+  @@index([email, status, createdAt])
+  @@index([expiresAt])
+}
+
+/**
+ * Immutable evidence of acceptance of the current terms and privacy versions.
+ */
+model LegalAcceptance {
+  id             String        @id @default(cuid())
+  signupIntentId String?
+  userId         String?
+  termsVersion   String
+  privacyVersion String
+  acceptedAt     DateTime      @default(now())
+  ipHash         String?
+  createdAt      DateTime      @default(now())
+  signupIntent   SignupIntent? @relation(fields: [signupIntentId], references: [id], onDelete: SetNull)
+  user           User?         @relation("LegalAcceptanceUser", fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([signupIntentId, acceptedAt])
+  @@index([userId, acceptedAt])
+}
+
+/**
+ * One-time, hashed token for password recovery.
+ */
+model PasswordResetToken {
+  id         String    @id @default(cuid())
+  userId     String
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  consumedAt DateTime?
+  ipHash     String?
+  createdAt  DateTime  @default(now())
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+  @@index([expiresAt])
+}
+
+/**
+ * Provider-side mail delivery trail, without keeping an email token in plain text.
+ */
+model EmailDelivery {
+  id                 String              @id @default(cuid())
+  signupIntentId     String?
+  tenantInvitationId String?
+  userId             String?
+  recipientEmail     String
+  template           String
+  provider           String
+  status             EmailDeliveryStatus @default(PENDING)
+  externalId         String?
+  errorCode          String?
+  sentAt             DateTime?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  signupIntent       SignupIntent?       @relation(fields: [signupIntentId], references: [id], onDelete: SetNull)
+  tenantInvitation   TenantInvitation?   @relation(fields: [tenantInvitationId], references: [id], onDelete: SetNull)
+  user               User?               @relation("EmailDeliveryUser", fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([signupIntentId, createdAt])
+  @@index([tenantInvitationId, createdAt])
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+}
+
+/**
+ * Shared, database-backed quota used by unauthenticated security-sensitive endpoints.
+ */
+model SecurityRateLimit {
+  keyHash         String   @id
+  windowStartedAt DateTime
+  windowEndsAt    DateTime
+  count           Int      @default(0)
+  updatedAt       DateTime @updatedAt
+
+  @@index([windowEndsAt])
+}

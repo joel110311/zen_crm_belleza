@@ -12,7 +12,6 @@ import {
     MapPin,
     Plus,
     Search,
-    Scissors,
     Sparkles,
     TrendingUp,
     Users,
@@ -488,23 +487,23 @@ function DesktopDashboard({
     businessProfile: BusinessProfile;
 }) {
     return (
-        <div className="hidden space-y-4 pb-8 lg:block">
-            <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-12">
-                <div className="xl:col-span-3 xl:row-span-2">
+        <div className="dashboard-desktop hidden space-y-4 pb-8 lg:block">
+            <div className="dashboard-summary-grid grid gap-4">
+                <div className="dashboard-summary-business">
                     {personalMode && data.specialist ? (
                         <SpecialistProfileCard specialist={data.specialist} fallbackName={userName} />
                     ) : (
                         <BusinessProfileCard business={businessProfile} team={data.team} appointmentsToday={data.stats.appointmentsToday} />
                     )}
                 </div>
-                <div className="xl:col-span-6">
+                <div className="dashboard-summary-focus">
                     <DashboardFocusBanner
                         appointments={data.appointments}
                         operationContext={operationContext}
                         stats={data.stats}
                     />
                 </div>
-                <div className="xl:col-span-3 xl:row-span-2">
+                <div className="dashboard-summary-calendar">
                     <MiniMonthCalendar
                         monthParam={monthParam}
                         appointmentTab={appointmentTab}
@@ -513,7 +512,7 @@ function DesktopDashboard({
                         operationContext={operationContext}
                     />
                 </div>
-                <div className="xl:col-span-3">
+                <div className="dashboard-summary-metric">
                     <InsightMetricCard
                         label="Clientes nuevos"
                         value={data.stats.newClientsThisMonth}
@@ -523,7 +522,7 @@ function DesktopDashboard({
                         locale={operationContext.locale}
                     />
                 </div>
-                <div className="xl:col-span-3">
+                <div className="dashboard-summary-metric">
                     <InsightMetricCard
                         label="Citas del mes"
                         value={data.stats.appointmentsThisMonth}
@@ -535,14 +534,14 @@ function DesktopDashboard({
                 </div>
             </div>
 
-            <div className="grid items-stretch gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+            <div className="dashboard-activity-grid grid items-stretch gap-4">
                 <AppointmentsPanel
                     appointments={data.appointments}
                     appointmentTab={appointmentTab}
                     query={query}
                     operationContext={operationContext}
                 />
-                <aside>
+                <aside className="h-full min-w-0">
                     <DirectChatsCard chats={data.directChats} />
                 </aside>
             </div>
@@ -574,10 +573,7 @@ function DashboardFocusBanner({
     });
 
     return (
-        <Card className="relative min-h-[218px] overflow-hidden rounded-3xl border border-primary/15 bg-gradient-to-br from-primary via-primary/90 to-primary/75 text-primary-foreground shadow-sm">
-            <div className="pointer-events-none absolute -right-16 -top-20 h-64 w-64 rounded-full border-[42px] border-white/10" />
-            <div className="pointer-events-none absolute bottom-[-70px] right-32 h-40 w-40 rounded-full border-[26px] border-white/10" />
-            <Scissors className="pointer-events-none absolute right-12 top-12 h-24 w-24 rotate-[-12deg] text-white/15" />
+        <Card className="apple-feature-card relative min-h-[218px] overflow-hidden rounded-3xl border-0 bg-primary text-primary-foreground">
             <CardContent className="relative flex min-h-[218px] flex-col justify-between p-6">
                 <div className="flex flex-col items-start justify-between gap-3 xl:flex-row xl:gap-4">
                     <div className="min-w-0">
@@ -883,7 +879,7 @@ function BusinessProfileCard({
     appointmentsToday: number;
 }) {
     return (
-        <Card className="h-full overflow-hidden rounded-3xl border border-primary/20 bg-gradient-to-br from-primary/20 via-primary/10 to-card shadow-sm">
+        <Card className="h-full overflow-hidden rounded-3xl border border-border bg-card">
             <CardContent className="flex h-full min-h-[384px] flex-col p-6">
                 <div className="flex items-start justify-between gap-3">
                     <span className="rounded-full border border-primary/20 bg-card/75 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.15em] text-primary">
@@ -980,7 +976,7 @@ function SpecialistProfileCard({
     const attentionArea = room && !/^\d+$/.test(room) ? room : "Área de atención";
 
     return (
-        <Card className="h-full overflow-hidden rounded-3xl border border-primary/20 bg-gradient-to-br from-primary/20 via-primary/10 to-card shadow-sm">
+        <Card className="h-full overflow-hidden rounded-3xl border border-border bg-card">
             <CardContent className="flex h-full min-h-[384px] flex-col p-6">
                 <div className="flex items-start justify-between gap-3">
                     <span className="rounded-full border border-primary/20 bg-card/75 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.15em] text-primary">
@@ -1037,7 +1033,7 @@ function DirectChatsCard({
     chats: Awaited<ReturnType<typeof getDashboardData>>["directChats"];
 }) {
     return (
-        <Card className="h-[clamp(340px,36vh,560px)] rounded-3xl border border-border/70 bg-card shadow-sm">
+        <Card className="h-full min-h-[340px] rounded-3xl border border-border/70 bg-card shadow-sm">
             <CardContent className="flex h-full min-h-0 flex-col p-5">
                 <div className="mb-4 flex shrink-0 items-center justify-between gap-3">
                     <div>
@@ -1131,24 +1127,25 @@ function AppointmentsPanel({
     };
 
     return (
-        <Card className="h-[620px] rounded-3xl border border-border/70 bg-card shadow-sm sm:h-[clamp(500px,60vh,680px)] xl:h-[clamp(340px,36vh,560px)]">
-            <CardContent className="flex h-full min-h-0 flex-col p-0">
-                <div className="flex shrink-0 flex-col gap-3 border-b border-border/70 p-4 sm:gap-4 sm:p-5 xl:flex-row xl:items-center xl:justify-between">
-                    <div>
+        <div className="appointments-panel-container h-full min-w-0">
+            <Card className="appointments-panel-card rounded-3xl border border-border/70 bg-card shadow-sm">
+                <CardContent className="flex h-full min-h-0 flex-col p-0">
+                <div className="appointments-panel-header flex shrink-0 flex-col gap-3 border-b border-border/70 p-4 sm:gap-4 sm:p-5">
+                    <div className="min-w-0">
                         <p className="text-xs font-bold uppercase tracking-[0.15em] text-muted-foreground">Seguimiento</p>
                         <h2 className="mt-1 text-2xl font-black tracking-tight text-foreground">Actividad de clientes</h2>
                         <p className="mt-1 text-sm text-muted-foreground">
                             Citas, servicios, pagos y contacto directo desde una sola lista.
                         </p>
                     </div>
-                    <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center xl:flex-nowrap">
-                        <Button size="sm" className="rounded-full" asChild>
+                    <div className="appointments-panel-toolbar flex min-w-0 flex-col gap-2">
+                        <Button size="sm" className="shrink-0 rounded-full" asChild>
                             <Link href="/dashboard/calendar">
                                 <Plus className="mr-1.5 h-4 w-4" />
                                 Nueva cita
                             </Link>
                         </Button>
-                        <div className="flex rounded-full border bg-muted/30 p-1">
+                        <div className="flex shrink-0 rounded-full border bg-muted/30 p-1">
                             <Button
                                 variant={appointmentTab === "upcoming" ? "default" : "ghost"}
                                 size="sm"
@@ -1166,7 +1163,7 @@ function AppointmentsPanel({
                                 <Link href={makeHref("today")}>Hoy</Link>
                             </Button>
                         </div>
-                        <form action="/dashboard" className="flex min-w-0 gap-2">
+                        <form action="/dashboard" className="appointments-panel-search flex min-w-0 gap-2">
                             <input type="hidden" name="tab" value={appointmentTab} />
                             <div className="relative min-w-0 flex-1 sm:min-w-[190px]">
                                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -1207,7 +1204,7 @@ function AppointmentsPanel({
                         return (
                             <article
                                 key={appointment.id}
-                                className="grid gap-3 rounded-2xl border border-border/70 bg-background p-3 transition hover:border-primary/30 hover:shadow-sm sm:p-4 xl:grid-cols-[minmax(220px,1.35fr)_minmax(180px,1fr)_minmax(150px,.8fr)_auto] xl:items-center"
+                                className="appointments-panel-row grid gap-3 rounded-2xl border border-border/70 bg-background p-3 transition hover:border-primary/30 hover:shadow-sm sm:p-4"
                             >
                                 <div className="flex min-w-0 items-center gap-3">
                                     <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-sm font-black text-primary">
@@ -1254,7 +1251,7 @@ function AppointmentsPanel({
                                     </div>
                                 </div>
 
-                                <div className="flex items-center xl:justify-end">
+                                <div className="appointments-panel-actions flex items-center">
                                     <AppointmentQuickActions
                                         appointmentId={appointment.id}
                                         appointmentDate={appointmentDate}
@@ -1279,7 +1276,8 @@ function AppointmentsPanel({
                     Mostrando {appointments.length} registro{appointments.length === 1 ? "" : "s"}
                     {query ? ` para "${query}"` : ""}
                 </div>
-            </CardContent>
-        </Card>
+                </CardContent>
+            </Card>
+        </div>
     );
 }

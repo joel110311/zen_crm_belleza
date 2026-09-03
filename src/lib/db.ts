@@ -18,10 +18,20 @@ try {
     if (globalForPrisma.prisma) {
         prismaInstance = globalForPrisma.prisma;
     } else {
-        const connectionString = process.env.DATABASE_URL;
-        const pool = new Pool({ connectionString });
-        const adapter = new PrismaPg(pool);
-        prismaInstance = new PrismaClient({ adapter, log: prismaLogLevels });
+        const connectionString = process.env.DATABASE_URL?.trim();
+        if (!connectionString) {
+            // The multitenant runtime deliberately has no legacy DATABASE_URL. Keep imports and
+            // static generation side-effect free; actual legacy data access still fails clearly.
+            prismaInstance = new Proxy({} as PrismaClient, {
+                get(_target, property) {
+                    throw new Error(`DATABASE_URL is required for legacy Prisma access (${String(property)}).`);
+                },
+            });
+        } else {
+            const pool = new Pool({ connectionString });
+            const adapter = new PrismaPg(pool);
+            prismaInstance = new PrismaClient({ adapter, log: prismaLogLevels });
+        }
     }
 } catch (error) {
     console.warn("Failed to initialize Prisma Client (this is expected during build):", error);

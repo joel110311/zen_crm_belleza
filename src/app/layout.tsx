@@ -43,7 +43,7 @@ const colorThemeInitScript = `
 (() => {
   try {
     const stored = window.localStorage.getItem("${COLOR_THEME_STORAGE_KEY}");
-    const nextTheme = stored === "clinic" || stored === "green" ? stored : "${DEFAULT_COLOR_THEME}";
+    const nextTheme = stored === "clinic" || stored === "green" || stored === "apple" ? stored : "${DEFAULT_COLOR_THEME}";
     document.documentElement.setAttribute("data-color-theme", nextTheme);
   } catch {
     document.documentElement.setAttribute("data-color-theme", "${DEFAULT_COLOR_THEME}");
@@ -59,7 +59,12 @@ export default async function RootLayout({
   const session = await auth();
 
   return (
-    <html lang="es" suppressHydrationWarning data-color-theme={DEFAULT_COLOR_THEME}>
+    <html
+      lang="es"
+      suppressHydrationWarning
+      data-color-theme={DEFAULT_COLOR_THEME}
+      data-scroll-behavior="smooth"
+    >
       <head>
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <script dangerouslySetInnerHTML={{ __html: colorThemeInitScript }} />

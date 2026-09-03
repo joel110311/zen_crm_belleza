@@ -1,6 +1,8 @@
 "use client";
 
 import { useActionState, useEffect, useState } from "react";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,6 +15,8 @@ export default function LoginPage() {
     const [errorMessage, formAction, isPending] = useActionState(loginAction, undefined);
     const [showPassword, setShowPassword] = useState(false);
     const [branding, setBranding] = useState<BrandingSettings>(() => resolveBranding(null));
+    const searchParams = useSearchParams();
+    const redirectTo = searchParams.get("redirectTo") || searchParams.get("callbackUrl") || "/dashboard";
 
     useEffect(() => {
         let ignore = false;
@@ -87,7 +91,7 @@ export default function LoginPage() {
                         </div>
 
                         <form action={formAction} className="space-y-5">
-                            <input type="hidden" name="redirectTo" value="/dashboard" />
+                            <input type="hidden" name="redirectTo" value={redirectTo.startsWith("/") ? redirectTo : "/dashboard"} />
 
                             <div className="space-y-2">
                                 <Label htmlFor="email" className="text-sm font-semibold">
@@ -149,6 +153,9 @@ export default function LoginPage() {
                                     "Iniciar sesión"
                                 )}
                             </Button>
+                            <p className="text-center text-sm text-muted-foreground">
+                                <Link href="/forgot-password" className="font-medium text-primary hover:underline">¿Olvidaste tu contraseña?</Link>
+                            </p>
                         </form>
                     </div>
 

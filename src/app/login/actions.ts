@@ -8,6 +8,10 @@ export async function loginAction(
     formData: FormData
 ): Promise<string | undefined> {
     try {
+        if (process.env.MULTITENANT_AUTH_ENABLED === "true") {
+            const requestedRedirect = String(formData.get("redirectTo") || "");
+            formData.set("redirectTo", /^\/(?:onboarding|t|tenants)(?:\/|$)/.test(requestedRedirect) ? requestedRedirect : "/tenants");
+        }
         await signIn("credentials", formData);
     } catch (error) {
         if (error instanceof AuthError) {

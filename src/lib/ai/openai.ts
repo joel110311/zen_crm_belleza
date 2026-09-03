@@ -1,6 +1,6 @@
 import OpenAI, { toFile } from "openai";
 import { prisma } from "@/lib/db";
-import { SYSTEM_SETTINGS_DEFAULTS } from "@/lib/system-settings";
+import { SYSTEM_SETTINGS_DEFAULTS } from "@/lib/system-settings-defaults";
 import { resolveChatModelSelection, resolveGeminiRestModelPath } from "@/lib/ai/models";
 import { resolveAiProviderKey } from "@/lib/ai/provider-keys";
 

@@ -19,10 +19,37 @@ export async function middleware(req: NextRequest) {
     const { pathname } = req.nextUrl;
 
     // Public paths that don't require authentication
-    const publicPaths = ["/login", "/portal", "/google-calendar", "/legal", "/api/auth", "/api/branding", "/api/webhook", "/api/webhooks", "/api/bot-message", "/api/health", "/api/operation-context"];
+    const publicPaths = [
+        "/login",
+        "/signup",
+        "/verify-email",
+        "/forgot-password",
+        "/reset-password",
+        "/terms",
+        "/privacy",
+        "/portal",
+        "/invitations",
+        "/google-calendar",
+        "/legal",
+        "/api/auth",
+        "/api/public",
+        "/api/branding",
+        "/api/webhook",
+        "/api/webhooks",
+        "/api/bot-message",
+        "/api/health",
+        "/api/operation-context",
+    ];
     const isPublicPath = publicPaths.some((path) => pathname.startsWith(path));
 
     if (isPublicPath) {
+        return NextResponse.next();
+    }
+
+    // Tenant API routes enforce control-plane authentication, membership, access mode and
+    // role permissions in withTenantApi. Let them return their stable JSON 401/403/404
+    // contract instead of turning API calls into HTML redirects to /login.
+    if (pathname.startsWith("/api/t/")) {
         return NextResponse.next();
     }
 
@@ -51,7 +78,7 @@ export async function middleware(req: NextRequest) {
     // If not authenticated, redirect to login
     if (!token || typeof token.id !== "string" || !token.id) {
         const loginUrl = new URL("/login", req.url);
-        loginUrl.searchParams.set("callbackUrl", pathname);
+        loginUrl.searchParams.set("redirectTo", pathname);
         return NextResponse.redirect(loginUrl);
     }
 
@@ -82,6 +109,6 @@ export async function middleware(req: NextRequest) {
 
 export const config = {
     matcher: [
-        "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|mp3|wav|ogg)$).*)",
+        "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|mp3|wav|ogg|woff|woff2|ttf|otf)$).*)",
     ],
 };

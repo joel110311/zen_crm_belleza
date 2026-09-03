@@ -2,6 +2,7 @@
 
 import { usePathname } from "next/navigation";
 import { Header } from "@/components/layout/header";
+import { ApplePageTransition } from "@/components/layout/apple-page-transition";
 import { cn } from "@/lib/utils";
 
 export function DashboardShell({ children }: { children: React.ReactNode }) {
@@ -13,7 +14,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
     const hidesGlobalHeader = isInbox || isCalendar || isClients || isServices;
 
     return (
-        <div className="flex min-w-0 flex-1 flex-col overflow-hidden pt-14 md:pt-0">
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden bg-background pt-14 md:pt-0">
             {!hidesGlobalHeader && <Header />}
             <main
                 className={cn(
@@ -25,7 +26,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
                         : "px-3.5 pb-5 pt-3 md:px-5 md:pb-6 md:pt-3.5 lg:px-6 xl:px-7",
                 )}
             >
-                {children}
+                <ApplePageTransition>{children}</ApplePageTransition>
             </main>
         </div>
     );

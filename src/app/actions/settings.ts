@@ -3,7 +3,7 @@
 import { prisma } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { Prisma } from "@prisma/client";
-import { withSettingsDefaults } from "@/lib/system-settings";
+import { withSettingsDefaults } from "@/lib/system-settings-defaults";
 import { getSessionAccessSubject, requireAuthenticated, requirePermission } from "@/lib/authz";
 import { hasPermission } from "@/lib/permissions";
 import { normalizeBusinessPolicies } from "@/lib/ai/business-policies";

@@ -27,6 +27,19 @@ services:
       - PUBLIC_SUPPORT_EMAIL=${PUBLIC_SUPPORT_EMAIL:-}
       - AUTH_URL=${AUTH_URL:-http://localhost:3008}
       - APP_BASE_URL=${APP_BASE_URL:-http://localhost:3008}
+      # Disabled by default: the legacy local database remains available while the
+      # platform uses a separate control plane and one DB per tenant.
+      - CONTROL_DATABASE_URL=postgresql://${CONTROL_POSTGRES_USER:-zencrm_control_runtime}:${CONTROL_POSTGRES_PASSWORD:-local-control-runtime-password}@zen-crm-db:5432/${CONTROL_POSTGRES_DB:-zencrm_control}
+      - MULTITENANT_RUNTIME_ENABLED=${MULTITENANT_RUNTIME_ENABLED:-false}
+      - MULTITENANT_AUTH_ENABLED=${MULTITENANT_AUTH_ENABLED:-false}
+      - MULTITENANT_PUBLIC_SIGNUP_ENABLED=${MULTITENANT_PUBLIC_SIGNUP_ENABLED:-false}
+      - MULTITENANT_INVITATIONS_ENABLED=${MULTITENANT_INVITATIONS_ENABLED:-false}
+      - MULTITENANT_PUBLIC_PORTAL_ENABLED=${MULTITENANT_PUBLIC_PORTAL_ENABLED:-false}
+      - MULTITENANT_CHANNELS_ENABLED=${MULTITENANT_CHANNELS_ENABLED:-false}
+      - MULTITENANT_PRIVATE_STORAGE_ENABLED=${MULTITENANT_PRIVATE_STORAGE_ENABLED:-false}
+      - SECURITY_HASH_SALT=${SECURITY_HASH_SALT:-}
+      - TENANT_CREDENTIALS_ENCRYPTION_KEY=${TENANT_CREDENTIALS_ENCRYPTION_KEY:-}
+      - TENANT_CREDENTIALS_KEY_VERSION=${TENANT_CREDENTIALS_KEY_VERSION:-1}
       - WHATSAPP_WEBHOOK_BASE_URL=${WHATSAPP_WEBHOOK_BASE_URL:-http://host.docker.internal:3008}
       - META_APP_ID=${META_APP_ID:-}
       - META_APP_SECRET=${META_APP_SECRET:-}
@@ -36,6 +49,18 @@ services:
       - META_WHATSAPP_REGISTRATION_PIN=${META_WHATSAPP_REGISTRATION_PIN:-}
       - META_WEBHOOK_VERIFY_TOKEN=${META_WEBHOOK_VERIFY_TOKEN:-}
       - META_WEBHOOK_BASE_URL=${META_WEBHOOK_BASE_URL:-http://localhost:3008}
+      - CHANNEL_STATE_SIGNING_SECRET=${CHANNEL_STATE_SIGNING_SECRET:-}
+      - MULTITENANT_WUZAPI_BASE_URL=${MULTITENANT_WUZAPI_BASE_URL:-}
+      - MULTITENANT_WUZAPI_WEBHOOK_HMAC_KEY=${MULTITENANT_WUZAPI_WEBHOOK_HMAC_KEY:-}
+      - TENANT_STORAGE_S3_ENDPOINT=${TENANT_STORAGE_S3_ENDPOINT:-}
+      - TENANT_STORAGE_S3_REGION=${TENANT_STORAGE_S3_REGION:-us-east-1}
+      - TENANT_STORAGE_S3_BUCKET=${TENANT_STORAGE_S3_BUCKET:-}
+      - TENANT_STORAGE_S3_ACCESS_KEY_ID=${TENANT_STORAGE_S3_ACCESS_KEY_ID:-}
+      - TENANT_STORAGE_S3_SECRET_ACCESS_KEY=${TENANT_STORAGE_S3_SECRET_ACCESS_KEY:-}
+      - TENANT_STORAGE_S3_SESSION_TOKEN=${TENANT_STORAGE_S3_SESSION_TOKEN:-}
+      - TENANT_STORAGE_S3_FORCE_PATH_STYLE=${TENANT_STORAGE_S3_FORCE_PATH_STYLE:-true}
+      - TENANT_STORAGE_REQUIRE_ANTIVIRUS=${TENANT_STORAGE_REQUIRE_ANTIVIRUS:-false}
+      - TENANT_STORAGE_MAX_UPLOAD_BYTES=${TENANT_STORAGE_MAX_UPLOAD_BYTES:-26214400}
       - PORT=3000
       - HOSTNAME=0.0.0.0
       - TZ=${TZ:-America/Mexico_City}
@@ -51,6 +76,63 @@ services:
       whatsapp-gateway:
         condition: service_started
         restart: true
+    networks:
+      - zen-crm-local
+    restart: unless-stopped
+
+  # Start explicitly with: docker compose --profile multitenant up provisioner
+  # The admin URL is deliberately absent from the web service.
+  provisioner:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: provisioner
+    profiles: ["multitenant"]
+    command: ["sh", "-c", "node migrate-control-plane.mjs && while true; do node provision-tenant.mjs --drain || true; sleep ${PROVISIONER_POLL_SECONDS:-15}; done"]
+    environment:
+      - CONTROL_DATABASE_URL=postgresql://${CONTROL_POSTGRES_USER:-zencrm_control_runtime}:${CONTROL_POSTGRES_PASSWORD:-local-control-runtime-password}@zen-crm-db:5432/${CONTROL_POSTGRES_DB:-zencrm_control}
+      - TENANT_POSTGRES_ADMIN_URL=postgresql://zencrm:${LOCAL_POSTGRES_PASSWORD:?Define LOCAL_POSTGRES_PASSWORD}@zen-crm-db:5432/postgres
+      - CONTROL_DATABASE_REQUIRE_LEAST_PRIVILEGE=${CONTROL_DATABASE_REQUIRE_LEAST_PRIVILEGE:-true}
+      - TENANT_POSTGRES_CLUSTER_KEY=${TENANT_POSTGRES_CLUSTER_KEY:-local}
+      - TENANT_CREDENTIALS_ENCRYPTION_KEY=${TENANT_CREDENTIALS_ENCRYPTION_KEY:-}
+      - TENANT_CREDENTIALS_KEY_VERSION=${TENANT_CREDENTIALS_KEY_VERSION:-1}
+      - TENANT_TRIAL_DAYS=${TENANT_TRIAL_DAYS:-7}
+      - PROVISIONER_POLL_SECONDS=${PROVISIONER_POLL_SECONDS:-15}
+      - TZ=${TZ:-America/Mexico_City}
+    depends_on:
+      zen-crm-db:
+        condition: service_healthy
+    networks:
+      - zen-crm-local
+    restart: unless-stopped
+
+  # Receives no DATABASE_URL and mounts no public upload folder. Scale this service freely:
+  # PostgreSQL SKIP LOCKED plus per-message advisory locks make every work item idempotent.
+  tenant-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: tenant-worker
+    profiles: ["multitenant"]
+    command: ["sh", "-c", "while true; do node tenant-work-worker.mjs --drain || true; sleep ${TENANT_WORKER_POLL_SECONDS:-10}; done"]
+    environment:
+      - CONTROL_DATABASE_URL=postgresql://${CONTROL_POSTGRES_USER:-zencrm_control_runtime}:${CONTROL_POSTGRES_PASSWORD:-local-control-runtime-password}@zen-crm-db:5432/${CONTROL_POSTGRES_DB:-zencrm_control}
+      - TENANT_CREDENTIALS_ENCRYPTION_KEY=${TENANT_CREDENTIALS_ENCRYPTION_KEY:-}
+      - TENANT_CREDENTIALS_KEY_VERSION=${TENANT_CREDENTIALS_KEY_VERSION:-1}
+      - TENANT_WORKER_POLL_SECONDS=${TENANT_WORKER_POLL_SECONDS:-10}
+      - TENANT_WORKER_STALE_SECONDS=${TENANT_WORKER_STALE_SECONDS:-300}
+      - TENANT_WORKER_MAX_DRAIN=${TENANT_WORKER_MAX_DRAIN:-100}
+      - TENANT_STORAGE_S3_ENDPOINT=${TENANT_STORAGE_S3_ENDPOINT:-}
+      - TENANT_STORAGE_S3_REGION=${TENANT_STORAGE_S3_REGION:-us-east-1}
+      - TENANT_STORAGE_S3_BUCKET=${TENANT_STORAGE_S3_BUCKET:-}
+      - TENANT_STORAGE_S3_ACCESS_KEY_ID=${TENANT_STORAGE_S3_ACCESS_KEY_ID:-}
+      - TENANT_STORAGE_S3_SECRET_ACCESS_KEY=${TENANT_STORAGE_S3_SECRET_ACCESS_KEY:-}
+      - TENANT_STORAGE_S3_SESSION_TOKEN=${TENANT_STORAGE_S3_SESSION_TOKEN:-}
+      - TENANT_STORAGE_S3_FORCE_PATH_STYLE=${TENANT_STORAGE_S3_FORCE_PATH_STYLE:-true}
+      - TZ=${TZ:-America/Mexico_City}
+    depends_on:
+      zen-crm-db:
+        condition: service_healthy
     networks:
       - zen-crm-local
     restart: unless-stopped

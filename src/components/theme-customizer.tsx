@@ -29,6 +29,12 @@ const COLOR_THEME_OPTIONS: Array<{
         description: "Tema secundario en verdes naturales",
         gradient: "from-[#6f843d] to-[#263116]",
     },
+    {
+        id: "apple",
+        name: "Apple",
+        description: "Azul Apple, superficies luminosas y grises neutros",
+        gradient: "from-[#0071e3] to-[#f5f5f7]",
+    },
 ];
 
 export function ThemeCustomizer() {

@@ -542,7 +542,7 @@ body {
   display: none !important;
 }
 
-/* Color themes: clinic blue (default) and green */
+/* Color themes: clinic blue (default), green and Apple */
 :root[data-color-theme="green"] {
   --background: hsl(78 45% 98%);
   --foreground: hsl(72 25% 16%);
@@ -646,6 +646,108 @@ body {
   --scrollbar-thumb: hsl(146 13% 29%);
   --scrollbar-thumb-hover: hsl(146 13% 38%);
   --scrollbar-thumb-border: hsl(146 16% 13%);
+}
+
+:root[data-color-theme="apple"] {
+  --background: #f5f5f7;
+  --foreground: #1d1d1f;
+  --card: #ffffff;
+  --card-foreground: #1d1d1f;
+  --popover: #ffffff;
+  --popover-foreground: #1d1d1f;
+  --primary: #0071e3;
+  --primary-foreground: #ffffff;
+  --secondary: #f0f0f2;
+  --secondary-foreground: #1d1d1f;
+  --muted: #f5f5f7;
+  --muted-foreground: #6e6e73;
+  --accent: #e8f2ff;
+  --accent-foreground: #004f9f;
+  --destructive: #d70015;
+  --destructive-foreground: #ffffff;
+  --border: #d2d2d7;
+  --input: #c7c7cc;
+  --ring: #0071e3;
+  --gold: #a76b00;
+  --radius: 0.6875rem;
+  --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.035), 0 9px 26px -20px rgba(0, 0, 0, 0.24);
+  --shadow-soft-hover: 0 4px 12px rgba(0, 0, 0, 0.05), 0 18px 38px -26px rgba(0, 0, 0, 0.28);
+  --shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.92);
+
+  --chart-1: #0071e3;
+  --chart-2: #ff9f0a;
+  --chart-3: #ff453a;
+  --chart-4: #32ade6;
+  --chart-5: #af52de;
+
+  --sidebar: #f5f5f7;
+  --sidebar-foreground: #424245;
+  --sidebar-primary: #0071e3;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #e8e8ed;
+  --sidebar-accent-foreground: #1d1d1f;
+  --sidebar-border: #d2d2d7;
+  --sidebar-ring: #0071e3;
+
+  --audio-bar-active: rgba(0, 113, 227, 0.92);
+  --audio-bar-inactive: rgba(0, 113, 227, 0.22);
+  --audio-dot: #0071e3;
+  --chat-outbound-border: rgba(0, 113, 227, 0.2);
+  --chat-outbound-bg: #e8f2ff;
+
+  --scrollbar-track: #f0f0f2;
+  --scrollbar-thumb: #b9b9be;
+  --scrollbar-thumb-hover: #8e8e93;
+  --scrollbar-thumb-border: #f0f0f2;
+}
+
+:root.dark[data-color-theme="apple"] {
+  --background: #000000;
+  --foreground: #f5f5f7;
+  --card: #1c1c1e;
+  --card-foreground: #f5f5f7;
+  --popover: #1c1c1e;
+  --popover-foreground: #f5f5f7;
+  --primary: #2997ff;
+  --primary-foreground: #ffffff;
+  --secondary: #2c2c2e;
+  --secondary-foreground: #f5f5f7;
+  --muted: #2c2c2e;
+  --muted-foreground: #a1a1a6;
+  --accent: #0a3055;
+  --accent-foreground: #e8f2ff;
+  --destructive: #ff453a;
+  --destructive-foreground: #ffffff;
+  --border: #3a3a3c;
+  --input: #48484a;
+  --ring: #2997ff;
+  --gold: #ffd60a;
+
+  --chart-1: #2997ff;
+  --chart-2: #ffd60a;
+  --chart-3: #ff6961;
+  --chart-4: #64d2ff;
+  --chart-5: #bf5af2;
+
+  --sidebar: #1c1c1e;
+  --sidebar-foreground: #d1d1d6;
+  --sidebar-primary: #2997ff;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #2c2c2e;
+  --sidebar-accent-foreground: #f5f5f7;
+  --sidebar-border: #38383a;
+  --sidebar-ring: #2997ff;
+
+  --audio-bar-active: rgba(100, 210, 255, 0.96);
+  --audio-bar-inactive: rgba(41, 151, 255, 0.32);
+  --audio-dot: #64d2ff;
+  --chat-outbound-border: rgba(41, 151, 255, 0.36);
+  --chat-outbound-bg: #0a3055;
+
+  --scrollbar-track: #1c1c1e;
+  --scrollbar-thumb: #48484a;
+  --scrollbar-thumb-hover: #636366;
+  --scrollbar-thumb-border: #1c1c1e;
 }
 
 :root,
@@ -792,8 +894,284 @@ body {
   background-image: radial-gradient(circle at 0% 0%, hsl(198 70% 99%) 0%, hsl(198 55% 98%) 44%, hsl(198 45% 96%) 100%);
 }
 
+/* ═══════════════════════════════════════════════
+   APPLE-INSPIRED PRODUCT WORKSPACE
+   Scoped to authenticated application shells.
+   ═══════════════════════════════════════════════ */
+
+.apple-workspace {
+  --radius: 0.6875rem;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI", sans-serif;
+  font-feature-settings: "kern", "liga", "clig", "calt";
+}
+
+.apple-workspace h1,
+.apple-workspace h2,
+.apple-workspace h3 {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", "Segoe UI", sans-serif;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+}
+
+.apple-workspace .font-black {
+  font-weight: 600;
+}
+
+.apple-workspace [data-slot="card"] {
+  border-color: var(--border);
+  border-radius: 18px !important;
+  box-shadow: none !important;
+}
+
+.apple-workspace [data-slot="button"] {
+  border-radius: 9999px;
+  box-shadow: none;
+  font-weight: 500;
+  transition-duration: 180ms;
+  transition-timing-function: cubic-bezier(.22, .8, .24, 1);
+}
+
+.apple-workspace input,
+.apple-workspace textarea,
+.apple-workspace select,
+.apple-workspace [data-slot="input"] {
+  border-radius: 11px;
+  box-shadow: none;
+}
+
+.apple-workspace .surface-panel,
+.apple-workspace .shadow-premium,
+.apple-workspace .shadow-premium-hover {
+  box-shadow: none;
+}
+
+.apple-frosted-bar,
+.apple-mobile-bar {
+  border-color: color-mix(in srgb, var(--border) 78%, transparent);
+  background: color-mix(in srgb, var(--card) 82%, transparent);
+  box-shadow: none;
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  backdrop-filter: saturate(180%) blur(20px);
+}
+
+.apple-feature-card {
+  background: var(--primary) !important;
+  color: var(--primary-foreground) !important;
+}
+
+/* Dashboard grids respond to the space left after the sidebar, not to viewport width. */
+.dashboard-desktop {
+  container: dashboard-workspace / inline-size;
+}
+
+.dashboard-summary-grid,
+.dashboard-activity-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@container dashboard-workspace (min-width: 60rem) {
+  .dashboard-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dashboard-summary-focus {
+    grid-column: 1 / -1;
+    grid-row: 1;
+  }
+
+  .dashboard-summary-business {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .dashboard-summary-calendar {
+    grid-column: 2;
+    grid-row: 2;
+  }
+}
+
+@container dashboard-workspace (min-width: 68rem) {
+  .dashboard-summary-grid {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+  }
+
+  .dashboard-summary-business,
+  .dashboard-summary-calendar {
+    grid-column: span 3 / span 3;
+    grid-row: span 2 / span 2;
+  }
+
+  .dashboard-summary-focus {
+    grid-column: span 6 / span 6;
+    grid-row: auto;
+  }
+
+  .dashboard-summary-metric {
+    grid-column: span 3 / span 3;
+  }
+}
+
+@container dashboard-workspace (min-width: 88rem) {
+  .dashboard-activity-grid {
+    grid-template-columns: minmax(0, 1fr) 360px;
+  }
+}
+
+/* The appointments panel has its own responsive context because it can be full-width or share a row. */
+.appointments-panel-container {
+  container: appointments-panel / inline-size;
+}
+
+.appointments-panel-card {
+  height: 620px;
+}
+
+.appointments-panel-search {
+  width: 100%;
+}
+
+@media (min-width: 640px) {
+  .appointments-panel-card {
+    height: clamp(500px, 60vh, 680px);
+  }
+}
+
+@container appointments-panel (min-width: 32rem) {
+  .appointments-panel-toolbar {
+    flex-flow: row wrap;
+    align-items: center;
+  }
+
+  .appointments-panel-search {
+    flex: 1 1 280px;
+    min-width: 260px;
+    width: auto;
+  }
+}
+
+@container appointments-panel (min-width: 42rem) {
+  .appointments-panel-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: center;
+  }
+}
+
+@container appointments-panel (min-width: 68rem) {
+  .appointments-panel-card {
+    height: clamp(340px, 36vh, 560px);
+  }
+
+  .appointments-panel-header {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .appointments-panel-toolbar {
+    flex-wrap: nowrap;
+    justify-content: flex-end;
+  }
+
+  .appointments-panel-search {
+    flex: 0 1 330px;
+    min-width: 250px;
+  }
+
+  .appointments-panel-row {
+    grid-template-columns: minmax(210px, 1.35fr) minmax(160px, 1fr) minmax(145px, .8fr) auto;
+  }
+
+  .appointments-panel-actions {
+    justify-content: flex-end;
+  }
+}
+
+.apple-page-transition {
+  min-height: 100%;
+  opacity: 1;
+  transform: translate3d(0, 0, 0) scale(1);
+  filter: blur(0);
+  transform-origin: 50% 20%;
+  transition:
+    opacity 130ms ease-out,
+    transform 220ms cubic-bezier(.22, .8, .24, 1),
+    filter 160ms ease-out;
+  will-change: opacity, transform, filter;
+}
+
+.apple-page-transition[data-transition-phase="leaving"] {
+  pointer-events: none;
+  opacity: 0;
+  transform: translate3d(0, -4px, 0) scale(.996);
+  filter: blur(1.5px);
+}
+
+.apple-page-transition[data-transition-phase="entering"] {
+  opacity: 0;
+  transform: translate3d(0, 8px, 0) scale(.996);
+  filter: blur(1.5px);
+}
+
+.apple-loading-shell {
+  display: grid;
+  gap: 17px;
+  min-height: 100%;
+  padding-bottom: 32px;
+}
+
+.apple-loading-heading,
+.apple-loading-card,
+.apple-loading-panel {
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--card) 74%, var(--muted));
+  animation: apple-loading-pulse 1.25s ease-in-out infinite alternate;
+}
+
+.apple-loading-heading {
+  width: min(360px, 70%);
+  height: 44px;
+  border-radius: 11px;
+}
+
+.apple-loading-card {
+  min-height: 150px;
+  border-radius: 18px;
+}
+
+.apple-loading-panel {
+  min-height: 360px;
+  border-radius: 18px;
+}
+
+@keyframes apple-loading-pulse {
+  from { opacity: .52; }
+  to { opacity: .9; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .apple-page-transition,
+  .apple-loading-heading,
+  .apple-loading-card,
+  .apple-loading-panel,
+  .apple-workspace *,
+  .apple-workspace *::before,
+  .apple-workspace *::after {
+    scroll-behavior: auto !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}
+
 :root[data-color-theme="green"] body {
   background-image: linear-gradient(135deg, hsl(78 55% 99%) 0%, hsl(78 45% 98%) 52%, hsl(78 35% 96%) 100%);
+}
+
+:root[data-color-theme="apple"] body {
+  background-image: none;
+  background-color: #f5f5f7;
 }
 
 :root.dark body,
@@ -804,6 +1182,11 @@ body {
 
 :root.dark[data-color-theme="green"] body {
   background-image: radial-gradient(circle at 0% 0%, hsl(141 28% 11%) 0%, hsl(142 20% 8%) 44%, hsl(146 18% 7%) 100%);
+}
+
+:root.dark[data-color-theme="apple"] body {
+  background-image: none;
+  background-color: #000000;
 }
 
 @media (min-width: 768px) {

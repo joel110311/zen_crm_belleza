@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getControlDb } from "@/lib/control-db";
 import { prisma } from "@/lib/db";
 
 const DATABASE_CHECK_TIMEOUT_MS = 2000;
@@ -40,6 +41,32 @@ async function checkDatabaseHealth(): Promise<HealthDatabaseState> {
     }
 }
 
+async function checkControlPlaneHealth(): Promise<HealthDatabaseState> {
+    const startedAt = Date.now();
+    let timeoutHandle: NodeJS.Timeout | null = null;
+
+    try {
+        await Promise.race([
+            getControlDb().$queryRaw`SELECT 1`,
+            new Promise((_, reject) => {
+                timeoutHandle = setTimeout(() => {
+                    reject(new Error("Control-plane healthcheck timed out"));
+                }, DATABASE_CHECK_TIMEOUT_MS);
+            }),
+        ]);
+
+        return { ok: true, latencyMs: Date.now() - startedAt };
+    } catch (error) {
+        return {
+            ok: false,
+            latencyMs: Date.now() - startedAt,
+            error: error instanceof Error ? error.message : "Unknown error",
+        };
+    } finally {
+        if (timeoutHandle) clearTimeout(timeoutHandle);
+    }
+}
+
 export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const scope = searchParams.get("scope");
@@ -47,13 +74,22 @@ export async function GET(request: NextRequest) {
     const mode = strict ? "readiness" : "liveness";
 
     const database = await checkDatabaseHealth();
-    const status = strict && !database.ok ? 503 : 200;
+    const requiresControlPlane = process.env.MULTITENANT_RUNTIME_ENABLED === "true"
+        || process.env.MULTITENANT_AUTH_ENABLED === "true";
+    const controlPlane = requiresControlPlane
+        ? await checkControlPlaneHealth()
+        : { ok: true, latencyMs: 0 };
+    const status = strict && (!database.ok || !controlPlane.ok) ? 503 : 200;
 
     return NextResponse.json(
         {
             ok: status < 400,
             mode,
             database: { ok: database.ok },
+            controlPlane: {
+                ok: controlPlane.ok,
+                skipped: !requiresControlPlane,
+            },
         },
         { status },
     );

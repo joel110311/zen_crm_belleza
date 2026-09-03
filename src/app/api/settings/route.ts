@@ -1,7 +1,7 @@
 // API route for saving settings - bypasses server action issues
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { withSettingsDefaults } from "@/lib/system-settings";
+import { withSettingsDefaults } from "@/lib/system-settings-defaults";
 import { auth } from "@/lib/auth";
 import { ensureAuthenticatedResponse, getSessionAccessSubject } from "@/lib/authz";
 import { hasAnyPermission, hasPermission, type PermissionKey } from "@/lib/permissions";
