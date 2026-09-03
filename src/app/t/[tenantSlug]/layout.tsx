@@ -2,7 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { ApplePageTransition } from "@/components/layout/apple-page-transition";
 import { TenantShell } from "@/components/tenant/tenant-shell";
 import { auth } from "@/lib/auth";
-import { requireTenantContext, TenantAccessDeniedError } from "@/lib/tenant-context";
+import { requireTenantRuntimeContext, TenantAccessDeniedError } from "@/lib/tenant-context";
 import { isMultitenantRuntimeEnabled } from "@/lib/multitenant-features";
 
 export const dynamic = "force-dynamic";
@@ -32,7 +32,9 @@ export default async function TenantLayout({
     let tenant;
     try {
         const { tenantSlug } = await params;
-        tenant = await requireTenantContext(userId, tenantSlug, "read");
+        // The shell displays the signed-in member.  Resolve the runtime context here so
+        // every tenant page receives both the access grant and the local operational user.
+        tenant = await requireTenantRuntimeContext(userId, tenantSlug, "read");
     } catch (error) {
         if (error instanceof TenantAccessDeniedError) {
             notFound();
