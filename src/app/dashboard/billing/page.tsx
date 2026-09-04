@@ -147,7 +147,7 @@ export default function BillingPage() {
 
     const movementCsv = useMemo(() => {
         const rows = [
-            ["Fecha", "Tipo", "Concepto", "Metodo", "Monto", "Moneda", "Paciente", "Especialista", "Reportado por"],
+            ["Fecha", "Tipo", "Concepto", "Método", "Monto", "Moneda", "Cliente", "Especialista", "Reportado por"],
             ...(desk?.movements || []).map((movement) => [
                 new Date(movement.occurredAt).toLocaleString(operationContext.locale, {
                     timeZone: operationContext.timeZone,
@@ -577,7 +577,7 @@ export default function BillingPage() {
                                         Reportado por: {movement.recordedBy?.name || movement.recordedBy?.email || "Sin usuario asignado"}
                                     </p>
                                     <p className="text-sm text-muted-foreground">
-                                        {movement.paymentMethod || "metodo"} · {[movement.patient?.firstName, movement.patient?.lastName].filter(Boolean).join(" ") || "Sin paciente"}
+                                        {movement.paymentMethod || "método"} · {[movement.patient?.firstName, movement.patient?.lastName].filter(Boolean).join(" ") || "Sin cliente"}
                                     </p>
                                 </div>
                                 <div className="flex items-center gap-2 lg:justify-end">

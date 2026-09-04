@@ -88,7 +88,7 @@ export const SYSTEM_SETTINGS_DEFAULTS = {
     appointmentReminderOffsets: [1440, 240],
     appointmentReminderProvider: "wuzapi",
     appointmentReminderSendOnlyConfirmed: true,
-    appointmentReminderWuzapiTemplate: "Hola {{paciente}}, te recordamos tu cita en {{clinica}}.\n\nFecha y hora: {{fecha}} a las {{hora}}.\n{{especialista}}\n\nSi necesitas cambiar tu cita, responde a este WhatsApp.",
+    appointmentReminderWuzapiTemplate: "Hola {{cliente}}, te recordamos tu cita en {{clinica}}.\n\nFecha y hora: {{fecha}} a las {{hora}}.\n{{especialista}}\n\nSi necesitas cambiar tu cita, responde a este WhatsApp.",
     appointmentReminderMetaTemplate24h: "",
     appointmentReminderMetaTemplate4h: "",
     appointmentReminderMetaLanguage: "es",

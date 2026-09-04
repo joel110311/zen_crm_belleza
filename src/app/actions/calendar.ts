@@ -49,7 +49,7 @@ async function validateLinkedPatient(patientId: string | undefined | null) {
     if (!cleanPatientId) {
         return {
             success: false as const,
-            error: "Selecciona un paciente vinculado antes de agendar la cita.",
+            error: "Selecciona un cliente vinculado antes de agendar la cita.",
         };
     }
 
@@ -64,7 +64,7 @@ async function validateLinkedPatient(patientId: string | undefined | null) {
     if (!patient) {
         return {
             success: false as const,
-            error: "El paciente seleccionado ya no existe. Actualiza el listado y vuelve a intentarlo.",
+            error: "El cliente seleccionado ya no existe. Actualiza el listado y vuelve a intentarlo.",
         };
     }
 
@@ -677,7 +677,7 @@ export async function cancelAppointmentByToken(token: string, reason?: string) {
 
     await cancelManagedAppointment(
         appointment.id,
-        reason?.trim() || "Cancelado por el paciente",
+        reason?.trim() || "Cancelado por el cliente",
     );
     const updated = await prisma.appointment.findUniqueOrThrow({
         where: { id: appointment.id },

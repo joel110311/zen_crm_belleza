@@ -1,6 +1,2 @@
-import { ContactsWorkspace } from "@/components/tenant/contacts-workspace";
-
-export default async function TenantContactsPage({ params }: { params: Promise<{ tenantSlug: string }> }) {
-    const { tenantSlug } = await params;
-    return <ContactsWorkspace tenantSlug={tenantSlug} />;
-}
+export const dynamic = "force-dynamic";
+export { default } from "@/app/dashboard/contacts/page";

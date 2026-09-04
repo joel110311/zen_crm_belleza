@@ -779,7 +779,7 @@ export async function sendPaymentLink(id: string) {
         const contact = link.contact || await ensureContactFromAppointment(link.appointmentId || undefined);
         if (!contact?.id) return { success: false, error: "No hay contacto con WhatsApp para enviar el link." };
 
-        const patientName = [link.patient?.firstName, link.patient?.lastName].filter(Boolean).join(" ") || "paciente";
+        const patientName = [link.patient?.firstName, link.patient?.lastName].filter(Boolean).join(" ") || "cliente";
         const message = [
             `Hola ${patientName}, te compartimos tu link de pago de Zen CRM Oftalmo.`,
             `${link.title}: ${link.currency} ${link.amount.toFixed(2)}.`,

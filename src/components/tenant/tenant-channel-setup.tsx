@@ -198,7 +198,7 @@ export function TenantChannelSetup({
         }
     }
 
-    if (!enabled) return <p className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">La conexión segura por tenant se habilitará cuando se configuren las credenciales de plataforma.</p>;
+    if (!enabled) return <p className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">La conexión segura por negocio se habilitará cuando se configuren las credenciales de plataforma.</p>;
 
     return <div className="space-y-4 rounded-2xl border bg-muted/20 p-4">
         <div className="flex items-start justify-between gap-3"><div><p className="font-medium">Conexiones de este negocio</p><p className="text-sm text-muted-foreground">Las credenciales se cifran y el webhook se procesa fuera de la web.</p></div><Button type="button" variant="outline" size="sm" onClick={() => void refresh()} disabled={loading}><RefreshCw className="mr-2 size-4" />Actualizar</Button></div>

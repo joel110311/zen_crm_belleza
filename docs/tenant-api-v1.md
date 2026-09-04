@@ -49,27 +49,27 @@ Todo `POST`, `PATCH` y `DELETE` exige `Idempotency-Key` de 8 a 200 caracteres (`
 | Especialistas | `GET/POST /specialists`, `GET/PATCH/DELETE /specialists/{id}` |
 | Disponibilidad | `GET/POST /specialists/{id}/availability-blocks`, `PATCH/DELETE /availability-blocks/{id}` |
 | Contactos | `GET/POST /contacts`, `GET/PATCH/DELETE /contacts/{id}` |
-| Pacientes | `GET/POST /patients`, `GET/PATCH/DELETE /patients/{id}` |
+| Fichas de clientes | `GET/POST /patients`, `GET/PATCH/DELETE /patients/{id}` |
 | Calendario | `GET/POST /calendar`, `GET/PATCH/DELETE /calendar/{id}` |
 | Pipeline | `GET /pipeline`, `POST /pipeline/stages`, `PATCH/DELETE /pipeline/stages/{id}`, `POST /pipeline/deals`, `PATCH/DELETE /pipeline/deals/{id}` |
 | Onboarding | `GET/PATCH /onboarding` |
 
-Los listados de contactos y pacientes aceptan `q`, `page` y `pageSize` (máximo 100). Calendario acepta `from` y `to`, con un rango máximo de 93 días.
+Los listados de contactos y fichas de clientes aceptan `q`, `page` y `pageSize` (máximo 100). Calendario acepta `from` y `to`, con un rango máximo de 93 días.
 
 ## Permisos base
 
 | Rol | Acceso operativo |
 | --- | --- |
 | `OWNER`, `ADMIN` | Lectura y escritura en todos los recursos del núcleo. |
-| `RECEPTION` | Lee catálogo/equipo; gestiona contactos, pacientes, agenda y pipeline. |
-| `PROFESSIONAL` | Lee catálogo/contactos/pacientes; gestiona pacientes y únicamente su propia agenda. No accede al pipeline. |
+| `RECEPTION` | Lee catálogo/equipo; gestiona contactos, clientes, agenda y pipeline. |
+| `PROFESSIONAL` | Lee catálogo y clientes; gestiona fichas de clientes y únicamente su propia agenda. No accede al pipeline. |
 
 La interfaz oculta controles no autorizados, pero la API vuelve a validar cada operación. Los identificadores nunca se aceptan como prueba de pertenencia: todas las relaciones se consultan con el Prisma de la base tenant ya resuelta.
 
 ## Reglas de agenda
 
 - Inicio anterior al fin y dentro del horario semanal del negocio.
-- Paciente o contacto y especialista deben existir en la misma DB tenant.
+- Cliente y especialista deben existir en la misma DB del negocio.
 - Si un servicio restringe especialistas, el profesional debe estar asignado.
 - Se rechazan traslapes con citas activas y bloqueos personales/globales.
 - Sólo `OWNER` o `ADMIN` pueden crear sobrecitas.

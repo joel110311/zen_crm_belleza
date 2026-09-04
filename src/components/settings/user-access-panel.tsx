@@ -7,7 +7,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
     APP_PERMISSION_GROUPS,
     APP_ROLE_LABELS,
@@ -185,7 +184,10 @@ export function UserAccessPanel({ currentUserId }: { currentUserId?: string }) {
                 <div>
                     <h2 className="font-semibold">Usuarios y permisos</h2>
                     <p className="mt-1 text-sm text-muted-foreground">
-                        Define el rol base y agrega permisos extra por casillas. Paciente queda fuera del dashboard y usa solo enlaces de turno/portal.
+                        Define el rol base y agrega permisos extra por casillas. Los clientes quedan fuera del CRM y sólo usan enlaces de turno o portal.
+                    </p>
+                    <p className="mt-1 text-xs font-medium text-primary">
+                        Administrador incluye control total: todos los menús, configuración y alta de usuarios.
                     </p>
                     <p className="mt-1 text-xs text-muted-foreground">
                         El nombre aqui es solo para acceso. El perfil clinico, titulo, cedula, foto y agenda se administran en Especialistas.

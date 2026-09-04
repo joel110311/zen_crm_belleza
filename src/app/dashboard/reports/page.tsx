@@ -123,7 +123,7 @@ export default function ReportsPage() {
 
     const movementCsv = useMemo(() => {
         const rows = [
-            ["Fecha", "Tipo", "Concepto", "Metodo", "Monto", "Moneda", "Paciente", "Especialista"],
+            ["Fecha", "Tipo", "Concepto", "Método", "Monto", "Moneda", "Cliente", "Especialista"],
             ...(report?.movements || []).map((movement) => [
                 formatDateTime(movement.occurredAt),
                 movement.type,

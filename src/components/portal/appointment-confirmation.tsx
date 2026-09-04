@@ -107,7 +107,7 @@ export function AppointmentConfirmation({ token, appointment }: Props) {
             setLocalState({
                 status: "cancelled",
                 confirmationStatus: "declined",
-                cancellationReason: reason || "Cancelada por paciente",
+                cancellationReason: reason || "Cancelada por el cliente",
             });
             toast({ title: "Cita cancelada" });
         });

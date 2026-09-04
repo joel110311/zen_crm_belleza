@@ -559,7 +559,7 @@ export function SpecialistManagerPanel() {
                                 <Textarea
                                     value={form.bio}
                                     onChange={(event) => setForm((current) => ({ ...current, bio: event.target.value }))}
-                                    placeholder="Resumen breve del perfil, enfoque clinico o indicaciones visibles para pacientes."
+                                    placeholder="Resumen breve del perfil, enfoque clínico o indicaciones visibles para clientes."
                                     className="min-h-24"
                                 />
                             </div>

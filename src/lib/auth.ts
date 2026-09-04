@@ -2,6 +2,7 @@ import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/db";
+import { getActiveTenantAccessSubject } from "@/lib/active-tenant-context";
 import { getControlDb } from "@/lib/control-db";
 import { normalizePermissions, normalizeRole } from "@/lib/permissions";
 import { consumeRateLimit, getRequestIp, resetRateLimit } from "@/lib/security";
@@ -240,6 +241,22 @@ export const { handlers, signIn, signOut, auth } = NextAuth(() => ({
                 }
                 sessionUser.authScope = token.authScope === "control" ? "control" : "legacy";
                 session.user.name = (token.name as string) || (token.email as string) || "Usuario";
+
+                // A control-plane login gets its effective role from the membership of the
+                // business selected by the trusted request headers. This keeps all established
+                // CRM permission checks working without granting cross-business privileges.
+                if (sessionUser.authScope === "control") {
+                    try {
+                        const tenantSubject = await getActiveTenantAccessSubject();
+                        if (tenantSubject) {
+                            sessionUser.role = tenantSubject.role;
+                            sessionUser.permissions = normalizePermissions(tenantSubject.permissions);
+                        }
+                    } catch {
+                        // The tenant layout/API performs the authoritative access check and
+                        // returns 404/403. Authentication itself must remain available so it can.
+                    }
+                }
             }
             return session;
         },

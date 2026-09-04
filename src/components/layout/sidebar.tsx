@@ -27,6 +27,7 @@ import { BrandLogo } from "@/components/brand/brand-logo";
 import { resolveBranding, type BrandingSettings } from "@/lib/branding";
 import { cn } from "@/lib/utils";
 import { hasPermission, type PermissionKey } from "@/lib/permissions";
+import { tenantDashboardPath, tenantSlugFromPath } from "@/lib/tenant-request-routing";
 
 type SidebarNavItem = {
     title: string;
@@ -52,6 +53,9 @@ const sidebarNavItems: SidebarNavItem[] = [
 
 export function Sidebar({ className }: React.HTMLAttributes<HTMLDivElement>) {
     const pathname = usePathname();
+    const tenantSlug = tenantSlugFromPath(pathname);
+    const dashboardHome = tenantSlug ? `/t/${encodeURIComponent(tenantSlug)}/dashboard` : "/dashboard";
+    const resolveHref = (href: string) => tenantSlug ? tenantDashboardPath(tenantSlug, href) : href;
     const [open, setOpen] = useState(false);
     const [desktopCollapsed, setDesktopCollapsed] = useState(true);
     const [branding, setBranding] = useState<BrandingSettings>(() => resolveBranding(null));
@@ -91,8 +95,10 @@ export function Sidebar({ className }: React.HTMLAttributes<HTMLDivElement>) {
         return !item.permission || hasPermission(sessionUser, item.permission);
     });
 
-    const isItemActive = (item: SidebarNavItem) =>
-        item.href === "/dashboard" ? pathname === item.href : pathname.startsWith(item.href);
+    const isItemActive = (item: SidebarNavItem) => {
+        const href = resolveHref(item.href);
+        return item.href === "/dashboard" ? pathname === href : pathname.startsWith(href);
+    };
 
     return (
         <>
@@ -105,7 +111,7 @@ export function Sidebar({ className }: React.HTMLAttributes<HTMLDivElement>) {
                 >
                     <Menu className="h-4 w-4" />
                 </button>
-                <Link href="/dashboard" className="flex items-center gap-2.5">
+                <Link href={dashboardHome} className="flex items-center gap-2.5">
                     <span className="flex h-8 w-8 items-center justify-center rounded-full bg-sidebar text-gold">
                         <BrandLogo brandName={branding.brandName} logoUrl={branding.brandLogoUrl} className="h-5 w-5" />
                     </span>
@@ -134,7 +140,7 @@ export function Sidebar({ className }: React.HTMLAttributes<HTMLDivElement>) {
                 )}
             >
                 <div className="flex items-center justify-between border-b border-sidebar-border px-2 pb-3">
-                    <Link href="/dashboard" className="flex min-w-0 items-center gap-3" onClick={() => setOpen(false)}>
+                    <Link href={dashboardHome} className="flex min-w-0 items-center gap-3" onClick={() => setOpen(false)}>
                         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-sidebar-accent text-gold">
                             <BrandLogo brandName={branding.brandName} logoUrl={branding.brandLogoUrl} className="h-6 w-6" />
                         </span>
@@ -155,7 +161,7 @@ export function Sidebar({ className }: React.HTMLAttributes<HTMLDivElement>) {
                         return (
                             <Link
                                 key={item.href}
-                                href={item.href}
+                                href={resolveHref(item.href)}
                                 onClick={() => setOpen(false)}
                                 className={cn(
                                     "flex h-11 items-center gap-3 rounded-full px-3 text-sm font-medium transition-[background-color,color,transform] duration-200 active:scale-[.98]",
@@ -201,7 +207,7 @@ export function Sidebar({ className }: React.HTMLAttributes<HTMLDivElement>) {
                     desktopCollapsed ? "flex-col items-center gap-2" : "items-center gap-2.5",
                 )}>
                     <Link
-                        href="/dashboard"
+                        href={dashboardHome}
                         title={branding.brandName}
                         aria-label={branding.brandName}
                         className={cn("flex min-w-0 items-center", desktopCollapsed ? "justify-center" : "flex-1 gap-3")}
@@ -246,7 +252,7 @@ export function Sidebar({ className }: React.HTMLAttributes<HTMLDivElement>) {
                         return (
                             <Link
                                 key={item.href}
-                                href={item.href}
+                                href={resolveHref(item.href)}
                                 title={item.title}
                                 aria-label={item.title}
                                 className={cn(

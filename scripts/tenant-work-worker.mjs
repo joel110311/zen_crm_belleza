@@ -9,6 +9,7 @@ if (!controlUrl) throw new Error("CONTROL_DATABASE_URL is required by the tenant
 const workerId = process.env.TENANT_WORKER_ID?.trim() || `${os.hostname()}:${process.pid}`;
 const staleAfterSeconds = boundedInteger("TENANT_WORKER_STALE_SECONDS", 300, 30, 3_600);
 const maxClaimBatch = boundedInteger("TENANT_WORKER_MAX_DRAIN", 100, 1, 2_000);
+const maxScheduledTenants = boundedInteger("TENANT_WORKER_MAX_SCHEDULED_TENANTS", 100, 1, 2_000);
 const drain = process.argv.includes("--drain");
 const once = process.argv.includes("--once");
 const control = new Pool({ connectionString: controlUrl, max: 4 });
@@ -314,6 +315,48 @@ async function processWorkItem(work) {
     throw new Error(`No worker handler is registered for ${work.kind}.`);
 }
 
+async function processScheduledTenantWork() {
+    const internalUrl = process.env.TENANT_WEB_INTERNAL_URL?.trim()?.replace(/\/+$/, "") || "";
+    const secret = process.env.SECURITY_HASH_SALT?.trim() || "";
+    if (!internalUrl || !secret) return 0;
+
+    const { rows } = await control.query(
+        `SELECT tenant."id"
+           FROM "Tenant" AS tenant
+           JOIN "TenantDatabase" AS database ON database."tenantId" = tenant."id"
+          WHERE tenant."status" = 'READY'
+            AND tenant."provisioningStatus" = 'SUCCEEDED'
+            AND tenant."accessMode" = 'FULL'
+            AND database."status" = 'READY'
+          ORDER BY tenant."createdAt" ASC
+          LIMIT $1`,
+        [maxScheduledTenants],
+    );
+
+    let processed = 0;
+    for (const tenant of rows) {
+        const response = await fetch(`${internalUrl}/api/internal/tenant-scheduled-work`, {
+            method: "POST",
+            headers: {
+                "content-type": "application/json",
+                "x-tenant-worker-secret": secret,
+            },
+            body: JSON.stringify({ tenantId: tenant.id }),
+            signal: AbortSignal.timeout(60_000),
+        });
+        if (!response.ok) {
+            throw new Error(`Tenant scheduled work returned HTTP ${response.status}.`);
+        }
+        const result = await response.json().catch(() => null);
+        if (!result?.success) {
+            throw new Error("Tenant scheduled work returned an invalid response.");
+        }
+        processed += 1;
+    }
+
+    return processed;
+}
+
 async function run() {
     let processed = 0;
     do {
@@ -334,7 +377,8 @@ async function run() {
 
 try {
     const processed = await run();
-    if (once || drain) console.info("[TenantWorker] Run finished", { workerId, processed });
+    const scheduledTenants = await processScheduledTenantWork();
+    if (once || drain) console.info("[TenantWorker] Run finished", { workerId, processed, scheduledTenants });
 } finally {
     await control.end();
 }

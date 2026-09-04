@@ -63,7 +63,7 @@ export class TenantPrismaManager {
         });
 
         if (!record || record.status !== "READY") {
-            throw new TenantDatabaseUnavailableError("La base del tenant todavía no está disponible.");
+            throw new TenantDatabaseUnavailableError("La base del negocio todavía no está disponible.");
         }
 
         return this.getOrCreate(record);

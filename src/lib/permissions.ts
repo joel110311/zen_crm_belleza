@@ -18,7 +18,7 @@ export const APP_PERMISSION_GROUPS = [
             {
                 key: FULL_ACCESS_PERMISSION,
                 label: "Control total",
-                description: "Habilita todos los modulos del dashboard, sin convertir al paciente en usuario interno.",
+                description: "Habilita todos los módulos del CRM para el equipo interno.",
             },
             {
                 key: "users.manage",
@@ -94,19 +94,19 @@ export const APP_PERMISSION_GROUPS = [
             },
             {
                 key: "portal.manage",
-                label: "Portal del paciente",
+                label: "Portal del cliente",
                 description: "Articulos, turnos publicos, indicaciones y contenido del portal.",
             },
         ],
     },
     {
         title: "Clinica",
-        description: "Pacientes, consultas e IA clinica.",
+        description: "Clientes, consultas e IA clínica.",
         permissions: [
             {
                 key: "patients.manage",
-                label: "Pacientes",
-                description: "Ficha del paciente, datos personales y antecedentes.",
+                label: "Clientes",
+                description: "Ficha del cliente, datos personales y antecedentes.",
             },
             {
                 key: "clinical.manage",

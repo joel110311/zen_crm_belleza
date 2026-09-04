@@ -469,7 +469,7 @@ export async function preparePatientChat(patientId: string) {
     await requirePermission("chats.manage");
 
     if (!patientId) {
-        return { success: false, error: "Paciente invalido." };
+        return { success: false, error: "Cliente inválido." };
     }
 
     try {
@@ -489,12 +489,12 @@ export async function preparePatientChat(patientId: string) {
         });
 
         if (!patient) {
-            return { success: false, error: "Paciente no encontrado." };
+            return { success: false, error: "Cliente no encontrado." };
         }
 
         const phone = cleanText(patient.phone);
         if (!phone) {
-            return { success: false, error: "El paciente no tiene telefono registrado." };
+            return { success: false, error: "El cliente no tiene teléfono registrado." };
         }
 
         let contactId = patient.contactId || patient.contact?.id || null;
@@ -536,7 +536,7 @@ export async function preparePatientChat(patientId: string) {
         };
     } catch (error) {
         console.error("Failed to prepare patient chat:", error);
-        return { success: false, error: "No se pudo preparar el chat del paciente." };
+        return { success: false, error: "No se pudo preparar el chat del cliente." };
     }
 }
 
@@ -607,7 +607,7 @@ export async function savePatient(input: PatientFormInput) {
         return { success: true, patient };
     } catch (error) {
         console.error("Failed to save patient:", error);
-        return { success: false, error: "No se pudo guardar el paciente." };
+        return { success: false, error: "No se pudo guardar el cliente." };
     }
 }
 
@@ -620,7 +620,7 @@ export async function deletePatient(id: string) {
         return { success: true };
     } catch (error) {
         console.error("Failed to delete patient:", error);
-        return { success: false, error: "No se pudo eliminar el paciente." };
+        return { success: false, error: "No se pudo eliminar el cliente." };
     }
 }
 
@@ -653,7 +653,7 @@ export async function saveConsultation(input: ConsultationInput) {
     const session = await requirePermission("clinical.manage");
 
     if (!input.patientId || !cleanText(input.chiefComplaint)) {
-        return { success: false, error: "Selecciona paciente y captura el motivo de consulta." };
+        return { success: false, error: "Selecciona un cliente y captura el motivo de consulta." };
     }
 
     try {
@@ -971,7 +971,7 @@ export async function summarizeConsultationTranscript(transcript: string) {
                 content: [
                     "Eres asistente clinico para oftalmologia.",
                     "No diagnostiques de forma autonoma.",
-                    "Devuelve JSON valido con estas llaves: motivo_principal, nota_evolucion, signos_vitales, diagnostico, tratamiento, educacion_paciente.",
+                    "Devuelve JSON válido con estas llaves: motivo_principal, nota_evolucion, signos_vitales, diagnostico, tratamiento, educacion_cliente.",
                     "Si no hay datos para una llave, usa cadena vacia u objeto vacio.",
                 ].join(" "),
             },

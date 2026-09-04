@@ -1,9 +1,16 @@
 import { NextResponse } from "next/server";
 import { resolveBranding } from "@/lib/branding";
 import { getSystemSettingsOrDefaults } from "@/lib/system-settings";
+import { getActiveTenantRuntimeContext } from "@/lib/active-tenant-context";
+import { isMultitenantRuntimeEnabled } from "@/lib/multitenant-features";
 
 export async function GET() {
     try {
+        if (isMultitenantRuntimeEnabled() && !(await getActiveTenantRuntimeContext("read"))) {
+            return NextResponse.json(resolveBranding(null), {
+                headers: { "Cache-Control": "no-store" },
+            });
+        }
         const settings = await getSystemSettingsOrDefaults();
 
         return NextResponse.json(resolveBranding(settings), {

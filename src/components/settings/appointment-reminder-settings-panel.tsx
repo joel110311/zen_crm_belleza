@@ -159,7 +159,7 @@ export function AppointmentReminderSettingsPanel({
                         <Switch checked={sendOnlyConfirmed} onCheckedChange={onSendOnlyConfirmedChange} />
                     </div>
                     <p className="text-xs text-muted-foreground">
-                        Aplica solo a citas solicitadas desde la URL del paciente. Las citas creadas en el CRM programan recordatorio directo.
+                        Aplica sólo a citas solicitadas desde la URL del cliente. Las citas creadas en el CRM programan recordatorio directo.
                     </p>
                 </div>
             </div>
@@ -173,7 +173,7 @@ export function AppointmentReminderSettingsPanel({
                         className="min-h-32 bg-background"
                     />
                     <p className="text-xs text-muted-foreground">
-                        Variables: {"{{paciente}}"}, {"{{fecha}}"}, {"{{hora}}"}, {"{{especialista}}"}, {"{{clinica}}"}, {"{{motivo}}"}, {"{{modalidad}}"}, {"{{link_turno}}"}, {"{{anticipacion}}"}.
+                        Variables: {"{{cliente}}"}, {"{{fecha}}"}, {"{{hora}}"}, {"{{especialista}}"}, {"{{clinica}}"}, {"{{motivo}}"}, {"{{modalidad}}"}, {"{{link_turno}}"}, {"{{anticipacion}}"}.
                     </p>
                 </div>
             ) : (
@@ -206,7 +206,7 @@ export function AppointmentReminderSettingsPanel({
                         />
                     </div>
                     <p className="md:col-span-3 text-xs text-muted-foreground">
-                        Las variables BODY se envian en este orden: paciente, fecha, hora, especialista, clinica, link, motivo y anticipacion.
+                        Las variables BODY se envían en este orden: cliente, fecha, hora, especialista, clínica, link, motivo y anticipación.
                     </p>
                 </div>
             )}

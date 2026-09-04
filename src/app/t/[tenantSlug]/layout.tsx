@@ -1,6 +1,13 @@
 import { notFound, redirect } from "next/navigation";
+import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { ApplePageTransition } from "@/components/layout/apple-page-transition";
-import { TenantShell } from "@/components/tenant/tenant-shell";
+import { InboxNotifier } from "@/components/layout/inbox-notifier";
+import { Sidebar } from "@/components/layout/sidebar";
+import { UnreadTabBadge } from "@/components/layout/unread-tab-badge";
+import { WaitingRoomNotifier } from "@/components/layout/waiting-room-notifier";
+import { SessionProvider } from "@/components/providers/session-provider";
+import { ActiveTenantCookie } from "@/components/tenant/active-tenant-cookie";
+import { TenantNavigationBridge } from "@/components/tenant/tenant-navigation-bridge";
 import { auth } from "@/lib/auth";
 import { requireTenantRuntimeContext, TenantAccessDeniedError } from "@/lib/tenant-context";
 import { isMultitenantRuntimeEnabled } from "@/lib/multitenant-features";
@@ -43,15 +50,22 @@ export default async function TenantLayout({
     }
 
     return (
-        <div className="apple-workspace min-h-dvh bg-background" data-apple-workspace>
-            <TenantShell
-                tenantSlug={tenant.slug}
-                displayName={tenant.displayName}
-                userName={tenant.actor.name || tenant.actor.email}
-                role={tenant.role}
+        <SessionProvider session={session}>
+            <div
+                className="apple-workspace flex h-screen w-full overflow-hidden bg-background"
+                data-apple-workspace
+                data-business={tenant.slug}
             >
-                <ApplePageTransition>{children}</ApplePageTransition>
-            </TenantShell>
-        </div>
+                <ActiveTenantCookie tenantSlug={tenant.slug} />
+                <TenantNavigationBridge tenantSlug={tenant.slug} />
+                <InboxNotifier />
+                <WaitingRoomNotifier />
+                <UnreadTabBadge />
+                <Sidebar />
+                <DashboardShell>
+                    <ApplePageTransition>{children}</ApplePageTransition>
+                </DashboardShell>
+            </div>
+        </SessionProvider>
     );
 }

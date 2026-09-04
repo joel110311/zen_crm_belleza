@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition, type ChangeEvent } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import {
     Check,
@@ -25,7 +26,7 @@ import {
 } from "@/app/actions/services";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -33,6 +34,7 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/use-toast";
+import { tenantApi, tenantApiBase } from "@/components/tenant/tenant-api-client";
 import { cn } from "@/lib/utils";
 import {
     EMPTY_SERVICE_PREPARATION,
@@ -46,7 +48,8 @@ import {
     type ServicePreparationRequirements,
 } from "@/lib/services/preparation-requirements";
 
-type CatalogPayload = Awaited<ReturnType<typeof getServicesCatalog>>;
+export type ServicesCatalogData = Awaited<ReturnType<typeof getServicesCatalog>>;
+type CatalogPayload = ServicesCatalogData;
 type Category = CatalogPayload["categories"][number];
 type Service = Category["services"][number];
 type Specialist = CatalogPayload["specialists"][number];
@@ -134,87 +137,131 @@ function serviceToForm(service: Service): ServiceForm {
     };
 }
 
-export function ServicesCatalog({ initialData }: { initialData: CatalogPayload }) {
+export function ServicesCatalog({
+    initialData,
+    tenantSlug,
+}: {
+    initialData: CatalogPayload;
+    tenantSlug?: string;
+}) {
     const router = useRouter();
     const { toast } = useToast();
     const [isPending, startTransition] = useTransition();
+    const [tenantCatalog, setTenantCatalog] = useState<CatalogPayload | null>(tenantSlug ? initialData : null);
     const [activeTab, setActiveTab] = useState("services");
     const [serviceDialogOpen, setServiceDialogOpen] = useState(false);
     const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
     const [serviceForm, setServiceForm] = useState<ServiceForm>(EMPTY_SERVICE_FORM);
     const [categoryForm, setCategoryForm] = useState<CategoryForm>(EMPTY_CATEGORY_FORM);
 
-    const services = useMemo(() => initialData.categories.flatMap((category) => category.services), [initialData.categories]);
+    const catalog = tenantCatalog || initialData;
+    const tenantBase = tenantSlug ? tenantApiBase(tenantSlug) : null;
+    const services = useMemo(() => catalog.categories.flatMap((category) => category.services), [catalog.categories]);
 
-    const refresh = () => startTransition(() => router.refresh());
+    const refresh = () => startTransition(async () => {
+        if (tenantBase) {
+            setTenantCatalog(await tenantApi<CatalogPayload>(`${tenantBase}/services`));
+            return;
+        }
+        router.refresh();
+    });
 
     const openNewService = () => {
-        if (initialData.categories.length === 0) {
+        if (catalog.categories.length === 0) {
             setActiveTab("categories");
             setCategoryForm(EMPTY_CATEGORY_FORM);
             setCategoryDialogOpen(true);
             toast({ title: "Primero crea una categoría", description: "Después podrás añadir servicios y asignar especialistas." });
             return;
         }
-        setServiceForm({ ...EMPTY_SERVICE_FORM, categoryId: initialData.categories[0].id });
+        setServiceForm({ ...EMPTY_SERVICE_FORM, categoryId: catalog.categories[0].id });
         setServiceDialogOpen(true);
     };
 
     const submitService = () => startTransition(async () => {
-        const result = await saveService({
+        const input = {
             ...serviceForm,
             price: Number(serviceForm.price || 0),
             durationMinutes: Number(serviceForm.durationMinutes || 30),
-        });
+        };
+        const result = tenantBase
+            ? await tenantApi(`${tenantBase}/services${serviceForm.id ? `/${serviceForm.id}` : ""}`, {
+                method: serviceForm.id ? "PATCH" : "POST",
+                body: JSON.stringify(input),
+            }).then(() => ({ success: true as const })).catch((error: unknown) => ({
+                success: false as const,
+                error: error instanceof Error ? error.message : "No se pudo guardar el servicio.",
+            }))
+            : await saveService(input);
         if (!result.success) {
             toast({ title: "No se pudo guardar", description: result.error, variant: "destructive" });
             return;
         }
         toast({ title: serviceForm.id ? "Servicio actualizado" : "Servicio creado" });
         setServiceDialogOpen(false);
-        router.refresh();
+        refresh();
     });
 
     const submitCategory = () => startTransition(async () => {
-        const result = await saveServiceCategory(categoryForm);
+        const result = tenantBase
+            ? await tenantApi(`${tenantBase}/service-categories${categoryForm.id ? `/${categoryForm.id}` : ""}`, {
+                method: categoryForm.id ? "PATCH" : "POST",
+                body: JSON.stringify(categoryForm),
+            }).then(() => ({ success: true as const })).catch((error: unknown) => ({
+                success: false as const,
+                error: error instanceof Error ? error.message : "No se pudo guardar la categoría.",
+            }))
+            : await saveServiceCategory(categoryForm);
         if (!result.success) {
             toast({ title: "No se pudo guardar", description: result.error, variant: "destructive" });
             return;
         }
         toast({ title: categoryForm.id ? "Categoría actualizada" : "Categoría creada" });
         setCategoryDialogOpen(false);
-        router.refresh();
+        refresh();
     });
 
     const removeService = (service: Service) => {
         if (!confirm(`¿Eliminar el servicio "${service.name}"? Las citas anteriores conservarán su descripción.`)) return;
         startTransition(async () => {
-            const result = await deleteService(service.id);
+            const result = tenantBase
+                ? await tenantApi(`${tenantBase}/services/${service.id}`, { method: "DELETE" })
+                    .then(() => ({ success: true as const }))
+                    .catch((error: unknown) => ({ success: false as const, error: error instanceof Error ? error.message : "No se pudo eliminar el servicio." }))
+                : await deleteService(service.id);
             if (!result.success) {
                 toast({ title: "No se pudo eliminar", description: result.error, variant: "destructive" });
                 return;
             }
             toast({ title: "Servicio eliminado" });
-            router.refresh();
+            refresh();
         });
     };
 
     const removeCategory = (category: Category) => {
         if (!confirm(`¿Eliminar la categoría "${category.name}"?`)) return;
         startTransition(async () => {
-            const result = await deleteServiceCategory(category.id);
+            const result = tenantBase
+                ? await tenantApi(`${tenantBase}/service-categories/${category.id}`, { method: "DELETE" })
+                    .then(() => ({ success: true as const }))
+                    .catch((error: unknown) => ({ success: false as const, error: error instanceof Error ? error.message : "No se pudo eliminar la categoría." }))
+                : await deleteServiceCategory(category.id);
             if (!result.success) {
                 toast({ title: "No se pudo eliminar", description: result.error, variant: "destructive" });
                 return;
             }
             toast({ title: "Categoría eliminada" });
-            router.refresh();
+            refresh();
         });
     };
 
     const updateFlags = (service: Service, flags: { isFeatured?: boolean; isActive?: boolean }) => {
         startTransition(async () => {
-            const result = await updateServiceFlags(service.id, flags);
+            const result = tenantBase
+                ? await tenantApi(`${tenantBase}/services/${service.id}`, { method: "PATCH", body: JSON.stringify(flags) })
+                    .then(() => ({ success: true as const }))
+                    .catch((error: unknown) => ({ success: false as const, error: error instanceof Error ? error.message : "No se pudo actualizar el servicio." }))
+                : await updateServiceFlags(service.id, flags);
             if (!result.success) {
                 toast({ title: "No se pudo actualizar", description: result.error, variant: "destructive" });
                 return;
@@ -243,7 +290,7 @@ export function ServicesCatalog({ initialData }: { initialData: CatalogPayload }
             <Tabs value={activeTab} onValueChange={setActiveTab} className="min-h-0 flex-1 overflow-hidden px-5 pt-4">
                 <TabsList>
                     <TabsTrigger value="services">Servicios ({services.length})</TabsTrigger>
-                    <TabsTrigger value="categories">Categorías ({initialData.categories.length})</TabsTrigger>
+                    <TabsTrigger value="categories">Categorías ({catalog.categories.length})</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="services" className="mt-3 h-[calc(100%-3.25rem)] overflow-y-auto pb-6">
@@ -251,7 +298,7 @@ export function ServicesCatalog({ initialData }: { initialData: CatalogPayload }
                         <EmptyState title="Todavía no hay servicios" description="Crea el primero con precio, duración y profesionales asignados." actionLabel="Añadir servicio" onAction={openNewService} />
                     ) : (
                         <div className="space-y-4">
-                            {initialData.categories.map((category) => category.services.length > 0 ? (
+                            {catalog.categories.map((category) => category.services.length > 0 ? (
                                 <section key={category.id}>
                                     <div className="mb-2 flex items-center gap-2">
                                         <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: category.color || "#B7923A" }} />
@@ -285,11 +332,11 @@ export function ServicesCatalog({ initialData }: { initialData: CatalogPayload }
                             <FolderPlus className="mr-2 h-4 w-4" /> Nueva categoría
                         </Button>
                     </div>
-                    {initialData.categories.length === 0 ? (
+                    {catalog.categories.length === 0 ? (
                         <EmptyState title="Sin categorías" description="Organiza los servicios por familias como Cabello, Uñas, Facial o Paquetes." actionLabel="Crear categoría" onAction={() => setCategoryDialogOpen(true)} />
                     ) : (
                         <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
-                            {initialData.categories.map((category) => (
+                            {catalog.categories.map((category) => (
                                 <div key={category.id} className="rounded-xl border border-border bg-background p-4">
                                     <div className="flex items-start justify-between gap-3">
                                         <div className="min-w-0">
@@ -320,8 +367,8 @@ export function ServicesCatalog({ initialData }: { initialData: CatalogPayload }
                 onOpenChange={setServiceDialogOpen}
                 form={serviceForm}
                 setForm={setServiceForm}
-                categories={initialData.categories}
-                specialists={initialData.specialists}
+                categories={catalog.categories}
+                specialists={catalog.specialists}
                 pending={isPending}
                 onSubmit={submitService}
             />
@@ -341,7 +388,7 @@ function ServiceCard({ service, pending, onEdit, onDelete, onActiveChange }: { s
         <article className={cn("rounded-xl border bg-card p-2.5 shadow-sm transition-[border-color,box-shadow] hover:border-primary/30 hover:shadow-md", !service.isActive && "border-dashed opacity-70")}>
             <div className="flex min-w-0 items-start gap-2.5">
                 {service.imageUrl ? (
-                    <img src={service.imageUrl} alt="" className="h-10 w-10 shrink-0 rounded-lg border object-cover" />
+                    <Image src={service.imageUrl} alt="" width={40} height={40} unoptimized className="h-10 w-10 shrink-0 rounded-lg border object-cover" />
                 ) : (
                     <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-primary/15 bg-primary/5 text-primary">
                         <ImageIcon className="h-4 w-4" />
@@ -429,12 +476,17 @@ function ServiceDialog({ open, onOpenChange, form, setForm, categories, speciali
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
-                <DialogHeader><DialogTitle>{form.id ? "Editar servicio" : "Nuevo servicio"}</DialogTitle></DialogHeader>
+                <DialogHeader>
+                    <DialogTitle>{form.id ? "Editar servicio" : "Nuevo servicio"}</DialogTitle>
+                    <DialogDescription>
+                        Configura los datos, disponibilidad e indicaciones del servicio.
+                    </DialogDescription>
+                </DialogHeader>
                 <div className="grid gap-4 py-2">
                     <div className="rounded-xl border border-border p-3">
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                             <div className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-primary/15 bg-primary/5">
-                                {form.imageUrl ? <img src={form.imageUrl} alt="Vista previa del servicio" className="h-full w-full object-cover" /> : <ImageIcon className="h-7 w-7 text-muted-foreground" />}
+                                {form.imageUrl ? <Image src={form.imageUrl} alt="Vista previa del servicio" width={96} height={96} unoptimized className="h-full w-full object-cover" /> : <ImageIcon className="h-7 w-7 text-muted-foreground" />}
                             </div>
                             <div className="min-w-0 flex-1">
                                 <Label>Foto del servicio (opcional)</Label>
@@ -524,7 +576,7 @@ function ServiceDialog({ open, onOpenChange, form, setForm, categories, speciali
 }
 
 function CategoryDialog({ open, onOpenChange, form, setForm, pending, onSubmit }: { open: boolean; onOpenChange: (open: boolean) => void; form: CategoryForm; setForm: React.Dispatch<React.SetStateAction<CategoryForm>>; pending: boolean; onSubmit: () => void }) {
-    return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent><DialogHeader><DialogTitle>{form.id ? "Editar categoría" : "Nueva categoría"}</DialogTitle></DialogHeader><div className="grid gap-4 py-2"><Field label="Nombre *"><Input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} placeholder="Ej. Cabello" /></Field><Field label="Descripción"><Textarea value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} rows={3} /></Field><Field label="Color"><div className="flex gap-2"><Input type="color" className="w-14 p-1" value={form.color} onChange={(event) => setForm((current) => ({ ...current, color: event.target.value }))} /><Input value={form.color} onChange={(event) => setForm((current) => ({ ...current, color: event.target.value }))} /></div></Field><label className="flex items-center justify-between rounded-xl border border-border p-3"><span><span className="block text-sm font-medium">Categoría activa</span><span className="text-xs text-muted-foreground">Sus servicios podrán mostrarse al agendar</span></span><Switch checked={form.isActive} onCheckedChange={(isActive) => setForm((current) => ({ ...current, isActive }))} /></label></div><DialogFooter><Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button><Button onClick={onSubmit} disabled={pending || !form.name.trim()}>{pending ? "Guardando..." : "Guardar categoría"}</Button></DialogFooter></DialogContent></Dialog>;
+    return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent><DialogHeader><DialogTitle>{form.id ? "Editar categoría" : "Nueva categoría"}</DialogTitle><DialogDescription>Organiza el catálogo en una categoría identificable.</DialogDescription></DialogHeader><div className="grid gap-4 py-2"><Field label="Nombre *"><Input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} placeholder="Ej. Cabello" /></Field><Field label="Descripción"><Textarea value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} rows={3} /></Field><Field label="Color"><div className="flex gap-2"><Input type="color" className="w-14 p-1" value={form.color} onChange={(event) => setForm((current) => ({ ...current, color: event.target.value }))} /><Input value={form.color} onChange={(event) => setForm((current) => ({ ...current, color: event.target.value }))} /></div></Field><label className="flex items-center justify-between rounded-xl border border-border p-3"><span><span className="block text-sm font-medium">Categoría activa</span><span className="text-xs text-muted-foreground">Sus servicios podrán mostrarse al agendar</span></span><Switch checked={form.isActive} onCheckedChange={(isActive) => setForm((current) => ({ ...current, isActive }))} /></label></div><DialogFooter><Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button><Button onClick={onSubmit} disabled={pending || !form.name.trim()}>{pending ? "Guardando..." : "Guardar categoría"}</Button></DialogFooter></DialogContent></Dialog>;
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) { return <div className="space-y-2"><Label>{label}</Label>{children}</div>; }

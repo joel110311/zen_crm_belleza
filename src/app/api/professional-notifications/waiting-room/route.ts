@@ -6,6 +6,7 @@ import { hasAnyPermission, normalizeRole } from "@/lib/permissions";
 import { getSystemSettingsOrDefaults } from "@/lib/system-settings";
 import { buildOperationContext } from "@/lib/operation-context";
 import { businessDayBounds } from "@/lib/calendar/business-hours";
+import { getActiveTenantRuntimeContext } from "@/lib/active-tenant-context";
 
 function sessionUserName(session: unknown) {
     return (session as { user?: { name?: string | null } } | null)?.user?.name?.trim() || "";
@@ -28,6 +29,15 @@ export async function GET() {
     const session = await auth();
     const unauthorized = ensureAuthenticatedResponse(session);
     if (unauthorized) return unauthorized;
+
+    const authScope = (session?.user as { authScope?: unknown } | undefined)?.authScope;
+    if (authScope === "control" && !(await getActiveTenantRuntimeContext("read"))) {
+        return NextResponse.json({
+            timeZone: "America/Mexico_City",
+            locale: "es-MX",
+            notifications: [],
+        });
+    }
 
     const subject = getSessionAccessSubject(session);
     if (!hasAnyPermission(subject, ["calendar.manage", "clinical.manage", "reception.manage"])) {

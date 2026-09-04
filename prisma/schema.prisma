@@ -615,7 +615,7 @@ model PatientEducationArticle {
   summary     String?
   content     String
   category    String?  @default("General")
-  audience    String?  @default("pacientes")
+  audience    String?  @default("clientes")
   isPublished Boolean  @default(true)
   featured    Boolean  @default(false)
   sortOrder   Int      @default(0)

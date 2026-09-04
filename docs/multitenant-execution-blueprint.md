@@ -27,7 +27,7 @@ Portal/PWA/App ─────> API /api/t/{slug}/v1 ─────────
 | Resolución runtime | Lista | Slug + membresía + estado se verifican antes de abrir la DB tenant. |
 | Onboarding básico | Listo | Negocio, horario, servicio y profesional son reanudables en la DB tenant. |
 | Stripe | Backend inicial listo | Checkout, portal y webhook existen; faltan catálogo real, reconciliación y pruebas con Stripe test. |
-| Producto operativo | Núcleo tenant listo | Dashboard, onboarding, servicios, especialistas, contactos, pacientes, agenda, disponibilidad y pipeline ya operan bajo `/t/{slug}`. |
+| Producto operativo | Núcleo tenant listo | Dashboard, onboarding, servicios, especialistas, clientes, agenda, disponibilidad y pipeline ya operan bajo `/t/{slug}`. |
 | API tenant v1 | Lista para el núcleo | Contexto común, permisos por membresía, errores estables, `requestId` e idempotencia persistida en cada DB tenant. |
 | Superficie legacy | Aislada, pendiente de retirar | Persisten 56 archivos que importan el Prisma global para `/dashboard`; ninguna ruta, pantalla, componente o servicio tenant los importa. |
 | Portal público | Listo detrás de bandera | `/portal/{slug}` abre exclusivamente la DB resuelta desde control plane cuando `MULTITENANT_PUBLIC_PORTAL_ENABLED=true`; el portal legacy permanece como fallback mientras está apagada. |
@@ -88,7 +88,7 @@ type TenantServiceContext = {
 #### Primer orden de migración
 
 1. Servicios y especialistas.
-2. Contactos y pacientes.
+2. Contactos y fichas de clientes.
 3. Calendario y disponibilidad.
 4. Pipeline.
 5. Inbox y mensajes.
@@ -111,13 +111,13 @@ Servicios/especialistas van primero porque el onboarding, el calendario y el por
 #### Entrega comprobada
 
 - `TenantServiceContext` resuelve identidad global, membresía, modo de acceso, actor local y Prisma de la DB aislada.
-- `/api/t/{slug}/v1` expone servicios, categorías, especialistas, bloqueos, contactos, pacientes, calendario y pipeline.
+- `/api/t/{slug}/v1` expone servicios, categorías, especialistas, bloqueos, contactos, fichas de clientes, calendario y pipeline.
 - POST, PATCH y DELETE exigen `Idempotency-Key`; `ApiMutationReceipt` conserva respuestas exitosas 24 horas dentro de la DB tenant.
 - El onboarding consume el mismo contrato v1.
 - Las pantallas `/t/{slug}/{módulo}` consumen sólo la API tenant y respetan controles por rol.
 - La agenda valida horario del negocio, asignación servicio-profesional, bloqueos, traslapes y sobrecitas administrativas.
 - La migración se probó desde cero en dos bases PostgreSQL con la extensión `pgvector`; el mismo identificador puede existir en ambas sin colisión y no es visible entre ellas.
-- Prueba HTTP autenticada: catálogo → profesional → contacto/paciente → cita → oportunidad; replay idempotente sin duplicado, choque de agenda `409` y tenant ajeno `404`.
+- Prueba HTTP autenticada: catálogo → profesional → cliente → cita → oportunidad; replay idempotente sin duplicado, choque de agenda `409` y negocio ajeno `404`.
 
 ### M2 — Onboarding completo y centro de preparación
 
@@ -211,7 +211,7 @@ La bandera `MULTITENANT_PUBLIC_SIGNUP_ENABLED` no se activa públicamente antes 
 | --- | --- |
 | OWNER | Suscripción, propiedad, configuración, equipo y operación completa. |
 | ADMIN | Configuración, equipo y operación; sin transferencia de propiedad. |
-| PROFESSIONAL | Su agenda, pacientes asignados y conversaciones permitidas. |
+| PROFESSIONAL | Su agenda, clientes asignados y conversaciones permitidas. |
 | RECEPTION | Agenda, contactos e inbox; sin clínica sensible ni facturación SaaS. |
 
 #### Terminado cuando
@@ -412,7 +412,7 @@ La app móvil empieza después de estabilizar `/api/t/{slug}/v1`; no debe hablar
 
 - Una sola app de plataforma.
 - Login global y selector de negocio.
-- Agenda, inbox, contactos/pacientes y notificaciones.
+- Agenda, inbox, clientes y notificaciones.
 - Deep links que siempre incluyen el contexto del tenant.
 - Tokens de sesión rotables en almacenamiento seguro del dispositivo.
 - Registro push en `DeviceInstallation` ligado a `userId + tenantId`.
@@ -496,7 +496,7 @@ Consulta [`multitenant-beta-smoke-test.md`](./multitenant-beta-smoke-test.md) pa
 ### R3 — Certificar funciones tenant ya construidas
 
 - [ ] Activar las banderas una por una en staging: portal, invitaciones, canales y almacenamiento privado.
-- [ ] Probar servicios, especialistas, contactos, pacientes, agenda, pipeline y onboarding con dos tenants.
+- [ ] Probar servicios, especialistas, clientes, agenda, pipeline y onboarding con dos negocios.
 - [ ] Probar invitación por cada rol y corte inmediato al desactivar una membresía.
 - [ ] Probar reservas concurrentes y enlaces públicos de consulta/cancelación.
 - [ ] Probar Meta y WuzAPI con eventos repetidos, desconocidos y fuera de orden.

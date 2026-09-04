@@ -2,9 +2,10 @@ import "dotenv/config";
 import { Prisma, PrismaClient } from "@prisma/client";
 import { Pool } from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
+import { createRoutedPrismaClient } from "@/lib/routed-prisma";
 
 const globalForPrisma = globalThis as unknown as {
-    prisma: PrismaClient | undefined;
+    legacyPrisma: PrismaClient | undefined;
 };
 const prismaLogLevels: Prisma.LogLevel[] =
     process.env.PRISMA_LOG_QUERIES === "true"
@@ -15,8 +16,8 @@ const prismaLogLevels: Prisma.LogLevel[] =
 let prismaInstance: PrismaClient;
 
 try {
-    if (globalForPrisma.prisma) {
-        prismaInstance = globalForPrisma.prisma;
+    if (globalForPrisma.legacyPrisma) {
+        prismaInstance = globalForPrisma.legacyPrisma;
     } else {
         const connectionString = process.env.DATABASE_URL?.trim();
         if (!connectionString) {
@@ -39,6 +40,6 @@ try {
     prismaInstance = {} as PrismaClient;
 }
 
-export const prisma = prismaInstance;
+export const prisma = createRoutedPrismaClient(prismaInstance);
 
-if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
+if (process.env.NODE_ENV !== "production") globalForPrisma.legacyPrisma = prismaInstance;

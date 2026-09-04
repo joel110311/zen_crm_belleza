@@ -80,7 +80,7 @@ async function ensureDefaultEducationArticles() {
             where: { slug: article.slug },
             create: {
                 ...article,
-                audience: "pacientes",
+                audience: "clientes",
                 isPublished: true,
             },
             update: {},
@@ -117,7 +117,7 @@ export async function saveEducationArticle(input: EducationArticleInput) {
             summary: cleanText(input.summary) || null,
             content,
             category: cleanText(input.category) || "General",
-            audience: cleanText(input.audience) || "pacientes",
+            audience: cleanText(input.audience) || "clientes",
             isPublished: input.isPublished ?? true,
             featured: Boolean(input.featured),
             sortOrder: Number(input.sortOrder || 0),

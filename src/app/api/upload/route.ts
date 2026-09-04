@@ -7,6 +7,7 @@ import { spawn } from "child_process";
 import ffmpegStaticPath from "ffmpeg-static";
 import crypto from "crypto";
 import { auth } from "@/lib/auth";
+import { getActiveTenantRuntimeContext } from "@/lib/active-tenant-context";
 import { getSessionAccessSubject, getSessionUserId } from "@/lib/authz";
 import { hasAnyPermission } from "@/lib/permissions";
 
@@ -102,6 +103,7 @@ export async function POST(request: NextRequest) {
         ])) {
             return NextResponse.json({ error: "Sin permiso para subir archivos" }, { status: 403 });
         }
+        const tenantRuntime = await getActiveTenantRuntimeContext("write");
 
         const formData = await request.formData();
         const file = formData.get("file") as File;
@@ -145,7 +147,12 @@ export async function POST(request: NextRequest) {
 
         // Generate unique filename
         const ext = isVideo ? ".mp4" : originalExt;
-        const uniqueName = `${crypto.randomUUID()}${ext}`;
+        // Keep legacy installations compatible while making every new multitenant object
+        // unambiguously owned by one business, even on the temporary shared volume fallback.
+        const tenantNamespace = tenantRuntime
+            ? crypto.createHash("sha256").update(tenantRuntime.tenantId).digest("hex").slice(0, 16)
+            : null;
+        const uniqueName = `${tenantNamespace ? `t-${tenantNamespace}-` : ""}${crypto.randomUUID()}${ext}`;
         const filePath = path.join(uploadsDir, uniqueName);
 
         let returnedFileName = file.name;

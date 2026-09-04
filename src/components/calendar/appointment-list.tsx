@@ -33,7 +33,7 @@ export function AppointmentList({ appointments, onEdit, onDelete }: AppointmentL
                 <TableHeader className="bg-primary/[0.045]">
                     <TableRow>
                         <TableHead className="font-semibold text-slate-600">FECHA/HORA</TableHead>
-                        <TableHead className="font-semibold text-slate-600">PACIENTE</TableHead>
+                        <TableHead className="font-semibold text-slate-600">CLIENTE</TableHead>
                         <TableHead className="font-semibold text-slate-600">MOTIVO</TableHead>
                         <TableHead className="font-semibold text-slate-600">DURACION</TableHead>
                         <TableHead className="font-semibold text-slate-600">ESTADO</TableHead>

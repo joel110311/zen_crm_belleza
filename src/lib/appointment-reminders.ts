@@ -53,7 +53,7 @@ function appointmentPatientName(appointment: NonNullable<ReminderAppointment>) {
         .join(" ")
         .trim();
 
-    return patientName || contactName || appointment.title || "Paciente";
+    return patientName || contactName || appointment.title || "Cliente";
 }
 
 function specialistLabel(appointment: NonNullable<ReminderAppointment>) {
@@ -226,7 +226,7 @@ function buildReminderContext(
         : "";
 
     return {
-        paciente: appointmentPatientName(appointment),
+        cliente: appointmentPatientName(appointment),
         fecha: date,
         hora: time,
         especialista: specialistLabel(appointment),
@@ -250,7 +250,7 @@ export function renderAppointmentReminderText(
     const reminderSettings = getAppointmentReminderSettings(settings);
     const context = buildReminderContext(appointment, settings, offsetMinutes);
     const template = reminderSettings.wuzapiTemplate.trim() || [
-        "Hola {{paciente}}, te recordamos tu cita en {{clinica}}.",
+        "Hola {{cliente}}, te recordamos tu cita en {{clinica}}.",
         "",
         "Fecha y hora: {{fecha}} a las {{hora}}.",
         "{{especialista}}",
@@ -276,7 +276,7 @@ function buildMetaReminderComponents(
     return [{
         type: "BODY" as const,
         parameters: [
-            context.paciente,
+            context.cliente,
             context.fecha,
             context.hora,
             context.especialista.replace(/^Especialista:\s*/, "") || "-",
@@ -399,7 +399,7 @@ async function sendPreparedReminder(params: {
     const contact = await ensureAppointmentContact(appointmentWithToken);
 
     if (!contact?.id || !contact.phone) {
-        throw new Error("La cita no tiene telefono de paciente para WhatsApp.");
+        throw new Error("La cita no tiene teléfono de cliente para WhatsApp.");
     }
 
     const content = renderAppointmentReminderText(appointmentWithToken, params.settings, params.offsetMinutes);
@@ -656,7 +656,7 @@ export async function prepareManualAppointmentReminderDraft(appointmentId: strin
     const contact = await ensureAppointmentContact(appointmentWithToken);
 
     if (!contact?.id || !contact.phone) {
-        return { success: false as const, error: "La cita no tiene teléfono de paciente para WhatsApp." };
+        return { success: false as const, error: "La cita no tiene teléfono de cliente para WhatsApp." };
     }
 
     const conversation = await findOrCreateActiveConversationForContact(contact.id);

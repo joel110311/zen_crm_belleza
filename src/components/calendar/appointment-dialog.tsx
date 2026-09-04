@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState, useTransition } from "react";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -617,7 +617,7 @@ export function AppointmentDialog({
 
             toast({ title: "Error", description: result.error || "No se pudo crear.", variant: "destructive" });
         } catch {
-            toast({ title: "Error", description: "Error al crear paciente.", variant: "destructive" });
+            toast({ title: "Error", description: "Error al crear el cliente.", variant: "destructive" });
         } finally {
             setIsSubmittingPatient(false);
         }
@@ -630,6 +630,9 @@ export function AppointmentDialog({
                     <DialogTitle className="text-xl font-semibold text-foreground">
                         {selectedEvent ? "Editar Cita" : "Nueva Cita"}
                     </DialogTitle>
+                    <DialogDescription>
+                        Selecciona cliente, servicio, profesional, fecha y horario.
+                    </DialogDescription>
                 </DialogHeader>
 
                 <div className="grid gap-4 py-3">

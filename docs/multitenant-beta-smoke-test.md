@@ -19,7 +19,7 @@ Certificar el recorrido real de una cuenta nueva sin mezclar datos de clientes n
 4. Abrir el correo de `soporte@synapselogik.com` y usar el enlace antes de 20 minutos. Debe mostrarse **Correo confirmado**.
 5. Iniciar sesión con la misma cuenta. Mientras la base se prepara, el acceso puede mostrar la preparación del espacio; no volver a registrarse ni cambiar el slug.
 6. Completar el wizard: negocio, horario, servicio y profesional inicial. Al terminar debe abrir `/t/{slug}/dashboard`.
-7. Crear un servicio, un contacto, un paciente y una cita de prueba. Confirmar que aparecen en la agenda y que una recarga no duplica el registro.
+7. Crear un servicio, un cliente y una cita de prueba. Confirmar que aparecen en la agenda y que una recarga no duplica el registro.
 8. Abrir una ventana privada, iniciar sesión con la misma cuenta y confirmar que se ve el mismo negocio. No se debe usar una cuenta de otro tenant en esta primera prueba.
 
 ## Evidencia de aceptación

@@ -182,7 +182,7 @@ Se puede restaurar y migrar un tenant de forma aislada, y demostrar que no puede
 
 1. Hacer el dashboard responsive y publicar PWA instalable.
 2. Crear API móvil estable sobre los servicios multitenant.
-3. Construir una sola app iOS/Android para agenda, inbox, pacientes, archivos y notificaciones push.
+3. Construir una sola app iOS/Android para agenda, inbox, clientes, archivos y notificaciones push.
 4. Añadir deep links, cámara, caché de agenda, biometría y notificaciones por `userId + tenantId`.
 5. Preparar privacidad, borrado de cuenta, Data Safety, App Privacy, OAuth en navegador seguro y cuentas de publicación.
 

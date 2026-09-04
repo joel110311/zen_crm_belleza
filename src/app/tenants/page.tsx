@@ -5,6 +5,13 @@ import { getControlDb } from "@/lib/control-db";
 
 export const dynamic = "force-dynamic";
 
+const MEMBERSHIP_LABELS = {
+    OWNER: "Propietario",
+    ADMIN: "Administrador",
+    PROFESSIONAL: "Profesional",
+    RECEPTION: "Recepción",
+} as const;
+
 export default async function TenantPickerPage() {
     const session = await auth();
     const userId = typeof (session?.user as { id?: unknown } | undefined)?.id === "string"
@@ -41,7 +48,7 @@ export default async function TenantPickerPage() {
                     <ul className="mt-6 grid gap-3">
                         {memberships.map(({ role, tenant }) => {
                             const href = tenant.status === "READY" ? `/t/${tenant.slug}` : `/onboarding/${tenant.slug}`;
-                            return <li key={tenant.slug}><Link href={href} className="block rounded-lg border p-4 transition-colors hover:bg-muted/50"><p className="font-semibold">{tenant.displayName}</p><p className="mt-1 text-sm text-muted-foreground">{role} · {tenant.status === "READY" ? "Disponible" : "En preparación"}</p></Link></li>;
+                            return <li key={tenant.slug}><Link href={href} className="block rounded-lg border p-4 transition-colors hover:bg-muted/50"><p className="font-semibold">{tenant.displayName}</p><p className="mt-1 text-sm text-muted-foreground">{MEMBERSHIP_LABELS[role]} · {tenant.status === "READY" ? "Disponible" : "En preparación"}</p></Link></li>;
                         })}
                     </ul>
                 )}

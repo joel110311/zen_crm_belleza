@@ -87,7 +87,7 @@ const SECTIONS: Array<{
 
 function SettingsWorkspace() {
     const pathname = usePathname();
-    const businessOnly = pathname === "/dashboard/business";
+    const businessOnly = pathname === "/dashboard/business" || /^\/t\/[^/]+\/business$/.test(pathname);
     const [activeSection, setActiveSection] = useState<SectionId>(businessOnly ? "operation" : "theme");
     const [operationTab, setOperationTab] = useState<"brand" | "operation" | "portal">(businessOnly ? "operation" : "brand");
     const [openaiKey, setOpenaiKey] = useState("");

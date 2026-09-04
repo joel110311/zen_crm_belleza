@@ -1029,7 +1029,7 @@ export function TenantOnboardingWizard({
             <div className="rounded-2xl border bg-muted/30 p-5">
               <p className="font-medium">Configura a tu ritmo</p>
               <p className="mt-1 text-sm leading-6 text-muted-foreground">Puedes continuar con la publicación y agregar profesionales después. No se enviarán invitaciones ni correos automáticos.</p>
-              <Button asChild className="mt-4" variant="outline"><Link href={`/t/${tenantSlug}/settings?tab=team`}>Abrir configuración del equipo</Link></Button>
+              <Button asChild className="mt-4" variant="outline"><Link href={`/t/${tenantSlug}/settings?section=specialists`}>Abrir configuración del equipo</Link></Button>
             </div>
             <StepFooter
               saving={saving}

@@ -501,7 +501,7 @@ export default function ReceptionPage() {
                                         <CheckCircle2 className="mr-2 h-4 w-4" />
                                         Confirmar
                                     </Button>
-                                    <Button size="sm" variant="outline" onClick={() => runAction(() => updateAppointmentStatus(appointment.id, "waiting"), "Paciente listo en sala")}>
+                                    <Button size="sm" variant="outline" onClick={() => runAction(() => updateAppointmentStatus(appointment.id, "waiting"), "Cliente listo en sala")}>
                                         <UserCheck className="mr-2 h-4 w-4" />
                                         En sala
                                     </Button>
@@ -706,7 +706,7 @@ export default function ReceptionPage() {
                 {closingAppointment ? (
                     <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4 sm:px-6 sm:py-5">
                         <div className="rounded-2xl border bg-muted/20 p-4">
-                            <p className="text-sm text-muted-foreground">Paciente</p>
+                            <p className="text-sm text-muted-foreground">Cliente</p>
                             <p className="mt-1 text-lg font-semibold">{patientName(closingAppointment)}</p>
                             <div className="mt-3 grid gap-2 text-sm text-muted-foreground sm:grid-cols-2">
                                 <span>{closingAppointment.title}</span>
