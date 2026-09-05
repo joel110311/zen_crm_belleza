@@ -5,8 +5,6 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { signOut, useSession } from "next-auth/react";
 import {
-    Banknote,
-    BarChart3,
     Bot,
     Calendar,
     ChevronLeft,
@@ -17,8 +15,9 @@ import {
     LogOut,
     Menu,
     Settings,
-    Stethoscope,
+    ShieldCheck,
     Store,
+    UserRoundCog,
     Users,
     X,
 } from "lucide-react";
@@ -36,6 +35,7 @@ type SidebarNavItem = {
     icon: React.ComponentType<{ className?: string }>;
     permission?: PermissionKey;
     tenantOnly?: boolean;
+    platformOnly?: boolean;
 };
 
 const sidebarNavItems: SidebarNavItem[] = [
@@ -44,27 +44,26 @@ const sidebarNavItems: SidebarNavItem[] = [
     { title: "Servicios", href: "/dashboard/services", icon: BeautyLeafIcon, permission: "services.manage" },
     { title: "Chats", href: "/dashboard/inbox", icon: WhatsAppIcon, permission: "chats.manage" },
     { title: "Mi Negocio", href: "/dashboard/business", icon: Store, permission: "settings.manage" },
-    { title: "Especialistas", href: "/dashboard/specialists", icon: Stethoscope, permission: "specialists.manage", tenantOnly: true },
+    { title: "Especialistas", href: "/dashboard/specialists", icon: UserRoundCog, permission: "specialists.manage", tenantOnly: true },
     { title: "Recepción", href: "/dashboard/reception", icon: ClipboardCheck, permission: "reception.manage" },
-    { title: "Caja", href: "/dashboard/billing", icon: Banknote, permission: "billing.manage" },
-    { title: "Reportes", href: "/dashboard/reports", icon: BarChart3, permission: "reports.view" },
     { title: "Plantillas", href: "/dashboard/templates", icon: LayoutTemplate, permission: "templates.manage" },
     { title: "Calendario", href: "/dashboard/calendar", icon: Calendar, permission: "calendar.manage" },
     { title: "Asistente IA", href: "/dashboard/brain", icon: Bot, permission: "ai.manage" },
     { title: "Configuración", href: "/dashboard/settings", icon: Settings },
+    { title: "Centro de mando", href: "/control", icon: ShieldCheck, platformOnly: true },
 ];
 
 export function Sidebar({ className }: React.HTMLAttributes<HTMLDivElement>) {
     const pathname = usePathname();
     const tenantSlug = tenantSlugFromPath(pathname);
     const dashboardHome = tenantSlug ? `/t/${encodeURIComponent(tenantSlug)}/dashboard` : "/dashboard";
-    const resolveHref = (href: string) => tenantSlug ? tenantDashboardPath(tenantSlug, href) : href;
+    const resolveHref = (href: string) => href === "/control" ? href : tenantSlug ? tenantDashboardPath(tenantSlug, href) : href;
     const [open, setOpen] = useState(false);
     const [desktopCollapsed, setDesktopCollapsed] = useState(true);
     const [branding, setBranding] = useState<BrandingSettings>(() => resolveBranding(null));
     const { data: session, status } = useSession();
     const sessionLoading = status === "loading";
-    const sessionUser = session?.user as { role?: string; permissions?: unknown } | undefined;
+    const sessionUser = session?.user as { role?: string; permissions?: unknown; isPlatformAdmin?: boolean } | undefined;
     const userName = session?.user?.name || (sessionLoading ? "..." : "Usuario");
 
     useEffect(() => {
@@ -95,6 +94,7 @@ export function Sidebar({ className }: React.HTMLAttributes<HTMLDivElement>) {
 
     const filteredNavItems = sidebarNavItems.filter((item) => {
         if (item.tenantOnly && !tenantSlug) return false;
+        if (item.platformOnly && !sessionUser?.isPlatformAdmin) return false;
         if (sessionLoading) return !item.permission;
         return !item.permission || hasPermission(sessionUser, item.permission);
     });

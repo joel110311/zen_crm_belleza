@@ -83,6 +83,32 @@ enum SubscriptionStatus {
   PAUSED
 }
 
+enum TrialStatus {
+  ACTIVE
+  ENDING
+  CONVERTED
+  EXPIRED
+}
+
+enum TrialPaymentCollectionMode {
+  OPTIONAL_AFTER_ONBOARDING
+  REQUIRED_BEFORE_TRIAL
+}
+
+enum TrialRedemptionStatus {
+  RESERVED
+  REDEEMED
+}
+
+enum BillingSelectionStatus {
+  PENDING_SETUP
+  SCHEDULED
+  PROCESSING
+  ACTIVATED
+  CANCELLED
+  FAILED
+}
+
 enum ProvisioningJobKind {
   CREATE_TENANT_DATABASE
   MIGRATE_TENANT_DATABASE
@@ -225,6 +251,7 @@ model Tenant {
   auditEvents             AuditLog[]
   signupIntent            SignupIntent?            @relation("SignupIntentTenant")
   invitations             TenantInvitation[]
+  billingSelection        BillingSelection?
 
   @@index([status, provisioningStatus])
   @@index([billingStatus, accessMode])
@@ -313,22 +340,49 @@ model TenantDatabase {
 }
 
 model Plan {
-  id                   String         @id @default(cuid())
-  slug                 String         @unique
+  id                   String             @id @default(cuid())
+  slug                 String             @unique
   name                 String
   description          String?
-  currency             String         @default("MXN")
+  currency             String             @default("MXN")
   monthlyAmountCents   Int?
   annualAmountCents    Int?
-  stripeMonthlyPriceId String?        @unique
-  stripeAnnualPriceId  String?        @unique
-  limits               Json           @default("{}")
-  features             Json           @default("{}")
-  isActive             Boolean        @default(true)
-  createdAt            DateTime       @default(now())
-  updatedAt            DateTime       @updatedAt
+  stripeMonthlyPriceId String?            @unique
+  stripeAnnualPriceId  String?            @unique
+  limits               Json               @default("{}")
+  features             Json               @default("{}")
+  isActive             Boolean            @default(true)
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
   subscriptions        Subscription[]
   prices               BillingPrice[]
+  usageEntries         UsageLedger[]
+  billingSelections    BillingSelection[]
+}
+
+/**
+ * A plan selected near trial expiry after Checkout securely collects a payment method.
+ */
+model BillingSelection {
+  id                    String                 @id @default(cuid())
+  tenantId              String                 @unique
+  planId                String
+  billingPriceId        String
+  providerCustomerId    String
+  providerSetupIntentId String?
+  providerPaymentMethod String?
+  status                BillingSelectionStatus @default(PENDING_SETUP)
+  scheduledFor          DateTime
+  activatedAt           DateTime?
+  lastError             String?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  tenant                Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  plan                  Plan                   @relation(fields: [planId], references: [id], onDelete: Restrict)
+  billingPrice          BillingPrice           @relation(fields: [billingPriceId], references: [id], onDelete: Restrict)
+
+  @@index([status, scheduledFor])
+  @@index([providerCustomerId])
 }
 
 model BillingPrice {
@@ -343,6 +397,7 @@ model BillingPrice {
   createdAt       DateTime             @default(now())
   updatedAt       DateTime             @updatedAt
   plan            Plan                 @relation(fields: [planId], references: [id], onDelete: Cascade)
+  selections      BillingSelection[]
 
   @@unique([provider, externalPriceId])
   @@index([planId, provider, interval, isActive])
@@ -350,17 +405,69 @@ model BillingPrice {
 }
 
 model Trial {
-  id          String    @id @default(cuid())
-  tenantId    String    @unique
-  startsAt    DateTime
-  endsAt      DateTime
-  convertedAt DateTime?
-  expiredAt   DateTime?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  id                String       @id @default(cuid())
+  tenantId          String       @unique
+  policyId          String?
+  policyVersion     Int          @default(1)
+  durationDays      Int          @default(7)
+  warningHours      Int          @default(48)
+  finalWarningHours Int          @default(24)
+  status            TrialStatus  @default(ACTIVE)
+  startsAt          DateTime
+  endsAt            DateTime
+  warningSentAt     DateTime?
+  finalWarningAt    DateTime?
+  convertedAt       DateTime?
+  expiredAt         DateTime?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+  tenant            Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  policy            TrialPolicy? @relation(fields: [policyId], references: [id], onDelete: SetNull)
 
-  @@index([endsAt])
+  @@index([status, endsAt])
+}
+
+/**
+ * Versioned commercial terms. A trial snapshots these values when it starts.
+ */
+model TrialPolicy {
+  id                    String                     @id @default(cuid())
+  slug                  String                     @unique
+  name                  String
+  version               Int                        @default(1)
+  trialDays             Int                        @default(7)
+  warningHours          Int                        @default(48)
+  finalWarningHours     Int                        @default(24)
+  paymentCollectionMode TrialPaymentCollectionMode @default(OPTIONAL_AFTER_ONBOARDING)
+  graceDays             Int                        @default(3)
+  isDefault             Boolean                    @default(false)
+  isActive              Boolean                    @default(true)
+  createdAt             DateTime                   @default(now())
+  updatedAt             DateTime                   @updatedAt
+  trials                Trial[]
+
+  @@index([isActive, isDefault])
+}
+
+/**
+ * Minimal promotion-abuse record. emailHmac is not an email and has no FK by design,
+ * so account erasure cannot accidentally grant another introductory trial.
+ */
+model TrialRedemption {
+  id              String                @id @default(cuid())
+  emailHmac       String                @unique
+  keyVersion      Int                   @default(1)
+  status          TrialRedemptionStatus @default(RESERVED)
+  tenantReference String?
+  reservedAt      DateTime              @default(now())
+  redeemedAt      DateTime?
+  lastAttemptAt   DateTime              @default(now())
+  overrideCount   Int                   @default(0)
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  @@index([status, redeemedAt])
+  @@index([tenantReference])
 }
 
 model Subscription {
@@ -375,6 +482,8 @@ model Subscription {
   currentPeriodEndsAt    DateTime?
   cancelAtPeriodEnd      Boolean              @default(false)
   canceledAt             DateTime?
+  pastDueAt              DateTime?
+  graceEndsAt            DateTime?
   createdAt              DateTime             @default(now())
   updatedAt              DateTime             @updatedAt
   tenant                 Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -382,6 +491,42 @@ model Subscription {
 
   @@index([tenantId, status])
   @@index([provider, providerCustomerId])
+}
+
+/**
+ * Idempotent monthly usage ledger for plan limits and margin reporting.
+ */
+model UsageLedger {
+  id             String   @id @default(cuid())
+  tenantId       String
+  planId         String?
+  metric         String
+  periodStart    DateTime
+  periodEnd      DateTime
+  quantity       Int      @default(1)
+  idempotencyKey String   @unique
+  source         String
+  createdAt      DateTime @default(now())
+  plan           Plan?    @relation(fields: [planId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, metric, periodStart])
+  @@index([periodEnd])
+}
+
+/**
+ * Product funnel events contain identifiers and dimensions, never message contents.
+ */
+model CommercialEvent {
+  id        String   @id @default(cuid())
+  tenantId  String?
+  userId    String?
+  event     String
+  source    String?
+  metadata  Json     @default("{}")
+  createdAt DateTime @default(now())
+
+  @@index([event, createdAt])
+  @@index([tenantId, createdAt])
 }
 
 model BillingEntitlement {

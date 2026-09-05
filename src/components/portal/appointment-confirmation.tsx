@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
-import { CalendarCheck, CreditCard, Loader2, Video, XCircle } from "lucide-react";
+import { CalendarCheck, Loader2, Video, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/use-toast";
@@ -19,11 +19,6 @@ type Props = {
         cancellationReason?: string | null;
         visitMode?: string | null;
         meetLink?: string | null;
-        paymentStatus?: string | null;
-        paymentAmount?: number | null;
-        paymentCurrency?: string | null;
-        paymentMethod?: string | null;
-        paymentLinkUrl?: string | null;
         patient?: {
             firstName: string;
             lastName: string;
@@ -43,24 +38,6 @@ function statusLabel(status: string, confirmationStatus: string) {
     return "Solicitud recibida";
 }
 
-function money(amount?: number | null, currency = "MXN", locale = "es-MX") {
-    return new Intl.NumberFormat(locale, {
-        style: "currency",
-        currency,
-    }).format(amount || 0);
-}
-
-function paymentMethodLabel(method?: string | null) {
-    const labels: Record<string, string> = {
-        local: "Pago en el local",
-        efectivo: "Efectivo",
-        tarjeta: "Tarjeta",
-        transferencia: "Transferencia",
-        link: "Enlace de pago",
-    };
-    return labels[method || ""] || method || "Por definir";
-}
-
 export function AppointmentConfirmation({ token, appointment }: Props) {
     const { toast } = useToast();
     const [isPending, startTransition] = useTransition();
@@ -68,7 +45,6 @@ export function AppointmentConfirmation({ token, appointment }: Props) {
     const [operationContext, setOperationContext] = useState({
         locale: "es-MX",
         timeZone: "America/Mexico_City",
-        defaultCurrency: "MXN",
     });
     const [localState, setLocalState] = useState({
         status: appointment.status,
@@ -87,7 +63,6 @@ export function AppointmentConfirmation({ token, appointment }: Props) {
                 setOperationContext({
                     locale: context.locale || "es-MX",
                     timeZone: context.timeZone || "America/Mexico_City",
-                    defaultCurrency: context.defaultCurrency || "MXN",
                 });
             })
             .catch(() => undefined);
@@ -170,23 +145,6 @@ export function AppointmentConfirmation({ token, appointment }: Props) {
                                     <a href={appointment.meetLink} target="_blank" rel="noreferrer">
                                         <Video className="mr-2 h-4 w-4" />
                                         Abrir Google Meet
-                                    </a>
-                                </Button>
-                            ) : null}
-                        </div>
-                    ) : null}
-                    {appointment.paymentAmount && appointment.paymentAmount > 0 ? (
-                        <div>
-                            <p className="text-xs text-muted-foreground">Pago</p>
-                            <p className="font-semibold">
-                                {money(appointment.paymentAmount, appointment.paymentCurrency || operationContext.defaultCurrency, operationContext.locale)} - {appointment.paymentStatus === "paid" ? "pagado" : "pendiente"}
-                            </p>
-                            <p className="mt-1 text-sm text-muted-foreground">{paymentMethodLabel(appointment.paymentMethod)}</p>
-                            {appointment.paymentLinkUrl && appointment.paymentStatus !== "paid" ? (
-                                <Button className="mt-2" size="sm" variant="outline" asChild>
-                                    <a href={appointment.paymentLinkUrl} target="_blank" rel="noreferrer">
-                                        <CreditCard className="mr-2 h-4 w-4" />
-                                        Abrir link de pago
                                     </a>
                                 </Button>
                             ) : null}

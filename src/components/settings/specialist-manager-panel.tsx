@@ -639,7 +639,7 @@ export function SpecialistManagerPanel() {
                     <DialogHeader>
                         <DialogTitle>Eliminar especialista definitivamente</DialogTitle>
                         <DialogDescription>
-                            Vas a eliminar a {specialistToDelete?.displayName || specialistToDelete?.name}. Esta acción no se puede deshacer. Si tiene citas, atenciones o cobros, el sistema conservará el perfil inactivo para proteger el historial.
+                            Vas a eliminar a {specialistToDelete?.displayName || specialistToDelete?.name}. Esta acción no se puede deshacer. Si tiene citas asociadas, el sistema conservará el perfil inactivo para proteger el historial.
                         </DialogDescription>
                     </DialogHeader>
                     <DialogFooter className="gap-2 sm:gap-0">

@@ -28,17 +28,25 @@ export async function POST(request: NextRequest) {
 
     try {
         const { tenant } = await requireBillingOwner(tenantSlug);
-        const subscription = await getControlDb().subscription.findFirst({
-            where: { tenantId: tenant.tenantId, provider: "STRIPE", providerCustomerId: { not: null } },
-            orderBy: { updatedAt: "desc" },
-            select: { providerCustomerId: true },
-        });
-        if (!subscription?.providerCustomerId) {
+        const db = getControlDb();
+        const [subscription, selection] = await Promise.all([
+            db.subscription.findFirst({
+                where: { tenantId: tenant.tenantId, provider: "STRIPE", providerCustomerId: { not: null } },
+                orderBy: { updatedAt: "desc" },
+                select: { providerCustomerId: true },
+            }),
+            db.billingSelection.findUnique({
+                where: { tenantId: tenant.tenantId },
+                select: { providerCustomerId: true },
+            }),
+        ]);
+        const customerId = subscription?.providerCustomerId || selection?.providerCustomerId;
+        if (!customerId) {
             return NextResponse.json({ error: "Aún no existe una suscripción para administrar." }, { status: 409 });
         }
 
         const portal = await getStripeClient().billingPortal.sessions.create({
-            customer: subscription.providerCustomerId,
+            customer: customerId,
             return_url: `${getPlatformBaseUrl()}/billing/${tenant.slug}`,
         });
         return NextResponse.json({ url: portal.url });

@@ -514,11 +514,16 @@ Consulta [`multitenant-beta-smoke-test.md`](./multitenant-beta-smoke-test.md) pa
 ### R5 — Completar Stripe y límites de producto
 
 - [ ] Crear productos, precios y precio fundador en modo test.
-- [ ] Sembrar `Plan`, `BillingPrice` y entitlements en el control plane.
+- [x] Sembrar los planes Esencial ($300 MXN), Automatiza ($500 MXN, 5,000 respuestas) y Pro ($800 MXN, uso razonable) en el control plane.
+- [x] Versionar la política de prueba y permitir elegir 7 o 14 días desde `/control`; una prueba ya iniciada conserva su versión original.
+- [x] Conservar un HMAC no reversible del correo tras eliminar la cuenta para impedir que la misma identidad vuelva a consumir la promoción.
+- [x] Mostrar el aviso discreto sólo durante las últimas 48 horas y enviar recordatorios a las 48 y 24 horas.
+- [x] Posponer el primer cobro hasta el final de la prueba: Stripe trial cuando restan más de 48 horas y SetupIntent + activación idempotente cuando restan menos.
+- [x] Desplegar `billing-lifecycle-worker` para recordatorios, vencimiento exacto, activación diferida y fin de la gracia por impago.
 - [ ] Probar Checkout, Customer Portal, webhooks duplicados y reconciliación periódica.
-- [ ] Aplicar límites en servidor para asientos, canales, almacenamiento, IA y campañas.
-- [ ] Probar trial vencido, impago, cancelación, reactivación y modos `READ_ONLY`/`BILLING_ONLY`.
-- [ ] Mostrar antes del pago el aviso beta y de comprobante digital sin CFDI.
+- [x] Aplicar en servidor el límite de respuestas del chatbot y registrarlo en un ledger idempotente; faltan asientos, canales, almacenamiento y campañas.
+- [x] Validar en PostgreSQL efímero que el vencimiento pasa a `BILLING_ONLY` y que un correo no configurado no consume el aviso; faltan impago, cancelación y reactivación contra Stripe test.
+- [x] Mostrar antes del pago el aviso beta y de comprobante digital sin CFDI.
 - [ ] Pasar a Stripe live sólo cuando las pruebas anteriores tengan evidencia.
 
 ### R6 — Lanzamiento gradual
@@ -539,4 +544,4 @@ Consulta [`multitenant-beta-smoke-test.md`](./multitenant-beta-smoke-test.md) pa
 
 ## Próxima unidad de trabajo
 
-Ejecutar **R2** con una persona de prueba: correo → verificación → inicio de sesión → aprovisionamiento → wizard → dashboard. El dominio canónico ya es `app.synapselogik.com`; web, control plane, provisionador y worker están activos con una réplica cada uno, y el readiness remoto confirma ambas bases. La prueba requiere que la persona complete Turnstile en el navegador; ese desafío no se automatiza. Después se retoma **M8/R5 — Stripe** y se habilitan portal, invitaciones, canales y almacenamiento privado de uno en uno, con sus credenciales y pruebas correspondientes.
+Crear en Stripe test los tres precios recurrentes mensuales, copiarlos en `/control`, registrar el webhook firmado y habilitar `BILLING_STRIPE_ENABLED=true`. Después ejecutar el recorrido completo con una cuenta nueva: alta → verificación → prueba → selección de plan → vencimiento acelerado → primer cargo → acceso conservado. Repetir con tarjeta rechazada, cancelación y webhook duplicado antes de usar claves live.

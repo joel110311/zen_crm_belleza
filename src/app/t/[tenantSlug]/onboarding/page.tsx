@@ -111,7 +111,6 @@ export default async function TenantOnboardingPage({
                 settings.portalIntro ||
                 "Aparta el horario para tu próximo servicio.",
               primaryColor: settings.portalPrimaryColor || "#4B5F25",
-              paymentInstructions: settings.portalPaymentInstructions || "",
               visibleServiceIds: Array.isArray(settings.portalVisibleServiceIds)
                 ? settings.portalVisibleServiceIds.filter(
                     (id): id is string => typeof id === "string",

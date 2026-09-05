@@ -64,9 +64,6 @@ export type SelectedAppointmentEvent = {
         visitMode?: string | null;
         meetStatus?: string | null;
         meetLink?: string | null;
-        paymentStatus?: string | null;
-        paymentAmount?: number | null;
-        paymentCurrency?: string | null;
         remindersOptOut?: boolean | null;
         googleCalendarId?: string | null;
         googleCalendarColor?: string | null;
@@ -158,14 +155,10 @@ export function AppointmentDialog({
     const [visitMode, setVisitMode] = useState("presencial");
     const [meetLink, setMeetLink] = useState("");
     const [requestGoogleMeet, setRequestGoogleMeet] = useState(false);
-    const [paymentAmount, setPaymentAmount] = useState("");
-    const [paymentCurrency, setPaymentCurrency] = useState("MXN");
     const [remindersGloballyEnabled, setRemindersGloballyEnabled] = useState(false);
     const [sendReminders, setSendReminders] = useState(true);
     const [operationContext, setOperationContext] = useState({
         phoneDefaultCountry: "MX",
-        currencies: ["MXN"],
-        defaultCurrency: "MXN",
         locale: "es-MX",
         timeZone: "America/Mexico_City",
     });
@@ -188,8 +181,6 @@ export function AppointmentDialog({
                 if (!active || !context) return;
                 setOperationContext({
                     phoneDefaultCountry: context.phoneDefaultCountry || "MX",
-                    currencies: Array.isArray(context.currencies) && context.currencies.length > 0 ? context.currencies : ["MXN"],
-                    defaultCurrency: context.defaultCurrency || "MXN",
                     locale: context.locale || "es-MX",
                     timeZone: context.timeZone || "America/Mexico_City",
                 });
@@ -259,12 +250,6 @@ export function AppointmentDialog({
             setVisitMode(selectedEvent.resource?.visitMode || "presencial");
             setMeetLink(selectedEvent.resource?.meetLink || "");
             setRequestGoogleMeet(selectedEvent.resource?.meetStatus === "requested");
-            setPaymentAmount(
-                selectedEvent.resource?.paymentAmount
-                    ? String(selectedEvent.resource.paymentAmount)
-                    : "",
-            );
-            setPaymentCurrency(selectedEvent.resource?.paymentCurrency || operationContext.defaultCurrency);
             setSendReminders(remindersGloballyEnabled && !selectedEvent.resource?.remindersOptOut);
             return;
         }
@@ -290,8 +275,6 @@ export function AppointmentDialog({
             setVisitMode("presencial");
             setMeetLink("");
             setRequestGoogleMeet(false);
-            setPaymentAmount("");
-            setPaymentCurrency(operationContext.defaultCurrency);
             setSendReminders(remindersGloballyEnabled);
             return;
         }
@@ -311,10 +294,8 @@ export function AppointmentDialog({
         setVisitMode("presencial");
         setMeetLink("");
         setRequestGoogleMeet(false);
-        setPaymentAmount("");
-        setPaymentCurrency(operationContext.defaultCurrency);
         setSendReminders(remindersGloballyEnabled);
-    }, [businessHours, clampTimeToSchedule, defaultPatient, defaultSpecialistId, initialPatientId, open, operationContext.defaultCurrency, remindersGloballyEnabled, selectedEvent, selectedSlot]);
+    }, [businessHours, clampTimeToSchedule, defaultPatient, defaultSpecialistId, initialPatientId, open, remindersGloballyEnabled, selectedEvent, selectedSlot]);
 
     useEffect(() => {
         if (!open) return;
@@ -497,9 +478,6 @@ export function AppointmentDialog({
         const blockingCalendarIds = targetCalendarId ? [targetCalendarId] : undefined;
         const normalizedMeetLink = meetLink.trim();
         const wantsGoogleMeet = ["virtual", "hibrida"].includes(visitMode) && requestGoogleMeet && !normalizedMeetLink;
-        const amount = Number(paymentAmount || 0);
-        const normalizedPaymentAmount = Number.isFinite(amount) ? Math.max(0, amount) : 0;
-        const existingPaymentStatus = selectedEvent?.resource?.paymentStatus;
         const specialistName = selectedSpecialist
             ? (selectedSpecialist.displayName || selectedSpecialist.name)
             : selectedCalendar?.isSpecialist
@@ -524,9 +502,6 @@ export function AppointmentDialog({
                     visitMode,
                     meetStatus: wantsGoogleMeet ? "requested" : normalizedMeetLink ? "generated" : "none",
                     meetLink: normalizedMeetLink || undefined,
-                    paymentStatus: existingPaymentStatus || (normalizedPaymentAmount > 0 ? "pending" : "unpaid"),
-                    paymentAmount: normalizedPaymentAmount,
-                    paymentCurrency,
                     remindersOptOut: !sendReminders,
                     googleCalendarId: targetCalendarId,
                     googleCalendarName: specialistCalendar?.summary || selectedCalendar?.summary,
@@ -752,8 +727,6 @@ export function AppointmentDialog({
                             setTitle(service.name);
                             setAppointmentType(service.name);
                             setDuration(String(service.durationMinutes));
-                            setPaymentAmount(service.price > 0 ? String(service.price) : "");
-                            setPaymentCurrency(service.currency || operationContext.defaultCurrency);
                             const assignedIds = service.specialists.map((entry) => entry.specialistId);
                             if (assignedIds.length > 0 && !assignedIds.includes(selectedSpecialistId)) {
                                 setSelectedSpecialistId(assignedIds[0]);
@@ -799,7 +772,7 @@ export function AppointmentDialog({
 
                     {selectedService && eligibleSpecialistIds.length > 0 ? <p className="-mt-2 text-xs text-muted-foreground">Solo se muestran los profesionales asignados a este servicio.</p> : null}
 
-                    <div className="grid gap-3 sm:grid-cols-[minmax(0,1.5fr)_150px_110px]">
+                    <div className="grid gap-3">
                         <div className="space-y-2">
                             <Label>Profesional *</Label>
                             <Select value={selectedSpecialistId} onValueChange={(value) => {
@@ -825,34 +798,6 @@ export function AppointmentDialog({
                             </Select>
                         </div>
 
-                        <div className="space-y-2">
-                            <Label>Costo</Label>
-                            <Input
-                                type="number"
-                                min="0"
-                                step="0.01"
-                                value={paymentAmount}
-                                onChange={(event) => setPaymentAmount(event.target.value)}
-                                className="h-11 bg-background"
-                                placeholder="0.00"
-                            />
-                        </div>
-
-                        <div className="space-y-2">
-                            <Label>Moneda</Label>
-                            <Select value={paymentCurrency} onValueChange={setPaymentCurrency}>
-                                <SelectTrigger className="h-11 bg-background">
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {operationContext.currencies.map((currency) => (
-                                        <SelectItem key={currency} value={currency}>
-                                            {currency}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
                     </div>
 
                     <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_170px]">

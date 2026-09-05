@@ -191,6 +191,8 @@ async function purgeTenant(control, admin, tenantId) {
     await control.query('DELETE FROM "WebhookEvent" WHERE "tenantId"=$1', [tenantId]);
     await control.query('DELETE FROM "AuditLog" WHERE "tenantId"=$1', [tenantId]);
     await control.query('DELETE FROM "BillingEvent" WHERE payload #>> \'{data,object,metadata,tenantId}\'=$1 OR payload #>> \'{data,custom_data,tenantId}\'=$1 OR payload #>> \'{data,metadata,tenantId}\'=$1', [tenantId]);
+    await control.query('DELETE FROM "UsageLedger" WHERE "tenantId"=$1', [tenantId]);
+    await control.query('DELETE FROM "CommercialEvent" WHERE "tenantId"=$1', [tenantId]);
     await control.query('DELETE FROM "Tenant" WHERE id=$1', [tenantId]);
 }
 
@@ -239,6 +241,7 @@ export async function runDeletionOnce(control, admin) {
                     await tx.query('DELETE FROM "LegalAcceptance" WHERE "userId"=$1 OR "signupIntentId" IN (SELECT id FROM "SignupIntent" WHERE lower(email)=lower($2))', [job.userId,user.email]);
                     await tx.query('DELETE FROM "SignupIntent" WHERE "userId"=$1 OR lower(email)=lower($2)', [job.userId,user.email]);
                     await tx.query('DELETE FROM "TenantInvitation" WHERE "invitedByUserId"=$1 OR "acceptedByUserId"=$1 OR lower(email)=lower($2)', [job.userId,user.email]);
+                    await tx.query('UPDATE "CommercialEvent" SET "userId"=NULL WHERE "userId"=$1', [job.userId]);
                     await tx.query('DELETE FROM "AuditLog" WHERE "actorUserId"=$1', [job.userId]);
                     await tx.query('DELETE FROM "User" WHERE id=$1', [job.userId]);
                 }

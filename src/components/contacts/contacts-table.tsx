@@ -36,7 +36,6 @@ import { ContactsBulkDeleteDialog } from "@/components/contacts/contacts-bulk-de
 import { useToast } from "@/components/ui/use-toast";
 import { getContactFullName } from "@/lib/contact-name";
 import { normalizeBusinessHours } from "@/lib/calendar/business-hours";
-import { getOperationDateKey } from "@/lib/operation-dates";
 import { hasAnyPermission, hasPermission } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
 
@@ -53,9 +52,6 @@ type ClientAppointment = {
     visitMode: string;
     meetStatus: string;
     meetLink: string | null;
-    paymentStatus: string;
-    paymentAmount: number;
-    paymentCurrency: string;
     remindersOptOut: boolean;
     googleCalendarId: string | null;
     startTime: string | Date;
@@ -292,10 +288,22 @@ export function ContactsTable({ contacts }: ContactsPageProps) {
             setConfirmingAppointmentId(null);
         }
     };
-    const handleCompleteAppointment = (appointment: ClientAppointment) => {
+    const handleCompleteAppointment = async (appointment: ClientAppointment) => {
         setCompletingAppointmentId(appointment.id);
-        const appointmentDate = getOperationDateKey(appointment.startTime, businessHours.timeZone);
-        router.push(`/dashboard/reception?date=${encodeURIComponent(appointmentDate)}&finish=${encodeURIComponent(appointment.id)}`);
+        try {
+            const result = await updateAppointmentStatus(appointment.id, "completed");
+            if (!result.success) throw new Error(result.error);
+            toast({ title: "Cita finalizada" });
+            router.refresh();
+        } catch (error) {
+            toast({
+                title: "No se pudo finalizar",
+                description: error instanceof Error ? error.message : "Inténtalo nuevamente.",
+                variant: "destructive",
+            });
+        } finally {
+            setCompletingAppointmentId(null);
+        }
     };
     const openAppointmentDialog = (contact: ContactTableItem) => {
         setAppointmentClient(contact);
@@ -490,8 +498,8 @@ export function ContactsTable({ contacts }: ContactsPageProps) {
                                             <Button
                                                 type="button"
                                                 className={cn("h-9 gap-2 rounded-full px-3", isAttended && "bg-emerald-600 hover:bg-emerald-600")}
-                                                disabled={!canConfirmAppointments || !actionAppointment || actionAppointment.paymentStatus === "paid" || completingAppointmentId === actionAppointment.id}
-                                                onClick={() => actionAppointment && handleCompleteAppointment(actionAppointment)}
+                                                disabled={!canConfirmAppointments || !actionAppointment || isAttended || completingAppointmentId === actionAppointment.id}
+                                                onClick={() => actionAppointment && void handleCompleteAppointment(actionAppointment)}
                                             >
                                                 <CheckCircle2 className="h-4 w-4" /> Atendido
                                             </Button>
@@ -551,9 +559,6 @@ export function ContactsTable({ contacts }: ContactsPageProps) {
                         visitMode: editingAppointment.visitMode,
                         meetStatus: editingAppointment.meetStatus,
                         meetLink: editingAppointment.meetLink,
-                        paymentStatus: editingAppointment.paymentStatus,
-                        paymentAmount: editingAppointment.paymentAmount,
-                        paymentCurrency: editingAppointment.paymentCurrency,
                         remindersOptOut: editingAppointment.remindersOptOut,
                         googleCalendarId: editingAppointment.googleCalendarId,
                     },

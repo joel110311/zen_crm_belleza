@@ -9,16 +9,14 @@ import {
     Image as ImageIcon,
     Loader2,
     Palette,
-    Percent,
     Play,
-    ReceiptText,
     Save,
     Settings,
-    Stethoscope,
     Store,
     Trash2,
     Upload,
     Users,
+    UserRoundCog,
     Volume2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -26,7 +24,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { ThemeCustomizer } from "@/components/theme-customizer";
 import { useToast } from "@/components/ui/use-toast";
@@ -83,7 +80,7 @@ const SECTIONS: Array<{
     { id: "ai", label: "Cerebro IA", description: "Claves y servicios de inteligencia", icon: Bot, permission: "ai.manage", platformInternal: true },
     { id: "whatsapp", label: "Canal WhatsApp", description: "WhatsApp API oficial y conexion alternativa por QR", icon: WhatsAppIcon, permission: "integrations.manage", platformInternal: true },
     { id: "calendar", label: "Calendario", description: "Google Calendar y recordatorios de citas", icon: CalendarDays, permissions: ["calendar.manage", "integrations.manage"] },
-    { id: "specialists", label: "Especialistas", description: "Perfiles, agendas, servicios y bloqueos", icon: Stethoscope, permission: "specialists.manage", separateTenantPage: true },
+    { id: "specialists", label: "Especialistas", description: "Equipo, servicios, agenda y disponibilidad", icon: UserRoundCog, permission: "specialists.manage", separateTenantPage: true },
     { id: "chats", label: "Notificaciones", description: "Sonidos y preferencias del inbox", icon: Volume2 },
 ];
 
@@ -118,13 +115,6 @@ function SettingsWorkspace() {
     const [clinicAddress, setClinicAddress] = useState("Dirección del negocio");
     const [clinicLogoUrl, setClinicLogoUrl] = useState("");
     const [clinicLogoScale, setClinicLogoScale] = useState(100);
-    const [posTaxEnabled, setPosTaxEnabled] = useState(false);
-    const [posTaxRate, setPosTaxRate] = useState(16);
-    const [posTicketEnabled, setPosTicketEnabled] = useState(true);
-    const [posTicketShowUnitPrice, setPosTicketShowUnitPrice] = useState(true);
-    const [posTicketFullDescription, setPosTicketFullDescription] = useState(false);
-    const [posTicketHeader, setPosTicketHeader] = useState("Zen CRM Belleza\nServicios de belleza\nDirección del negocio");
-    const [posTicketFooter, setPosTicketFooter] = useState("Gracias por su compra\nRegrese pronto");
     const [reminderWhatsAppEnabled, setReminderWhatsAppEnabled] = useState(true);
     const [appointmentRemindersEnabled, setAppointmentRemindersEnabled] = useState(true);
     const [appointmentReminderOffsets, setAppointmentReminderOffsets] = useState<number[]>([1440, 240]);
@@ -195,13 +185,6 @@ function SettingsWorkspace() {
                 setClinicAddress(settings.clinicAddress || "Dirección del negocio");
                 setClinicLogoUrl(settings.clinicLogoUrl || "");
                 setClinicLogoScale(Number(settings.clinicLogoScale || 100));
-                setPosTaxEnabled(Boolean(settings.posTaxEnabled));
-                setPosTaxRate(Number(settings.posTaxRate || 16));
-                setPosTicketEnabled(settings.posTicketEnabled !== false);
-                setPosTicketShowUnitPrice(settings.posTicketShowUnitPrice !== false);
-                setPosTicketFullDescription(Boolean(settings.posTicketFullDescription));
-                setPosTicketHeader(settings.posTicketHeader || "Zen CRM Belleza\nServicios de belleza\nDirección del negocio");
-                setPosTicketFooter(settings.posTicketFooter || "Gracias por su compra\nRegrese pronto");
                 setReminderWhatsAppEnabled(settings.reminderWhatsAppEnabled !== false);
                 setAppointmentRemindersEnabled(settings.appointmentRemindersEnabled !== false);
                 setAppointmentReminderOffsets(
@@ -317,13 +300,6 @@ function SettingsWorkspace() {
                               clinicAddress,
                               clinicLogoUrl,
                               clinicLogoScale,
-                              posTaxEnabled,
-                              posTaxRate,
-                              posTicketEnabled,
-                              posTicketShowUnitPrice,
-                              posTicketFullDescription,
-                              posTicketHeader,
-                              posTicketFooter,
                           }
                     : saveSection === "calendar"
                         ? {
@@ -809,7 +785,7 @@ function SettingsWorkspace() {
                             <div>
                                 <h2 className="font-semibold">Datos del negocio</h2>
                                 <p className="text-sm text-muted-foreground">
-                                    Información comercial usada en el portal, comprobantes e impresiones.
+                                    Información pública usada para presentar correctamente el negocio.
                                 </p>
                             </div>
 
@@ -909,128 +885,6 @@ function SettingsWorkspace() {
                                             </div>
                                         );
                                     })}
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="rounded-2xl border bg-background p-4">
-                            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                                <div>
-                                    <h2 className="flex items-center gap-2 font-semibold">
-                                        <ReceiptText className="h-4 w-4 text-primary" />
-                                        Caja, IVA y ticket
-                                    </h2>
-                                    <p className="text-sm text-muted-foreground">
-                                        Define impuestos de productos y el formato base del ticket de punto de venta.
-                                    </p>
-                                </div>
-                                <div className="flex items-center gap-2 rounded-full border bg-background px-3 py-2">
-                                    <Switch checked={posTicketEnabled} onCheckedChange={setPosTicketEnabled} />
-                                    <span className="text-sm font-medium">Ticket activo</span>
-                                </div>
-                            </div>
-
-                            <div className="mt-4 grid gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
-                                <div className="space-y-4">
-                                    <div className="rounded-2xl border bg-background p-4">
-                                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                                            <div>
-                                                <Label className="flex items-center gap-2 text-base">
-                                                    <Percent className="h-4 w-4 text-primary" />
-                                                    Productos con IVA
-                                                </Label>
-                                                <p className="mt-1 text-sm text-muted-foreground">
-                                                    Cuando esta activo, presupuestos y tickets muestran subtotal, IVA y total.
-                                                </p>
-                                            </div>
-                                            <Switch checked={posTaxEnabled} onCheckedChange={setPosTaxEnabled} />
-                                        </div>
-                                        {posTaxEnabled ? (
-                                            <div className="mt-4 max-w-[180px] space-y-2">
-                                                <Label>IVA (%)</Label>
-                                                <Input
-                                                    type="number"
-                                                    min="0"
-                                                    max="100"
-                                                    step="0.01"
-                                                    value={posTaxRate}
-                                                    onChange={(event) => setPosTaxRate(Number(event.target.value || 0))}
-                                                />
-                                            </div>
-                                        ) : null}
-                                    </div>
-
-                                    <div className="grid gap-4 md:grid-cols-2">
-                                        <div className="space-y-2">
-                                            <Label>Encabezado del ticket</Label>
-                                            <Textarea
-                                                rows={5}
-                                                value={posTicketHeader}
-                                                onChange={(event) => setPosTicketHeader(event.target.value)}
-                                                placeholder="Nombre del negocio&#10;Direccion&#10;Telefono"
-                                            />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label>Pie del ticket</Label>
-                                            <Textarea
-                                                rows={5}
-                                                value={posTicketFooter}
-                                                onChange={(event) => setPosTicketFooter(event.target.value)}
-                                                placeholder="Gracias por su compra&#10;Regrese pronto"
-                                            />
-                                        </div>
-                                    </div>
-
-                                    <div className="grid gap-3 md:grid-cols-2">
-                                        <label className="flex items-center gap-3 rounded-2xl border bg-background p-4 text-sm">
-                                            <Switch checked={posTicketShowUnitPrice} onCheckedChange={setPosTicketShowUnitPrice} />
-                                            Incluir precio unitario
-                                        </label>
-                                        <label className="flex items-center gap-3 rounded-2xl border bg-background p-4 text-sm">
-                                            <Switch checked={posTicketFullDescription} onCheckedChange={setPosTicketFullDescription} />
-                                            Imprimir descripcion completa
-                                        </label>
-                                    </div>
-                                </div>
-
-                                <div className="rounded-2xl border bg-background p-4">
-                                    <p className="mb-3 text-sm font-semibold">Vista previa</p>
-                                    <div className="mx-auto max-w-[240px] rounded-lg border bg-white p-3 font-mono text-[11px] leading-5 text-slate-950 shadow-sm">
-                                        {(posTicketHeader || "Zen CRM Oftalmo").split("\n").filter(Boolean).map((line, index) => (
-                                            <p key={`header-${index}`} className={index === 0 ? "text-center font-bold uppercase" : "text-center"}>
-                                                {line}
-                                            </p>
-                                        ))}
-                                        <div className="my-2 border-t border-dashed" />
-                                        <div className="flex justify-between">
-                                            <span>1 Consulta</span>
-                                            <span>$900.00</span>
-                                        </div>
-                                        {posTicketShowUnitPrice ? (
-                                            <p className="text-slate-500">P.U. $900.00</p>
-                                        ) : null}
-                                        {posTaxEnabled ? (
-                                            <>
-                                                <div className="mt-2 flex justify-between">
-                                                    <span>Subtotal</span>
-                                                    <span>$900.00</span>
-                                                </div>
-                                                <div className="flex justify-between">
-                                                    <span>IVA {posTaxRate || 0}%</span>
-                                                    <span>${(900 * ((Number(posTaxRate) || 0) / 100)).toFixed(2)}</span>
-                                                </div>
-                                            </>
-                                        ) : null}
-                                        <div className="my-2 border-t border-dashed" />
-                                        <div className="flex justify-between text-sm font-bold">
-                                            <span>Total</span>
-                                            <span>${(900 * (1 + (posTaxEnabled ? (Number(posTaxRate) || 0) / 100 : 0))).toFixed(2)}</span>
-                                        </div>
-                                        <div className="my-2 border-t border-dashed" />
-                                        {(posTicketFooter || "Gracias").split("\n").filter(Boolean).map((line, index) => (
-                                            <p key={`footer-${index}`} className="text-center">{line}</p>
-                                        ))}
-                                    </div>
                                 </div>
                             </div>
                         </div>

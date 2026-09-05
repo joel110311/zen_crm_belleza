@@ -21,7 +21,6 @@ type PortalSettings = {
     portalClinicName: string;
     portalIntro: string;
     portalPrimaryColor: string;
-    portalPaymentInstructions: string;
     portalSocialLinks: PortalSocialLink[];
 };
 
@@ -32,7 +31,6 @@ const DEFAULT_PORTAL_SETTINGS: PortalSettings = {
     portalClinicName: "Zen CRM Belleza",
     portalIntro: "Aparta el horario para tu próximo servicio.",
     portalPrimaryColor: "#4B5F25",
-    portalPaymentInstructions: "",
 };
 
 export function PortalContentPanel() {
@@ -60,7 +58,6 @@ export function PortalContentPanel() {
                 if (!active || !settings) return;
                 const storedPortalName = settings.portalClinicName || settings.clinicName || "";
                 const storedPortalIntro = settings.portalIntro || "";
-                const storedPaymentInstructions = settings.portalPaymentInstructions || "";
                 setBrandName(settings.brandName || DEFAULT_BRAND_NAME);
                 setBrandLogoUrl(settings.brandLogoUrl || "");
                 setPortalSettings({
@@ -72,9 +69,6 @@ export function PortalContentPanel() {
                     portalPrimaryColor: !settings.portalPrimaryColor || settings.portalPrimaryColor.toUpperCase() === "#2563EB"
                         ? "#4B5F25"
                         : settings.portalPrimaryColor,
-                    portalPaymentInstructions: /recepcion|consulta oftalm|antes de tu cita/i.test(storedPaymentInstructions)
-                        ? "El método de pago o apartado se confirmará al reservar."
-                        : storedPaymentInstructions,
                 });
             })
             .catch(() => {
@@ -327,14 +321,7 @@ export function PortalContentPanel() {
                                 <span className="text-sm text-muted-foreground">{portalSettings.portalPrimaryColor}</span>
                             </div>
                         </div>
-                        <div className="space-y-2">
-                            <Label>Indicaciones para el pago o apartado</Label>
-                            <Input
-                                value={portalSettings.portalPaymentInstructions}
-                                onChange={(event) => setPortalSettings((current) => ({ ...current, portalPaymentInstructions: event.target.value }))}
-                                placeholder="Opcional: anticipo, transferencia o pago en el local"
-                            />
-                        </div>
+                        <p className="self-end pb-2 text-sm text-muted-foreground">Este color identifica botones y elementos destacados del portal.</p>
                     </div>
                     <fieldset className="space-y-4 rounded-xl border p-4" disabled={isPending}>
                         <legend className="px-2 text-base font-semibold">Redes sociales y enlaces</legend>

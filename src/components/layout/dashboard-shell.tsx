@@ -3,8 +3,9 @@
 import { usePathname } from "next/navigation";
 import { Header } from "@/components/layout/header";
 import { cn } from "@/lib/utils";
+import { TrialExpiryBanner, type TrialNotice } from "@/components/billing/trial-expiry-banner";
 
-export function DashboardShell({ children }: { children: React.ReactNode }) {
+export function DashboardShell({ children, trialNotice }: { children: React.ReactNode; trialNotice?: TrialNotice | null }) {
     const pathname = usePathname();
     const workspacePath = pathname.replace(/^\/t\/[^/]+/, "/dashboard");
     const isInbox = workspacePath === "/dashboard/inbox";
@@ -16,6 +17,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
     return (
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden bg-background pt-14 md:pt-0">
             {!hidesGlobalHeader && <Header />}
+            {trialNotice ? <TrialExpiryBanner notice={trialNotice} /> : null}
             <main
                 className={cn(
                     "min-h-0 flex-1 overflow-auto",

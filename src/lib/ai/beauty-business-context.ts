@@ -129,8 +129,6 @@ export async function buildBeautyBusinessContext(settings: AppSystemSettings) {
         `- Giro o subtítulo: ${cleanInline(settings.clinicSubtitle, "Negocio de belleza")}`,
         `- Dirección: ${cleanInline(settings.clinicAddress, "No configurada")}`,
         `- Zona horaria: ${settings.businessTimeZone}`,
-        `- Moneda principal: ${settings.paymentDefaultCurrency || "MXN"}`,
-        `- Indicaciones de pago: ${cleanInline(settings.portalPaymentInstructions, "Confirmar directamente con el negocio")}`,
         `- Recordatorios automáticos: ${settings.appointmentRemindersEnabled ? formatReminderOffsets(settings.appointmentReminderOffsets) : "desactivados"}`,
         "",
         "SERVICIOS ACTIVOS",

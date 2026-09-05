@@ -12,7 +12,6 @@ type Booking = {
     startsAt: string;
     serviceName: string;
     specialistName: string;
-    payment: { status: string; amount: number; currency: string; method: string | null };
     cancellationReason: string | null;
     cancellable: boolean;
 };

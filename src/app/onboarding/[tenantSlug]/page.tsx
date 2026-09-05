@@ -52,7 +52,7 @@ export default async function TenantOnboardingStatusPage({
     }
 
     if (tenant.status === "READY") {
-        redirect(`/t/${tenant.slug}/onboarding`);
+        redirect(tenant.accessMode === "BILLING_ONLY" ? `/billing/${tenant.slug}` : `/t/${tenant.slug}/onboarding`);
     }
 
     const content = STATUS_COPY[tenant.status] || STATUS_COPY.PROVISIONING;

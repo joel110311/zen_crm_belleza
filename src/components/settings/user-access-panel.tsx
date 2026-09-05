@@ -190,7 +190,7 @@ export function UserAccessPanel({ currentUserId }: { currentUserId?: string }) {
                         Administrador incluye control total: todos los menús, configuración y alta de usuarios.
                     </p>
                     <p className="mt-1 text-xs text-muted-foreground">
-                        El nombre aqui es solo para acceso. El perfil clinico, titulo, cedula, foto y agenda se administran en Especialistas.
+                        El nombre aquí es sólo para el acceso. El perfil de trabajo, los servicios, la foto y la agenda se administran en Especialistas.
                     </p>
                 </div>
                 <div className="flex flex-col gap-2 sm:flex-row">

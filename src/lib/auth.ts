@@ -6,6 +6,7 @@ import { getActiveTenantAccessSubject } from "@/lib/active-tenant-context";
 import { getControlDb } from "@/lib/control-db";
 import { normalizePermissions, normalizeRole } from "@/lib/permissions";
 import { consumeRateLimit, getRequestIp, resetRateLimit } from "@/lib/security";
+import { isLegacyApplicationRequest, isTrustedApplicationRedirect } from "@/lib/application-host";
 
 const AUTH_RATE_LIMIT = { limit: 8, windowMs: 15 * 60 * 1000 };
 
@@ -18,6 +19,7 @@ type AuthIdentity = {
     permissions: unknown;
     scope: "legacy" | "control";
     securityVersion: number;
+    isPlatformAdmin: boolean;
 };
 
 type AuthUserClaims = {
@@ -25,6 +27,7 @@ type AuthUserClaims = {
     permissions?: unknown;
     authScope?: unknown;
     securityVersion?: unknown;
+    isPlatformAdmin?: unknown;
 };
 
 type SessionUserClaims = {
@@ -32,14 +35,23 @@ type SessionUserClaims = {
     role?: unknown;
     permissions?: unknown;
     authScope?: "legacy" | "control";
+    isPlatformAdmin?: boolean;
 };
+
+function isConfiguredPlatformAdmin(email: string) {
+    return `${process.env.PLATFORM_ADMIN_EMAILS || ""},${process.env.INITIAL_ADMIN_EMAIL || ""}`
+        .split(",")
+        .map((value) => value.trim().toLowerCase())
+        .filter(Boolean)
+        .includes(email.toLowerCase());
+}
 
 function isControlPlaneAuthEnabled(): boolean {
     return process.env.MULTITENANT_AUTH_ENABLED === "true";
 }
 
-async function findAuthIdentityByEmail(email: string): Promise<AuthIdentity | null> {
-    if (isControlPlaneAuthEnabled()) {
+async function findAuthIdentityByEmail(email: string, useControlPlane: boolean): Promise<AuthIdentity | null> {
+    if (useControlPlane) {
         const user = await getControlDb().user.findUnique({
             where: { email },
             select: {
@@ -48,6 +60,7 @@ async function findAuthIdentityByEmail(email: string): Promise<AuthIdentity | nu
                 name: true,
                 passwordHash: true,
                 securityVersion: true,
+                isPlatformAdmin: true,
             },
         });
 
@@ -66,6 +79,7 @@ async function findAuthIdentityByEmail(email: string): Promise<AuthIdentity | nu
             permissions: [],
             scope: "control",
             securityVersion: user.securityVersion,
+            isPlatformAdmin: user.isPlatformAdmin || isConfiguredPlatformAdmin(user.email),
         };
     }
 
@@ -83,6 +97,7 @@ async function findAuthIdentityByEmail(email: string): Promise<AuthIdentity | nu
         permissions: user.permissions,
         scope: "legacy",
         securityVersion: 0,
+        isPlatformAdmin: false,
     };
 }
 
@@ -91,7 +106,7 @@ async function refreshAuthIdentity(id: string, scope: "legacy" | "control"): Pro
         if (await getControlDb().accountDeletion.findUnique({ where: { userId: id } })) return null;
         const user = await getControlDb().user.findUnique({
             where: { id },
-            select: { id: true, email: true, name: true, securityVersion: true },
+            select: { id: true, email: true, name: true, securityVersion: true, isPlatformAdmin: true },
         });
 
         if (!user) {
@@ -106,6 +121,7 @@ async function refreshAuthIdentity(id: string, scope: "legacy" | "control"): Pro
             permissions: [],
             scope,
             securityVersion: user.securityVersion,
+            isPlatformAdmin: user.isPlatformAdmin || isConfiguredPlatformAdmin(user.email),
         };
     }
 
@@ -126,6 +142,7 @@ async function refreshAuthIdentity(id: string, scope: "legacy" | "control"): Pro
         permissions: user.permissions,
         scope,
         securityVersion: 0,
+        isPlatformAdmin: false,
     };
 }
 
@@ -150,7 +167,10 @@ export const { handlers, signIn, signOut, auth } = NextAuth(() => ({
                 const rateLimit = consumeRateLimit(rateLimitKey, AUTH_RATE_LIMIT);
                 if (!rateLimit.allowed) return null;
 
-                const user = await findAuthIdentityByEmail(email);
+                const user = await findAuthIdentityByEmail(
+                    email,
+                    isControlPlaneAuthEnabled() && !isLegacyApplicationRequest(request.headers),
+                );
                 if (!user) {
                     return null;
                 }
@@ -175,11 +195,16 @@ export const { handlers, signIn, signOut, auth } = NextAuth(() => ({
                     permissions: normalizePermissions(user.permissions),
                     authScope: user.scope,
                     securityVersion: user.securityVersion,
+                    isPlatformAdmin: user.isPlatformAdmin,
                 };
             },
         }),
     ],
     callbacks: {
+        async redirect({ url, baseUrl }) {
+            if (url.startsWith("/")) return `${baseUrl}${url}`;
+            return isTrustedApplicationRedirect(url) ? url : baseUrl;
+        },
         async jwt({ token, user }) {
             if (user) {
                 const userClaims = user as typeof user & AuthUserClaims;
@@ -188,6 +213,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth(() => ({
                 token.id = user.id;
                 token.authScope = userClaims.authScope === "control" ? "control" : "legacy";
                 token.securityVersion = typeof userClaims.securityVersion === "number" ? userClaims.securityVersion : 0;
+                token.isPlatformAdmin = userClaims.isPlatformAdmin === true;
                 // user.name is guaranteed non-null from authorize()
                 token.name = user.name;
             }
@@ -205,6 +231,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth(() => ({
                             delete token.permissions;
                             delete token.authScope;
                             delete token.securityVersion;
+                            delete token.isPlatformAdmin;
                             token.name = "Sesión revocada";
                             return token;
                         }
@@ -214,12 +241,14 @@ export const { handlers, signIn, signOut, auth } = NextAuth(() => ({
                         token.permissions = normalizePermissions(dbUser.permissions);
                         token.authScope = dbUser.scope;
                         token.securityVersion = dbUser.securityVersion;
+                        token.isPlatformAdmin = dbUser.isPlatformAdmin;
                     } else {
                         delete token.id;
                         delete token.role;
                         delete token.permissions;
                         delete token.authScope;
                         delete token.securityVersion;
+                        delete token.isPlatformAdmin;
                         token.name = "Usuario desactivado";
                     }
                 } catch {
@@ -242,6 +271,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth(() => ({
                     sessionUser.id = token.id;
                 }
                 sessionUser.authScope = token.authScope === "control" ? "control" : "legacy";
+                sessionUser.isPlatformAdmin = token.isPlatformAdmin === true;
                 session.user.name = (token.name as string) || (token.email as string) || "Usuario";
 
                 // A control-plane login gets its effective role from the membership of the

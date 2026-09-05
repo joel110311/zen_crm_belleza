@@ -55,9 +55,9 @@ function specialistData(rawInput: unknown, partial = false) {
         email: input.email === undefined && partial ? undefined : emailValue(input.email),
         phone: input.phone === undefined && partial ? undefined : optionalText(input.phone, "Teléfono", 40),
         professionalTitle: input.professionalTitle === undefined && partial ? undefined : optionalText(input.professionalTitle, "Título profesional", 160),
-        professionalLicense: input.professionalLicense === undefined && partial ? undefined : optionalText(input.professionalLicense, "Cédula profesional", 100),
+        professionalLicense: input.professionalLicense === undefined && partial ? undefined : optionalText(input.professionalLicense, "Certificación", 100),
         color: input.color === undefined && partial ? undefined : text(input.color, "Color", { max: 20, fallback: "#2563EB" }) || "#2563EB",
-        room: input.room === undefined && partial ? undefined : optionalText(input.room, "Consultorio", 100),
+        room: input.room === undefined && partial ? undefined : optionalText(input.room, "Área o estación", 100),
         bio: input.bio === undefined && partial ? undefined : optionalText(input.bio, "Biografía", 2000),
         photoUrl: input.photoUrl === undefined && partial ? undefined : optionalText(input.photoUrl, "Foto", 2000),
         defaultDurationMinutes: input.defaultDurationMinutes === undefined && partial

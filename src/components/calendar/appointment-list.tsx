@@ -121,15 +121,6 @@ export function AppointmentList({ appointments, onEdit, onDelete }: AppointmentL
                                                 </Badge>
                                             ) : null}
                                             {apt.meetLink ? <Badge variant="outline">Meet listo</Badge> : null}
-                                            {apt.paymentStatus === "paid" ? (
-                                                <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700">
-                                                    Pagada
-                                                </Badge>
-                                            ) : apt.paymentStatus === "pending" ? (
-                                                <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-700">
-                                                    Pago pendiente
-                                                </Badge>
-                                            ) : null}
                                         </div>
                                         {apt.notes && (
                                             <span className="text-xs text-slate-400 truncate max-w-[200px] block">

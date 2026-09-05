@@ -1,4 +1,5 @@
 import type OpenAI from "openai";
+import { assertChatbotUsageAvailable } from "@/lib/billing/chatbot-usage";
 import { prisma } from "@/lib/db";
 import { generateCompletion } from "@/lib/ai/openai";
 import { buildKnowledgeContext } from "@/lib/brain/knowledge";
@@ -295,6 +296,7 @@ export async function generateConversationReply(
     latestUserMessage: string,
     automationInstruction?: string | null,
 ) {
+    await assertChatbotUsageAvailable();
     const [settings, conversation] = await Promise.all([
         getSystemSettingsOrDefaults(),
         prisma.conversation.findUnique({

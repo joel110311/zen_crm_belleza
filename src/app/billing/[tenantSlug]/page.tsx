@@ -30,12 +30,9 @@ export default async function BillingPage({
     }
 
     const db = getControlDb();
-    const [plans, trial, subscription] = await Promise.all([
+    const [plans, trial, subscription, selection] = await Promise.all([
         db.plan.findMany({
-            where: {
-                isActive: true,
-                prices: { some: { provider: "STRIPE", countryCode: null, isActive: true } },
-            },
+            where: { isActive: true },
             orderBy: { createdAt: "asc" },
             select: {
                 slug: true,
@@ -56,11 +53,17 @@ export default async function BillingPage({
             orderBy: { updatedAt: "desc" },
             select: { status: true, currentPeriodEndsAt: true, providerCustomerId: true, plan: { select: { name: true } } },
         }),
+        db.billingSelection.findUnique({
+            where: { tenantId: context.tenant.tenantId },
+            select: { status: true, scheduledFor: true, lastError: true, providerCustomerId: true, plan: { select: { name: true, monthlyAmountCents: true, currency: true } } },
+        }),
     ]);
 
     const hasStripeCustomer = Boolean(subscription?.providerCustomerId);
     const checkoutNotice = checkout === "success"
-        ? "Recibimos tu regreso de Stripe. El acceso se actualizará cuando llegue el webhook firmado."
+        ? "Tu plan quedó registrado. Stripe realizará el primer cobro cuando termine la prueba y confirmaremos el acceso mediante un webhook firmado."
+        : checkout === "scheduled"
+            ? "Tu tarjeta quedó protegida en Stripe. El plan se activará y cobrará cuando termine la prueba."
         : checkout === "cancelled"
             ? "El pago fue cancelado. Tu espacio y prueba no cambiaron."
             : null;
@@ -70,7 +73,7 @@ export default async function BillingPage({
             <header className="max-w-2xl">
                 <p className="text-sm font-semibold text-primary">Facturación · {context.tenant.displayName}</p>
                 <h1 className="mt-2 text-3xl font-semibold tracking-tight">Elige y administra tu plan</h1>
-                <p className="mt-3 text-sm leading-6 text-muted-foreground">El cobro ocurre en una página segura de Stripe; nunca almacenamos los datos de tarjeta.</p>
+                <p className="mt-3 text-sm leading-6 text-muted-foreground">El cobro ocurre en una página segura de Stripe; nunca almacenamos los datos de tarjeta. Si eliges durante la prueba, hoy pagas $0 y el primer cargo ocurre al finalizar.</p>
             </header>
             {checkoutNotice ? <p className="mt-6 rounded-lg border bg-muted/40 px-4 py-3 text-sm">{checkoutNotice}</p> : null}
             <section className="mt-6 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm leading-6">
@@ -84,11 +87,13 @@ export default async function BillingPage({
                     const amount = interval === "annual" ? plan.annualAmountCents : plan.monthlyAmountCents;
                     return (
                         <article key={plan.slug} className="flex flex-col rounded-xl border bg-card p-5 shadow-sm">
-                            <h2 className="text-lg font-semibold">{plan.name}</h2>
+                            <div className="flex items-center justify-between gap-2"><h2 className="text-lg font-semibold">{plan.name}</h2>{plan.slug === "automatiza" ? <span className="rounded-full bg-primary/10 px-2 py-1 text-[11px] font-semibold text-primary">Más elegido</span> : null}</div>
                             <p className="mt-2 min-h-10 text-sm text-muted-foreground">{plan.description || "Plan de suscripción"}</p>
                             <p className="mt-5 text-2xl font-semibold">{formatMoney(amount, plan.currency)}<span className="ml-1 text-sm font-normal text-muted-foreground">/{interval === "annual" ? "año" : "mes"}</span></p>
                             <div className="mt-6">
-                                <BillingActions tenantSlug={context.tenant.slug} planSlug={plan.slug} interval={interval || undefined} />
+                                {interval
+                                    ? <BillingActions tenantSlug={context.tenant.slug} planSlug={plan.slug} interval={interval} />
+                                    : <p className="rounded-lg bg-muted px-3 py-2 text-center text-xs text-muted-foreground">Pago en línea por configurar</p>}
                             </div>
                         </article>
                     );
@@ -99,8 +104,11 @@ export default async function BillingPage({
                 <p className="mt-2 text-sm text-muted-foreground">
                     {subscription
                         ? `${subscription.plan?.name || "Plan"}: ${subscription.status.toLowerCase().replaceAll("_", " ")}${subscription.currentPeriodEndsAt ? ` · próximo corte ${new Intl.DateTimeFormat("es-MX", { dateStyle: "medium" }).format(subscription.currentPeriodEndsAt)}` : ""}`
+                        : selection && ["PENDING_SETUP", "SCHEDULED", "PROCESSING"].includes(selection.status)
+                            ? `${selection.plan.name}: ${selection.status === "PENDING_SETUP" ? "falta confirmar la tarjeta" : `programado para ${new Intl.DateTimeFormat("es-MX", { dateStyle: "medium", timeStyle: "short" }).format(selection.scheduledFor)}`}. Puedes cambiar de plan antes de esa fecha desde las opciones superiores.`
                         : trial ? `Prueba activa hasta ${new Intl.DateTimeFormat("es-MX", { dateStyle: "medium" }).format(trial.endsAt)}.` : "Sin suscripción activa."}
                 </p>
+                {selection?.status === "FAILED" ? <p className="mt-3 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">No fue posible activar el plan. No realizaremos intentos ocultos; soporte puede revisar y reintentar la activación. {selection.lastError ? `Referencia: ${selection.lastError}` : ""}</p> : null}
                 <div className="mt-4 max-w-xs"><BillingActions tenantSlug={context.tenant.slug} canManage={hasStripeCustomer} /></div>
             </section>
         </main>

@@ -47,6 +47,13 @@ services:
       - MULTITENANT_CHANNELS_ENABLED=${MULTITENANT_CHANNELS_ENABLED:-true}
       - MULTITENANT_PRIVATE_STORAGE_ENABLED=${MULTITENANT_PRIVATE_STORAGE_ENABLED:-false}
       - SECURITY_HASH_SALT=${SECURITY_HASH_SALT:-}
+      - TRIAL_IDENTITY_PEPPER=${TRIAL_IDENTITY_PEPPER:-}
+      - TRIAL_IDENTITY_KEY_VERSION=${TRIAL_IDENTITY_KEY_VERSION:-1}
+      - PLATFORM_ADMIN_EMAILS=${PLATFORM_ADMIN_EMAILS:-}
+      - LEGACY_APP_HOSTS=${LEGACY_APP_HOSTS:-crm-belleza.synapselogik.com}
+      - BILLING_STRIPE_ENABLED=${BILLING_STRIPE_ENABLED:-false}
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-}
+      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET:-}
       - TENANT_CREDENTIALS_ENCRYPTION_KEY=${TENANT_CREDENTIALS_ENCRYPTION_KEY:-}
       - TENANT_CREDENTIALS_KEY_VERSION=${TENANT_CREDENTIALS_KEY_VERSION:-1}
       - CHANNEL_STATE_SIGNING_SECRET=${CHANNEL_STATE_SIGNING_SECRET:-}
@@ -97,7 +104,7 @@ services:
         condition: on-failure
       labels:
         - "traefik.enable=true"
-        - "traefik.http.routers.zencrm-belleza.rule=Host(`${APP_DOMAIN}`)"
+        - "traefik.http.routers.zencrm-belleza.rule=Host(`${APP_DOMAIN}`) || Host(`crm-belleza.synapselogik.com`)"
         - "traefik.http.routers.zencrm-belleza.entrypoints=websecure"
         - "traefik.http.routers.zencrm-belleza.tls=true"
         - "traefik.http.routers.zencrm-belleza.tls.certresolver=letsencryptresolver"
@@ -106,8 +113,9 @@ services:
 
   belleza-tenant-provisioner:
     image: ghcr.io/joel110311/zen_crm_belleza:latest
-    command: ["sh", "-c", "node migrate-control-plane.mjs && while true; do node provision-tenant.mjs --drain || true; sleep ${PROVISIONER_POLL_SECONDS:-15}; done"]
+    command: ["sh", "-c", "node migrate-legacy.mjs && node migrate-control-plane.mjs && while true; do node provision-tenant.mjs --drain || true; sleep ${PROVISIONER_POLL_SECONDS:-15}; done"]
     environment:
+      - DATABASE_URL=postgresql://zencrm:${POSTGRES_PASSWORD}@belleza-crm-db:5432/zencrm
       - CONTROL_DATABASE_URL=${CONTROL_DATABASE_URL:-}
       - TENANT_POSTGRES_ADMIN_URL=${TENANT_POSTGRES_ADMIN_URL:-}
       - CONTROL_DATABASE_REQUIRE_LEAST_PRIVILEGE=${CONTROL_DATABASE_REQUIRE_LEAST_PRIVILEGE:-true}
@@ -115,6 +123,9 @@ services:
       - TENANT_CREDENTIALS_ENCRYPTION_KEY=${TENANT_CREDENTIALS_ENCRYPTION_KEY:-}
       - TENANT_CREDENTIALS_KEY_VERSION=${TENANT_CREDENTIALS_KEY_VERSION:-1}
       - TENANT_TRIAL_DAYS=${TENANT_TRIAL_DAYS:-7}
+      - TRIAL_IDENTITY_PEPPER=${TRIAL_IDENTITY_PEPPER:-}
+      - TRIAL_IDENTITY_KEY_VERSION=${TRIAL_IDENTITY_KEY_VERSION:-1}
+      - SECURITY_HASH_SALT=${SECURITY_HASH_SALT:-}
       - PROVISIONER_POLL_SECONDS=${PROVISIONER_POLL_SECONDS:-15}
       - TZ=${TZ:-America/Mexico_City}
     networks:
@@ -163,6 +174,40 @@ services:
       - belleza-crm-db
     healthcheck:
       test: ["CMD", "node", "-e", "const{Pool}=require('pg');const p=new Pool({connectionString:process.env.CONTROL_DATABASE_URL});p.query('SELECT 1').then(()=>p.end()).then(()=>process.exit(0)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      restart_policy:
+        condition: on-failure
+
+  belleza-billing-lifecycle-worker:
+    image: ghcr.io/joel110311/zen_crm_belleza:latest
+    command: ["sh", "-c", "while true; do node billing-lifecycle-worker.mjs || true; sleep ${BILLING_LIFECYCLE_POLL_SECONDS:-60}; done"]
+    environment:
+      - CONTROL_DATABASE_URL=${CONTROL_DATABASE_URL:-}
+      - BILLING_STRIPE_ENABLED=${BILLING_STRIPE_ENABLED:-false}
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-}
+      - APP_BASE_URL=https://${APP_DOMAIN}
+      - RESEND_API_KEY=${RESEND_API_KEY:-}
+      - EMAIL_FROM=${EMAIL_FROM:-}
+      - EMAIL_REPLY_TO=${EMAIL_REPLY_TO:-}
+      - BILLING_LIFECYCLE_POLL_SECONDS=${BILLING_LIFECYCLE_POLL_SECONDS:-60}
+      - BILLING_LIFECYCLE_MAX_BATCH=${BILLING_LIFECYCLE_MAX_BATCH:-100}
+      - TZ=${TZ:-America/Mexico_City}
+    networks:
+      - SociosNet
+    depends_on:
+      - belleza-crm-db
+      - belleza-tenant-provisioner
+    healthcheck:
+      test: ["CMD", "node", "-e", "const{Pool}=require('pg');const p=new Pool({connectionString:process.env.CONTROL_DATABASE_URL});p.query(`SELECT to_regclass('\\\"TrialPolicy\\\"') AS t`).then(r=>p.end().then(()=>process.exit(r.rows[0].t?0:1))).catch(()=>process.exit(1))"]
       interval: 30s
       timeout: 10s
       retries: 5

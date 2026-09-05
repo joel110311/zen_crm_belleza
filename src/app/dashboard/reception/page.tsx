@@ -2,14 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
-    Banknote,
     BellRing,
     CalendarClock,
     CheckCircle2,
     ClipboardCheck,
-    CreditCard,
-    Landmark,
-    LinkIcon,
     LockKeyhole,
     Loader2,
     RefreshCw,
@@ -18,7 +14,6 @@ import {
     Video,
     XCircle,
 } from "lucide-react";
-import { markAppointmentDebt, markAppointmentNoCharge, registerAppointmentPayment } from "@/app/actions/billing";
 import {
     getReceptionAppointments,
     getAppointmentRemindersByDate,
@@ -34,7 +29,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/use-toast";
 import { INBOX_DRAFT_STORAGE_KEY, type InboxDraftPayload } from "@/lib/inbox-drafts";
 import {
@@ -119,28 +113,14 @@ export default function ReceptionPage() {
     const [selectedDate, setSelectedDate] = useState(requestedDate || getOperationTodayKey());
     const [operationContext, setOperationContext] = useState({
         locale: "es-MX",
-        defaultCurrency: "MXN",
         timeZone: "America/Mexico_City",
     });
     const [closingAppointment, setClosingAppointment] = useState<ReceptionAppointment | null>(null);
-    const [closingAmount, setClosingAmount] = useState("");
-    const [closingPaymentMethod, setClosingPaymentMethod] = useState("efectivo");
-    const [closingPaidWith, setClosingPaidWith] = useState("");
-    const [closingNotes, setClosingNotes] = useState("");
     const [remindersOpen, setRemindersOpen] = useState(false);
     const [reminderDate, setReminderDate] = useState(getOperationTodayKey());
     const [reminderFilter, setReminderFilter] = useState<ReminderFilter>("all");
     const [reminders, setReminders] = useState<AppointmentReminderRow[]>([]);
     const [isLoadingReminders, setIsLoadingReminders] = useState(false);
-
-    const formatMoney = useCallback(
-        (amount?: number | null, currency = operationContext.defaultCurrency) =>
-            new Intl.NumberFormat(operationContext.locale, {
-                style: "currency",
-                currency,
-            }).format(amount || 0),
-        [operationContext.defaultCurrency, operationContext.locale],
-    );
 
     const load = useCallback(async () => {
         const data = await getReceptionAppointments(selectedDate);
@@ -180,12 +160,10 @@ export default function ReceptionPage() {
                 if (!active || !context) return;
                 const nextContext = {
                     locale: context.locale || "es-MX",
-                    defaultCurrency: context.defaultCurrency || "MXN",
                     timeZone: context.timeZone || "America/Mexico_City",
                 };
                 setOperationContext({
                     locale: nextContext.locale,
-                    defaultCurrency: nextContext.defaultCurrency,
                     timeZone: nextContext.timeZone,
                 });
                 if (!selectedDateTouchedRef.current) {
@@ -204,8 +182,6 @@ export default function ReceptionPage() {
         waiting: appointments.filter((appointment) => ["waiting", "called"].includes(appointment.status)).length,
         inProgress: appointments.filter((appointment) => appointment.status === "in_progress").length,
         completed: appointments.filter((appointment) => appointment.status === "completed").length,
-        paid: appointments.filter((appointment) => appointment.paymentStatus === "paid").length,
-        pendingPayment: appointments.filter((appointment) => appointment.paymentStatus === "pending").length,
     }), [appointments]);
 
     const reminderStats = useMemo(() => ({
@@ -235,10 +211,6 @@ export default function ReceptionPage() {
 
     const openFinishDialog = useCallback((appointment: ReceptionAppointment) => {
         setClosingAppointment(appointment);
-        setClosingAmount(appointment.paymentAmount ? String(appointment.paymentAmount) : "");
-        setClosingPaymentMethod("efectivo");
-        setClosingPaidWith(appointment.paymentAmount ? String(appointment.paymentAmount) : "");
-        setClosingNotes("");
     }, []);
 
     useEffect(() => {
@@ -253,69 +225,23 @@ export default function ReceptionPage() {
 
     const closeFinishDialog = () => {
         setClosingAppointment(null);
-        setClosingAmount("");
-        setClosingPaymentMethod("efectivo");
-        setClosingPaidWith("");
-        setClosingNotes("");
     };
 
-    const finishAppointment = (mode: "paid" | "debt" | "no_charge") => {
+    const finishAppointment = () => {
         if (!closingAppointment) return;
 
         startTransition(async () => {
-            const amount = Number(closingAmount);
-            if ((mode === "paid" || mode === "debt") && (!Number.isFinite(amount) || amount <= 0)) {
-                toast({ title: "Monto inválido", description: "Captura un monto mayor a cero.", variant: "destructive" });
-                return;
-            }
-
-            if (mode === "paid") {
-                const paymentResult = await registerAppointmentPayment(closingAppointment.id, amount, closingPaymentMethod);
-                if (!paymentResult.success) {
-                    toast({ title: "No se pudo cobrar", description: paymentResult.error, variant: "destructive" });
-                    return;
-                }
-            }
-
-            if (mode === "debt") {
-                const debtResult = await markAppointmentDebt(closingAppointment.id, amount);
-                if (!debtResult.success) {
-                    toast({ title: "No se pudo dejar adeudo", description: debtResult.error, variant: "destructive" });
-                    return;
-                }
-            }
-
-            if (mode === "no_charge") {
-                const noChargeResult = await markAppointmentNoCharge(closingAppointment.id);
-                if (!noChargeResult.success) {
-                    toast({ title: "No se pudo cerrar sin cobro", description: noChargeResult.error, variant: "destructive" });
-                    return;
-                }
-            }
-
             const statusResult = await updateAppointmentStatus(closingAppointment.id, "completed");
             if (!statusResult.success) {
                 toast({ title: "No se pudo finalizar", description: statusResult.error, variant: "destructive" });
                 return;
             }
 
-            toast({
-                title: mode === "paid"
-                    ? "Consulta finalizada y cobro registrado"
-                    : mode === "debt"
-                        ? "Consulta finalizada con adeudo"
-                        : "Consulta finalizada sin cobro",
-            });
+            toast({ title: "Cita finalizada" });
             closeFinishDialog();
             await load();
         });
     };
-
-    const closingTotal = Number(closingAmount || 0);
-    const closingReceived = Number(closingPaidWith || 0);
-    const closingChange = closingPaymentMethod === "efectivo"
-        ? Math.max((Number.isFinite(closingReceived) ? closingReceived : 0) - (Number.isFinite(closingTotal) ? closingTotal : 0), 0)
-        : 0;
 
     const prepareNotification = (appointment: ReceptionAppointment) => {
         startTransition(async () => {
@@ -409,11 +335,6 @@ export default function ReceptionPage() {
                     <p className="text-sm text-muted-foreground">Completadas</p>
                     <p className="mt-2 text-2xl font-bold">{stats.completed}</p>
                 </div>
-                <div className="rounded-2xl border bg-card p-4 shadow-sm xl:col-span-2">
-                    <p className="text-sm text-muted-foreground">Cobranza</p>
-                    <p className="mt-2 text-2xl font-bold">{stats.paid} pagadas</p>
-                    <p className="text-xs text-muted-foreground">{stats.pendingPayment} pendientes de pago</p>
-                </div>
             </div>
 
             <div className="rounded-2xl border bg-card shadow-sm">
@@ -469,15 +390,6 @@ export default function ReceptionPage() {
                                             <Badge variant="outline" className="gap-1 border-blue-200 bg-blue-50 text-blue-700">
                                                 <Video className="h-3 w-3" />
                                                 {appointment.visitMode === "hibrida" ? "Hibrida" : "Virtual"}
-                                            </Badge>
-                                        ) : null}
-                                        {appointment.paymentStatus === "paid" ? (
-                                            <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700">
-                                                Pagada {appointment.paymentAmount ? formatMoney(appointment.paymentAmount, appointment.paymentCurrency || operationContext.defaultCurrency) : ""}
-                                            </Badge>
-                                        ) : appointment.paymentStatus === "pending" ? (
-                                            <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-700">
-                                                Pago pendiente {appointment.paymentAmount ? formatMoney(appointment.paymentAmount, appointment.paymentCurrency || operationContext.defaultCurrency) : ""}
                                             </Badge>
                                         ) : null}
                                         {appointment.appointmentReminders?.map((reminder) => (
@@ -692,19 +604,19 @@ export default function ReceptionPage() {
         <Dialog open={Boolean(closingAppointment)} onOpenChange={(open) => {
             if (!open) closeFinishDialog();
         }}>
-            <DialogContent className="flex max-h-[calc(100vh-2rem)] w-[min(96vw,46rem)] max-w-[min(96vw,46rem)] flex-col overflow-hidden rounded-2xl p-0">
+            <DialogContent className="w-[min(96vw,34rem)] max-w-[min(96vw,34rem)] rounded-2xl p-0">
                 <DialogHeader className="shrink-0 border-b px-5 py-4 sm:px-6 sm:py-5">
                     <DialogTitle className="flex items-center gap-2 text-xl leading-none">
-                        <CreditCard className="h-5 w-5 text-primary" />
-                        Finalizar consulta
+                        <ClipboardCheck className="h-5 w-5 text-primary" />
+                        Finalizar cita
                     </DialogTitle>
                     <DialogDescription>
-                        Elige si se cobra ahora, queda como adeudo para plan de pago o se cierra sin generar saldo.
+                        Esta acción sólo actualizará el estado de la cita como completada.
                     </DialogDescription>
                 </DialogHeader>
 
                 {closingAppointment ? (
-                    <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4 sm:px-6 sm:py-5">
+                    <div className="px-5 py-4 sm:px-6 sm:py-5">
                         <div className="rounded-2xl border bg-muted/20 p-4">
                             <p className="text-sm text-muted-foreground">Cliente</p>
                             <p className="mt-1 text-lg font-semibold">{patientName(closingAppointment)}</p>
@@ -714,115 +626,11 @@ export default function ReceptionPage() {
                                     {formatTimeInOperationZone(closingAppointment.startTime, operationContext.locale, operationContext.timeZone, { hour12: true })}
                                 </span>
                             </div>
-                            {closingAppointment.paymentStatus === "paid" ? (
-                                <Badge variant="outline" className="mt-3 border-emerald-200 bg-emerald-50 text-emerald-700">
-                                    Pago registrado {formatMoney(closingAppointment.paymentAmount, closingAppointment.paymentCurrency || operationContext.defaultCurrency)}
-                                </Badge>
-                            ) : null}
-                        </div>
-
-                        <div className="rounded-2xl border bg-background p-4 text-center sm:p-5">
-                            <p className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Total a cobrar</p>
-                            <p className="mt-2 text-4xl font-bold text-primary sm:text-5xl">{formatMoney(closingTotal || 0, closingAppointment.paymentCurrency || operationContext.defaultCurrency)}</p>
-                        </div>
-
-                        <div
-                            className="grid gap-3"
-                            style={{ gridTemplateColumns: "repeat(auto-fit, minmax(8.75rem, 1fr))" }}
-                        >
-                            {[
-                                { value: "efectivo", label: "Efectivo", Icon: Banknote },
-                                { value: "tarjeta", label: "Tarjeta", Icon: CreditCard },
-                                { value: "transferencia", label: "Transferencia", Icon: Landmark },
-                                { value: "link", label: "Link", Icon: LinkIcon },
-                            ].map(({ value, label, Icon }) => (
-                                <button
-                                    key={value}
-                                    type="button"
-                                    onClick={() => setClosingPaymentMethod(value)}
-                                    className={`min-h-[6.25rem] min-w-0 rounded-2xl border px-2 py-4 text-center font-semibold transition ${
-                                        closingPaymentMethod === value
-                                            ? "border-primary bg-primary/10 text-primary shadow-sm"
-                                            : "bg-muted/20 hover:border-primary/40"
-                                    }`}
-                                >
-                                    <Icon className="mx-auto mb-2 h-5 w-5" />
-                                    <span className="block whitespace-normal break-words text-center text-[13px] leading-tight sm:text-sm">
-                                        {label}
-                                    </span>
-                                </button>
-                            ))}
-                        </div>
-
-                        <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_220px]">
-                            <div className="space-y-2">
-                                <Label htmlFor="closing-amount">Monto</Label>
-                                <Input
-                                    id="closing-amount"
-                                    type="number"
-                                    min="0"
-                                    step="0.01"
-                                    value={closingAmount}
-                                    onChange={(event) => {
-                                        setClosingAmount(event.target.value);
-                                        if (!closingPaidWith || closingPaidWith === closingAmount) setClosingPaidWith(event.target.value);
-                                    }}
-                                    placeholder="0.00"
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <Label>{closingPaymentMethod === "efectivo" ? "Pago con" : "Referencia"}</Label>
-                                <Input
-                                    type={closingPaymentMethod === "efectivo" ? "number" : "text"}
-                                    min="0"
-                                    step="0.01"
-                                    value={closingPaidWith}
-                                    onChange={(event) => setClosingPaidWith(event.target.value)}
-                                    placeholder={closingPaymentMethod === "efectivo" ? "0.00" : "Referencia opcional"}
-                                />
-                            </div>
-                        </div>
-                        {closingPaymentMethod === "efectivo" ? (
-                            <div className="grid gap-3 rounded-2xl border bg-emerald-50 p-4 text-sm text-emerald-900 sm:grid-cols-3">
-                                <div>
-                                    <p className="text-emerald-700">Total</p>
-                                    <p className="text-lg font-bold">{formatMoney(closingTotal || 0, closingAppointment.paymentCurrency || operationContext.defaultCurrency)}</p>
-                                </div>
-                                <div>
-                                    <p className="text-emerald-700">Pago con</p>
-                                    <p className="text-lg font-bold">{formatMoney(closingReceived || 0, closingAppointment.paymentCurrency || operationContext.defaultCurrency)}</p>
-                                </div>
-                                <div>
-                                    <p className="text-emerald-700">Cambio</p>
-                                    <p className="text-lg font-bold">{formatMoney(closingChange, closingAppointment.paymentCurrency || operationContext.defaultCurrency)}</p>
-                                </div>
-                            </div>
-                        ) : null}
-                        <div className="space-y-2">
-                            <Label>Notas internas</Label>
-                            <Textarea
-                                value={closingNotes}
-                                onChange={(event) => setClosingNotes(event.target.value)}
-                                rows={2}
-                                placeholder="Notas del cobro, referencia o comentario de caja..."
-                            />
-                        </div>
-                        <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900">
-                            <p><span className="font-semibold">Dejar adeudo:</span> conserva el saldo pendiente para cobrarlo después o integrarlo a un plan de pago.</p>
-                            <p className="mt-1"><span className="font-semibold">Sin cobro:</span> cierra la cita sin generar deuda ni movimiento de caja.</p>
                         </div>
                     </div>
                 ) : null}
 
                 <DialogFooter className="shrink-0 gap-2 border-t bg-muted/20 px-5 py-4 sm:flex-nowrap sm:justify-end sm:px-6">
-                    <Button
-                        className="w-full sm:w-auto"
-                        variant="outline"
-                        onClick={() => finishAppointment("debt")}
-                        disabled={isPending || closingAppointment?.paymentStatus === "paid"}
-                    >
-                        Dejar adeudo
-                    </Button>
                     <Button
                         className="w-full sm:w-auto"
                         variant="outline"
@@ -832,12 +640,12 @@ export default function ReceptionPage() {
                         Cancelar
                     </Button>
                     <Button
-                        className="w-full sm:w-auto sm:min-w-[13.5rem]"
-                        onClick={() => finishAppointment("paid")}
+                        className="w-full sm:w-auto sm:min-w-[11rem]"
+                        onClick={finishAppointment}
                         disabled={isPending}
                     >
-                        {isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CreditCard className="mr-2 h-4 w-4" />}
-                        {closingAppointment?.paymentStatus === "paid" ? "Confirmar cobro y finalizar" : "Cobrar y finalizar"}
+                        {isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ClipboardCheck className="mr-2 h-4 w-4" />}
+                        Marcar completada
                     </Button>
                 </DialogFooter>
             </DialogContent>

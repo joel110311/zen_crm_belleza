@@ -25,7 +25,6 @@ type PortalBookingInput = {
     reason?: string;
     isFirstVisit?: boolean;
     sendReminders?: boolean;
-    paymentMethod?: string;
 };
 
 function cleanText(value?: string | null) {
@@ -276,10 +275,6 @@ export async function bookPortalAppointment(input: PortalBookingInput) {
         })
         : null;
     const reason = selectedService?.name || cleanText(input.reason) || "Servicio de belleza";
-    const allowedPaymentMethods = new Set(["efectivo", "tarjeta", "transferencia"]);
-    const paymentMethod = allowedPaymentMethods.has(cleanText(input.paymentMethod))
-        ? cleanText(input.paymentMethod)
-        : "efectivo";
 
     if (!firstName || !phone || !specialistId || !input.date || !input.time) {
         return { success: false, error: "Completa nombre, teléfono, profesional, fecha y hora." };
@@ -434,10 +429,9 @@ export async function bookPortalAppointment(input: PortalBookingInput) {
             googleCalendarName: specialist.googleCalendarSource?.summary || undefined,
             googleCalendarColor: specialist.googleCalendarSource?.backgroundColor || specialist.color || undefined,
             specialistName: specialist.displayName || specialist.name,
-            paymentStatus: selectedService && selectedService.price > 0 ? "pending" : "unpaid",
-            paymentAmount: selectedService?.price || 0,
-            paymentCurrency: selectedService?.currency || settings.paymentDefaultCurrency || "MXN",
-            paymentMethod,
+            paymentStatus: "unpaid",
+            paymentAmount: 0,
+            paymentMethod: "local",
             blockingCalendarIds: specialist.googleCalendarSource?.calendarId
                 ? [specialist.googleCalendarSource.calendarId]
                 : undefined,

@@ -340,7 +340,7 @@ function patientNumber() {
 }
 
 function serializePublicBooking(appointment: {
-    status: string; confirmationStatus: string; startTime: Date; endTime: Date; paymentStatus: string; paymentAmount: number; paymentCurrency: string; paymentMethod: string | null; cancellationReason: string | null;
+    status: string; confirmationStatus: string; startTime: Date; endTime: Date; cancellationReason: string | null;
     service: { name: string } | null; specialist: { name: string; displayName: string | null } | null;
 }, context: PublicPortalContext) {
     return {
@@ -351,7 +351,6 @@ function serializePublicBooking(appointment: {
         endsAt: appointment.endTime.toISOString(),
         serviceName: appointment.service?.name || "Cita",
         specialistName: appointment.specialist?.displayName || appointment.specialist?.name || "Equipo",
-        payment: { status: appointment.paymentStatus, amount: appointment.paymentAmount, currency: appointment.paymentCurrency, method: appointment.paymentMethod },
         cancellationReason: appointment.cancellationReason,
         cancellable: !["cancelled", "completed", "no_show"].includes(appointment.status) && appointment.startTime > new Date(),
     };
@@ -379,7 +378,6 @@ export async function createPublicBooking(context: PublicPortalContext, request:
     });
     if (!phoneLimit.allowed) throw new PublicPortalError("RATE_LIMITED", "Ese teléfono alcanzó el límite temporal de reservaciones.");
     const reason = cleanText(input.reason, "el motivo", 500) || service.name;
-    const paymentMethod = ["efectivo", "tarjeta", "transferencia"].includes(String(input.paymentMethod || "")) ? String(input.paymentMethod) : "efectivo";
     const bookingKeyHash = bookingIdempotencyHash(context, idempotencyKey);
     const token = bookingToken(context, idempotencyKey);
     const tokenHash = bookingTokenHash(token);
@@ -429,10 +427,9 @@ export async function createPublicBooking(context: PublicPortalContext, request:
                     appointmentType: service.name,
                     source: "portal",
                     confirmationStatus: "pending",
-                    paymentStatus: service.price > 0 ? "pending" : "unpaid",
-                    paymentAmount: service.price,
-                    paymentCurrency: service.currency,
-                    paymentMethod,
+                    paymentStatus: "unpaid",
+                    paymentAmount: 0,
+                    paymentMethod: "local",
                     notes: reason,
                     publicBookingTokenHash: tokenHash,
                     publicBookingTokenExpiresAt: expiresAt,
@@ -458,7 +455,7 @@ async function publicBookingByAppointment(context: PublicPortalContext, id: stri
     const appointment = await context.db.appointment.findUnique({
         where: { id },
         select: {
-            status: true, confirmationStatus: true, startTime: true, endTime: true, paymentStatus: true, paymentAmount: true, paymentCurrency: true, paymentMethod: true, cancellationReason: true,
+            status: true, confirmationStatus: true, startTime: true, endTime: true, cancellationReason: true,
             service: { select: { name: true } }, specialist: { select: { name: true, displayName: true } },
         },
     });

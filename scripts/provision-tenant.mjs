@@ -13,6 +13,7 @@ const encryptionKey = readEncryptionKey(process.env.TENANT_CREDENTIALS_ENCRYPTIO
 const encryptionKeyVersion = readPositiveInteger(process.env.TENANT_CREDENTIALS_KEY_VERSION, 1);
 const staleLockSeconds = readPositiveInteger(process.env.PROVISIONER_STALE_LOCK_SECONDS, 900);
 const trialDays = readPositiveInteger(process.env.TENANT_TRIAL_DAYS, 7);
+const trialIdentityKeyVersion = readPositiveInteger(process.env.TRIAL_IDENTITY_KEY_VERSION, 1);
 const drainQueue = process.argv.includes("--drain");
 const workerId = process.env.PROVISIONER_ID?.trim() || `${os.hostname()}:${process.pid}`;
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
@@ -45,6 +46,18 @@ function readPositiveInteger(value, fallback) {
 
 function createId() {
     return crypto.randomUUID().replace(/-/g, "").slice(0, 25);
+}
+
+function trialEmailHmac(email) {
+    const pepper = process.env.TRIAL_IDENTITY_PEPPER?.trim()
+        || process.env.SECURITY_HASH_SALT?.trim()
+        || process.env.AUTH_SECRET?.trim()
+        || process.env.NEXTAUTH_SECRET?.trim();
+    if (!pepper) throw new Error("TRIAL_IDENTITY_PEPPER is required by the provisioner.");
+    const normalized = String(email || "").trim().normalize("NFKC").toLowerCase();
+    return crypto.createHmac("sha256", pepper)
+        .update(`trial-email:v${trialIdentityKeyVersion}:${normalized}`)
+        .digest("hex");
 }
 
 function assertSafeIdentifier(value, label) {
@@ -348,29 +361,64 @@ async function readSchemaVersion(runtimeUrl) {
 
 async function markSucceeded(controlPool, job, databaseName, schemaVersion) {
     const now = new Date();
-    const trialEndsAt = new Date(now.getTime() + trialDays * 24 * 60 * 60 * 1_000);
     const client = await controlPool.connect();
 
     try {
         await client.query("BEGIN");
+        const tenantOwner = (await client.query(
+            `SELECT t."accessMode", u.email
+             FROM "Tenant" t
+             LEFT JOIN "User" u ON u.id = t."createdByUserId"
+             WHERE t.id = $1 FOR UPDATE OF t`,
+            [job.tenantId],
+        )).rows[0];
+        if (!tenantOwner?.email) throw new Error("tenant_owner_email_missing");
+        const policy = (await client.query(
+            `SELECT * FROM "TrialPolicy"
+             WHERE "isActive" = true
+             ORDER BY "isDefault" DESC, "updatedAt" DESC
+             LIMIT 1`,
+        )).rows[0];
+        const durationDays = policy?.trialDays || trialDays;
+        const warningHours = policy?.warningHours || 48;
+        const finalWarningHours = policy?.finalWarningHours || 24;
+        const trialEndsAt = new Date(now.getTime() + durationDays * 24 * 60 * 60 * 1_000);
+        const emailHmac = trialEmailHmac(tenantOwner.email);
+        const redemption = (await client.query(
+            `SELECT * FROM "TrialRedemption" WHERE "emailHmac" = $1 FOR UPDATE`,
+            [emailHmac],
+        )).rows[0];
+        const trialEligible = tenantOwner.accessMode !== "BILLING_ONLY"
+            && (!redemption?.redeemedAt || redemption.tenantReference === job.tenantId);
         await client.query(
             `
             UPDATE "Tenant"
             SET status = 'READY',
                 "provisioningStatus" = 'SUCCEEDED',
+                "billingStatus" = $2::"BillingStatus",
+                "accessMode" = $3::"TenantAccessMode",
                 "updatedAt" = NOW()
             WHERE id = $1
             `,
-            [job.tenantId],
+            [job.tenantId, trialEligible ? "TRIALING" : "CANCELED", trialEligible ? "FULL" : "BILLING_ONLY"],
         );
-        await client.query(
-            `
-            INSERT INTO "Trial" (id, "tenantId", "startsAt", "endsAt", "createdAt", "updatedAt")
-            VALUES ($1, $2, $3, $4, NOW(), NOW())
-            ON CONFLICT ("tenantId") DO NOTHING
-            `,
-            [createId(), job.tenantId, now, trialEndsAt],
-        );
+        if (trialEligible) {
+            await client.query(
+                `INSERT INTO "TrialRedemption" (id, "emailHmac", "keyVersion", status, "tenantReference", "reservedAt", "redeemedAt", "lastAttemptAt", "createdAt", "updatedAt")
+                 VALUES ($1, $2, $3, 'REDEEMED', $4, $5, $5, $5, NOW(), NOW())
+                 ON CONFLICT ("emailHmac") DO UPDATE SET
+                    status = 'REDEEMED', "tenantReference" = EXCLUDED."tenantReference",
+                    "redeemedAt" = COALESCE("TrialRedemption"."redeemedAt", EXCLUDED."redeemedAt"),
+                    "lastAttemptAt" = EXCLUDED."lastAttemptAt", "updatedAt" = NOW()`,
+                [createId(), emailHmac, trialIdentityKeyVersion, job.tenantId, now],
+            );
+            await client.query(
+                `INSERT INTO "Trial" (id, "tenantId", "policyId", "policyVersion", "durationDays", "warningHours", "finalWarningHours", status, "startsAt", "endsAt", "createdAt", "updatedAt")
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, 'ACTIVE', $8, $9, NOW(), NOW())
+                 ON CONFLICT ("tenantId") DO NOTHING`,
+                [createId(), job.tenantId, policy?.id || null, policy?.version || 1, durationDays, warningHours, finalWarningHours, now, trialEndsAt],
+            );
+        }
         await client.query(
             `
             UPDATE "ProvisioningJob"
@@ -399,6 +447,11 @@ async function markSucceeded(controlPool, job, databaseName, schemaVersion) {
             VALUES ($1, $2, 'tenant.provisioned', 'TenantDatabase', $3, $4::jsonb, NOW())
             `,
             [createId(), job.tenantId, databaseName, JSON.stringify({ clusterKey, schemaVersion })],
+        );
+        await client.query(
+            `INSERT INTO "CommercialEvent" (id, "tenantId", event, source, metadata, "createdAt")
+             VALUES ($1, $2, $3, 'provisioner', $4::jsonb, NOW())`,
+            [createId(), job.tenantId, trialEligible ? "trial_activated" : "trial_ineligible", JSON.stringify({ durationDays: trialEligible ? durationDays : 0, policyVersion: policy?.version || null })],
         );
         await client.query("COMMIT");
     } catch (error) {

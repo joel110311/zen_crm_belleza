@@ -33,6 +33,12 @@ export function toBillingStatus(status: SubscriptionStatus): BillingStatus {
  * still reach billing but not tenant data. Replace this with a configurable grace-period policy
  * before changing commercial terms.
  */
-export function accessModeForSubscription(status: SubscriptionStatus): TenantAccessMode {
-    return status === "ACTIVE" || status === "TRIALING" ? "FULL" : "BILLING_ONLY";
+export function accessModeForSubscription(
+    status: SubscriptionStatus,
+    graceEndsAt?: Date | null,
+    now = new Date(),
+): TenantAccessMode {
+    if (status === "ACTIVE" || status === "TRIALING") return "FULL";
+    if (status === "PAST_DUE" && graceEndsAt && graceEndsAt > now) return "READ_ONLY";
+    return "BILLING_ONLY";
 }

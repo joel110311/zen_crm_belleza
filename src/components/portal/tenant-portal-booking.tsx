@@ -18,7 +18,6 @@ export type TenantPortalData = {
     intro: string;
     primaryColor: string;
     socialLinks?: PortalSocialLink[];
-    paymentInstructions: string | null;
     logoUrl: string | null;
     logoScale: number;
     address: string | null;
@@ -151,7 +150,6 @@ export function TenantPortalBooking({ data }: Props) {
                     lastName,
                     phone,
                     email,
-                    paymentMethod: "efectivo",
                 }),
             });
             const payload = await response.json().catch(() => null) as {
@@ -199,7 +197,7 @@ export function TenantPortalBooking({ data }: Props) {
                 </div>
             </section>
             <aside className="self-start rounded-3xl border bg-background p-5 shadow-sm sm:p-6"><div className="flex items-center gap-2"><CalendarDays className="size-5" style={{ color: data.primaryColor }} /><h2 className="font-semibold">Tus datos</h2></div>{selectedSlot ? <p className="mt-3 rounded-xl bg-muted/40 p-3 text-sm">{selectedService?.name}<br /><span className="text-muted-foreground">{selectedSpecialist?.displayName || selectedSpecialist?.name} · {timeToOperationInputValue(selectedSlot, data.operationContext.timeZone)}</span></p> : <p className="mt-3 text-sm text-muted-foreground">Elige un horario para continuar.</p>}
-                <form className="mt-5 space-y-4" onSubmit={submit}><Field label="Nombre"><Input required value={firstName} onChange={(event) => setFirstName(event.target.value)} maxLength={80} autoComplete="given-name" /></Field><Field label="Apellido (opcional)"><Input value={lastName} onChange={(event) => setLastName(event.target.value)} maxLength={100} autoComplete="family-name" /></Field><Field label="Teléfono"><Input required value={phone} onChange={(event) => setPhone(event.target.value)} maxLength={40} inputMode="tel" placeholder={`${data.operationContext.callingCode} 000 000 0000`} autoComplete="tel" /></Field><Field label="Correo (opcional)"><Input type="email" value={email} onChange={(event) => setEmail(event.target.value)} maxLength={254} autoComplete="email" /></Field>{data.paymentInstructions ? <p className="rounded-xl bg-muted/40 p-3 text-xs leading-5 text-muted-foreground">{data.paymentInstructions}</p> : null}{error ? <p role="alert" className="rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">{error}</p> : null}<Button type="submit" disabled={!holdToken || submitting} className="h-11 w-full" style={{ backgroundColor: holdToken ? data.primaryColor : undefined }}>{submitting ? <><Loader2 className="mr-2 size-4 animate-spin" />Confirmando…</> : "Confirmar solicitud"}</Button></form>
+                <form className="mt-5 space-y-4" onSubmit={submit}><Field label="Nombre"><Input required value={firstName} onChange={(event) => setFirstName(event.target.value)} maxLength={80} autoComplete="given-name" /></Field><Field label="Apellido (opcional)"><Input value={lastName} onChange={(event) => setLastName(event.target.value)} maxLength={100} autoComplete="family-name" /></Field><Field label="Teléfono"><Input required value={phone} onChange={(event) => setPhone(event.target.value)} maxLength={40} inputMode="tel" placeholder={`${data.operationContext.callingCode} 000 000 0000`} autoComplete="tel" /></Field><Field label="Correo (opcional)"><Input type="email" value={email} onChange={(event) => setEmail(event.target.value)} maxLength={254} autoComplete="email" /></Field>{error ? <p role="alert" className="rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">{error}</p> : null}<Button type="submit" disabled={!holdToken || submitting} className="h-11 w-full" style={{ backgroundColor: holdToken ? data.primaryColor : undefined }}>{submitting ? <><Loader2 className="mr-2 size-4 animate-spin" />Confirmando…</> : "Confirmar solicitud"}</Button></form>
             </aside>
         </div>
     </main>;

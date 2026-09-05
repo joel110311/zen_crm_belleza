@@ -292,7 +292,7 @@ export async function deleteSpecialist(id: string) {
         if (historicalRecords > 0) {
             return {
                 success: false,
-                error: `No se puede eliminar porque conserva ${historicalRecords} registro${historicalRecords === 1 ? "" : "s"} de citas, atención o cobros. Déjalo inactivo para preservar el historial.`,
+                error: `No se puede eliminar porque conserva ${historicalRecords} registro${historicalRecords === 1 ? "" : "s"} asociados. Déjalo inactivo para preservar el historial.`,
             };
         }
 

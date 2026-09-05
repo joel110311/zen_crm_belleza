@@ -28,7 +28,6 @@ import { getContactFullName } from "@/lib/contact-name";
 import { getSystemSettingsOrDefaults } from "@/lib/system-settings";
 import { buildOperationContext } from "@/lib/operation-context";
 import { businessBoundsForDate, businessDayBounds, formatTimeLabel, normalizeBusinessHours, zonedDateTimeToUtc } from "@/lib/calendar/business-hours";
-import { getOperationDateKey } from "@/lib/operation-dates";
 import { normalizeRole } from "@/lib/permissions";
 
 export const dynamic = "force-dynamic";
@@ -112,14 +111,6 @@ function formatTime(date: Date, operationContext: DashboardOperationContext) {
     }).format(date);
 }
 
-function formatCurrency(value: number | null | undefined, operationContext: DashboardOperationContext) {
-    return new Intl.NumberFormat(operationContext.locale, {
-        style: "currency",
-        currency: operationContext.defaultCurrency,
-        maximumFractionDigits: 0,
-    }).format(value || 0);
-}
-
 function buildSearchWhere(query: string): Prisma.AppointmentWhereInput | undefined {
     const value = query.trim();
     if (!value) return undefined;
@@ -159,7 +150,6 @@ async function getLinkedSpecialist(userId?: string, userEmail?: string | null) {
         _count: {
             select: {
                 appointments: true,
-                cashMovements: true,
             },
         },
     } satisfies Prisma.SpecialistSelect;
@@ -209,8 +199,6 @@ async function getDashboardData(params: {
         appointmentsToday,
         upcomingAppointments,
         canceledAppointments,
-        incomeToday,
-        totalIncome,
         newClientsThisMonth,
         appointmentsThisMonth,
         directChats,
@@ -258,23 +246,6 @@ async function getDashboardData(params: {
                 OR: [{ status: "cancelled" }, { cancelledAt: { not: null } }],
                 ...specialistWhere,
             },
-        }),
-        prisma.cashMovement.aggregate({
-            where: {
-                type: "income",
-                status: "confirmed",
-                occurredAt: { gte: start, lt: end },
-                ...specialistWhere,
-            },
-            _sum: { amount: true },
-        }),
-        prisma.cashMovement.aggregate({
-            where: {
-                type: "income",
-                status: "confirmed",
-                ...specialistWhere,
-            },
-            _sum: { amount: true },
         }),
         prisma.contact.count({
             where: {
@@ -344,14 +315,6 @@ async function getDashboardData(params: {
                         room: true,
                     },
                 },
-                cashMovements: {
-                    where: { status: { not: "cancelled" } },
-                    select: {
-                        amount: true,
-                        type: true,
-                        status: true,
-                    },
-                },
             },
         }),
     ]);
@@ -371,14 +334,9 @@ async function getDashboardData(params: {
                 })
                 : null;
 
-            const paidAmount = appointment.cashMovements
-                .filter((movement) => movement.type === "income" && movement.status === "confirmed")
-                .reduce((sum, movement) => sum + movement.amount, 0);
-
             return {
                 ...appointment,
                 nextAppointment,
-                paidAmount,
                 isUpcoming: appointment.startTime.getTime() >= now.getTime(),
             };
         }),
@@ -394,8 +352,6 @@ async function getDashboardData(params: {
             appointmentsToday,
             upcomingAppointments,
             canceledAppointments,
-            incomeToday: incomeToday._sum.amount || 0,
-            totalIncome: totalIncome._sum.amount || 0,
             newClientsThisMonth,
             appointmentsThisMonth,
         },
@@ -599,8 +555,8 @@ function DashboardFocusBanner({
                         <p className="text-[11px] text-primary-foreground/75">Próximas</p>
                     </div>
                     <div className="rounded-2xl bg-white/12 px-4 py-3 text-center">
-                        <p className="text-lg font-black">{formatCurrency(stats.incomeToday, operationContext)}</p>
-                        <p className="text-[11px] text-primary-foreground/75">Ingresos hoy</p>
+                        <p className="text-2xl font-black">{stats.appointmentsToday}</p>
+                        <p className="text-[11px] text-primary-foreground/75">Citas hoy</p>
                     </div>
                 </div>
             </CardContent>
@@ -1094,20 +1050,6 @@ function getStatusLabel(status: string) {
     return labels[status] || status;
 }
 
-function getPaymentText(
-    appointment: Awaited<ReturnType<typeof getDashboardData>>["appointments"][number],
-    operationContext: DashboardOperationContext,
-) {
-    const amount = appointment.paymentAmount || appointment.paidAmount;
-    if (appointment.paymentStatus === "paid" || appointment.paidAmount > 0) {
-        return `Pagado ${formatCurrency(amount, operationContext)}`;
-    }
-    if (amount > 0) {
-        return `Pendiente ${formatCurrency(amount, operationContext)}`;
-    }
-    return "Sin cargo";
-}
-
 function AppointmentsPanel({
     appointments,
     appointmentTab,
@@ -1135,7 +1077,7 @@ function AppointmentsPanel({
                         <p className="text-xs font-bold uppercase tracking-[0.15em] text-muted-foreground">Seguimiento</p>
                         <h2 className="mt-1 text-2xl font-black tracking-tight text-foreground">Actividad de clientes</h2>
                         <p className="mt-1 text-sm text-muted-foreground">
-                            Citas, servicios, pagos y contacto directo desde una sola lista.
+                            Citas, servicios y contacto directo desde una sola lista.
                         </p>
                     </div>
                     <div className="appointments-panel-toolbar flex min-w-0 flex-col gap-2">
@@ -1199,7 +1141,6 @@ function AppointmentsPanel({
                         const appointmentCount = appointment.patient?._count.appointments || 1;
                         const linkedContactId = appointment.contactId || appointment.patient?.contactId;
                         const contactHref = linkedContactId ? `/dashboard/contacts/${linkedContactId}` : null;
-                        const appointmentDate = getOperationDateKey(appointment.startTime, operationContext.timeZone);
 
                         return (
                             <article
@@ -1245,16 +1186,12 @@ function AppointmentsPanel({
                                     </div>
                                     <div className="mt-1 flex flex-wrap gap-1.5">
                                         <Badge variant="outline" className="rounded-full text-[10px]">{getStatusLabel(appointment.status)}</Badge>
-                                        <Badge variant={appointment.paymentStatus === "paid" || appointment.paidAmount > 0 ? "secondary" : "outline"} className="rounded-full text-[10px]">
-                                            {getPaymentText(appointment, operationContext)}
-                                        </Badge>
                                     </div>
                                 </div>
 
                                 <div className="appointments-panel-actions flex items-center">
                                     <AppointmentQuickActions
                                         appointmentId={appointment.id}
-                                        appointmentDate={appointmentDate}
                                         clientName={displayName}
                                         contactId={appointment.contactId}
                                         patientId={appointment.patientId}
@@ -1264,7 +1201,6 @@ function AppointmentsPanel({
                                         needsSpecialistAssignment={!appointment.specialistId}
                                         status={appointment.status}
                                         confirmationStatus={appointment.confirmationStatus}
-                                        paymentStatus={appointment.paymentStatus}
                                     />
                                 </div>
                             </article>

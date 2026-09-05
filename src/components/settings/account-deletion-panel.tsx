@@ -58,6 +58,7 @@ export function AccountDeletionPanel() {
     return <div className="space-y-5">
         <p className="text-sm leading-6 text-muted-foreground">Esta opción elimina tu cuenta de SynapseLogik CRM y tus datos de perfil. Tu acceso se revoca al confirmar. Los negocios que decidas cerrar perderán sus clientes, citas, conversaciones, archivos y configuración. Esta acción es irreversible.</p>
         <p className="text-sm leading-6 text-muted-foreground">En negocios que continúen funcionando, las operaciones compartidas conservarán referencias anónimas. Las conexiones de Google hechas con el correo de tu cuenta se desconectarán. Los proveedores de pago pueden conservar comprobantes por obligaciones legales. Las copias de respaldo se retiran según la política de retención publicada; no se usan para reactivar una cuenta eliminada.</p>
+        <p className="rounded-xl border bg-muted/30 p-3 text-sm leading-6 text-muted-foreground">Si utilizaste una prueba, conservaremos únicamente una huella criptográfica no legible del correo para impedir el uso repetido de la promoción. No permite recuperar el correo ni iniciar sesión, y no se utiliza para publicidad.</p>
         {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
         {receipt ? <div className="space-y-4 rounded-xl border p-4" aria-live="polite">
             <h2 className="font-semibold">{status === "COMPLETED" ? "Tu cuenta fue eliminada" : status === "NOT_FOUND" ? "No se encontró una solicitud con este comprobante" : "Eliminación en proceso"}</h2>

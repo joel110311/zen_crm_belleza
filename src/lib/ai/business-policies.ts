@@ -262,13 +262,6 @@ export function normalizeBusinessPolicies(value?: unknown): BusinessPolicies {
     };
 }
 
-const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
-    cash: "efectivo",
-    transfer: "transferencia",
-    card: "tarjeta",
-    mercado_pago: "Mercado Pago",
-};
-
 const ESCALATION_TRIGGER_LABELS: Record<HumanEscalationTrigger, string> = {
     explicit_request: "el cliente solicita hablar con una persona",
     custom_quote: "solicita una cotización personalizada o envía una referencia para valorar",
@@ -337,9 +330,9 @@ export function compileBusinessPolicies(value?: unknown) {
     }
 
     const consequence = {
-        none: "No menciones penalización ni cargo por aviso tardío.",
-        may_charge: "Si avisa tarde, explica que puede aplicarse un cargo y solicita confirmación humana.",
-        deposit_lost: "Si avisa tarde, informa que el anticipo no es reembolsable.",
+        none: "Acepta el cambio conforme a la disponibilidad de la agenda.",
+        may_charge: "No decidas una consecuencia; solicita revisión humana.",
+        deposit_lost: "No decidas una consecuencia; solicita revisión humana.",
         human_review: "Si avisa tarde, no decidas una consecuencia; solicita revisión humana.",
     }[policies.cancellation.lateChangeConsequence];
     lines.push(`- Avisos tardíos: ${consequence}`);
@@ -347,26 +340,7 @@ export function compileBusinessPolicies(value?: unknown) {
         lines.push(`- Tolerancia de llegada: ${policies.cancellation.lateArrivalToleranceMinutes} minuto(s).`);
     }
 
-    if (!policies.deposits.required) {
-        lines.push("- Anticipos: no se requiere anticipo para reservar y no debes solicitar pagos previos.");
-    } else {
-        const appliesTo = {
-            all: "todas las reservas",
-            above_amount: `servicios con precio mayor o igual a ${policies.deposits.thresholdAmount}`,
-            new_clients: "clientes nuevos",
-        }[policies.deposits.appliesTo];
-        const amount = policies.deposits.valueType === "percentage"
-            ? `${policies.deposits.value}% del servicio`
-            : `${policies.deposits.value} en la moneda configurada`;
-        lines.push(`- Anticipos: solicita ${amount} para ${appliesTo}.`);
-        lines.push(`- Reembolso del anticipo: ${{ yes: "sí es reembolsable", no: "no es reembolsable", according_to_notice: "depende de que se respete el plazo de cancelación" }[policies.deposits.refundable]}.`);
-    }
-
-    lines.push(
-        policies.deposits.methods.length > 0
-            ? `- Métodos de pago aceptados: ${policies.deposits.methods.map((method) => PAYMENT_METHOD_LABELS[method]).join(", ")}.`
-            : "- Métodos de pago: no están configurados; no inventes uno y solicita confirmación humana si preguntan.",
-    );
+    lines.push("- Operaciones financieras: el CRM no procesa cobros del negocio; si preguntan, deriva la consulta al equipo.");
 
     const customRule = {
         fixed_catalog: "Los trabajos personalizados tienen precio fijo en el catálogo; usa solamente ese precio.",

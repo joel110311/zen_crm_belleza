@@ -5,7 +5,7 @@ export type AppRole = (typeof APP_ROLES)[number];
 export const APP_ROLE_LABELS: Record<AppRole, string> = {
     ADMINISTRADOR: "Administrador",
     PROFESIONAL: "Profesional",
-    RECEPCION: "Recepcion / Administrativo / Caja",
+    RECEPCION: "Recepción / Administrativo",
 };
 
 export const FULL_ACCESS_PERMISSION = "system.fullAccess";
@@ -100,46 +100,23 @@ export const APP_PERMISSION_GROUPS = [
         ],
     },
     {
-        title: "Clinica",
-        description: "Clientes, consultas e IA clínica.",
+        title: "Automatización",
+        description: "Asistente y conocimiento del negocio.",
         permissions: [
-            {
-                key: "patients.manage",
-                label: "Clientes",
-                description: "Ficha del cliente, datos personales y antecedentes.",
-            },
-            {
-                key: "clinical.manage",
-                label: "Consultas clinicas",
-                description: "Historia, recetas, estudios, evolucion, diagnostico y tratamiento.",
-            },
             {
                 key: "ai.manage",
-                label: "Cerebro IA",
-                description: "Base de conocimiento, prompts, modelos y funciones IA.",
-            },
-        ],
-    },
-    {
-        title: "Finanzas",
-        description: "Caja, presupuestos y reportes.",
-        permissions: [
-            {
-                key: "billing.manage",
-                label: "Caja y presupuestos",
-                description: "Ingresos, egresos, pagos, presupuestos y links de pago.",
-            },
-            {
-                key: "reports.view",
-                label: "Reportes",
-                description: "Reportes clinicos, financieros y operativos.",
+                label: "Asistente IA",
+                description: "Base de conocimiento, instrucciones, modelos y funciones de automatización.",
             },
         ],
     },
 ] as const;
 
+const RETIRED_PERMISSION_KEYS = ["patients.manage", "clinical.manage", "billing.manage", "reports.view"] as const;
+
 export type PermissionKey =
-    (typeof APP_PERMISSION_GROUPS)[number]["permissions"][number]["key"];
+    | (typeof APP_PERMISSION_GROUPS)[number]["permissions"][number]["key"]
+    | (typeof RETIRED_PERMISSION_KEYS)[number];
 
 export type PermissionDefinition = {
     key: PermissionKey;
@@ -154,7 +131,10 @@ export const APP_PERMISSIONS = APP_PERMISSION_GROUPS.reduce<PermissionDefinition
     ],
     [],
 );
-export const APP_PERMISSION_KEYS = APP_PERMISSIONS.map((permission) => permission.key) as PermissionKey[];
+export const APP_PERMISSION_KEYS = [
+    ...APP_PERMISSIONS.map((permission) => permission.key),
+    ...RETIRED_PERMISSION_KEYS,
+] as PermissionKey[];
 
 const PERMISSION_KEY_SET = new Set<string>(APP_PERMISSION_KEYS);
 

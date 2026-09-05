@@ -10,7 +10,6 @@ import {
     Check,
     CheckCircle2,
     Clock,
-    CreditCard,
     Droplets,
     Loader2,
     MapPin,
@@ -18,6 +17,7 @@ import {
     Sparkles,
     Sun,
     Sunrise,
+    Tag,
     UserRound,
 } from "lucide-react";
 import { format } from "date-fns";
@@ -41,12 +41,6 @@ type Props = {
 };
 
 const SERVICE_ICONS: ComponentType<{ className?: string }>[] = [Scissors, Sparkles, Droplets];
-
-const PAYMENT_METHODS = [
-    { value: "efectivo", label: "Efectivo" },
-    { value: "tarjeta", label: "Tarjeta" },
-    { value: "transferencia", label: "Transferencia" },
-] as const;
 
 function dateKey(value: Date) {
     return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
@@ -82,7 +76,6 @@ export function PortalBooking({ data }: Props) {
     const [firstName, setFirstName] = useState("");
     const [phone, setPhone] = useState("");
     const [reason, setReason] = useState(data.services[0]?.name || "Servicio de belleza");
-    const [paymentMethod, setPaymentMethod] = useState("efectivo");
     const [sendReminders, setSendReminders] = useState(Boolean(data.remindersEnabled));
     const [showCustomerForm, setShowCustomerForm] = useState(false);
     const [confirmationToken, setConfirmationToken] = useState<string | null>(null);
@@ -102,7 +95,6 @@ export function PortalBooking({ data }: Props) {
         [availableSpecialists, selectedSpecialistId],
     );
     const selectedDate = useMemo(() => dateFromKey(date), [date]);
-    const chosenPaymentLabel = PAYMENT_METHODS.find((entry) => entry.value === paymentMethod)?.label || "Efectivo";
     const groupedSlots = useMemo(() => {
         const morning: string[] = [];
         const afternoon: string[] = [];
@@ -186,7 +178,6 @@ export function PortalBooking({ data }: Props) {
                 reason,
                 isFirstVisit: false,
                 sendReminders,
-                paymentMethod,
             });
 
             if (!result.success) {
@@ -264,7 +255,6 @@ export function PortalBooking({ data }: Props) {
                         <p className="mt-1 text-muted-foreground">
                             {format(selectedDate, "EEEE d 'de' MMMM", { locale: es })} · {selectedSlot ? timeToOperationInputValue(selectedSlot, operationContext.timeZone) : ""}
                         </p>
-                        <p className="mt-1 text-muted-foreground">Forma de pago: {chosenPaymentLabel}</p>
                     </div>
                     <Button className="mt-6 h-11 w-full" asChild style={{ backgroundColor: data.primaryColor }}>
                         <a href={`/portal/turno/${confirmationToken}`}>Ver el estado de mi cita</a>
@@ -509,7 +499,7 @@ export function PortalBooking({ data }: Props) {
                                 </div>
                                 {selectedService?.showPrice ? (
                                     <div className="flex items-center gap-3">
-                                        <CreditCard className="h-5 w-5 shrink-0 text-muted-foreground" />
+                                        <Tag className="h-5 w-5 shrink-0 text-muted-foreground" />
                                         <p className="font-semibold">{money(selectedService.price, selectedService.currency, operationContext.locale)}</p>
                                     </div>
                                 ) : null}
@@ -559,16 +549,6 @@ export function PortalBooking({ data }: Props) {
                                             Si ya tienes registro, lo vincularemos por tu numero; si el nombre era generico, lo actualizaremos.
                                         </p>
                                     </div>
-                                    <div className="space-y-2">
-                                        <Label>Forma de pago</Label>
-                                        <Select value={paymentMethod} onValueChange={setPaymentMethod}>
-                                            <SelectTrigger className="h-11 rounded-xl bg-background"><SelectValue /></SelectTrigger>
-                                            <SelectContent>
-                                                {PAYMENT_METHODS.map((method) => <SelectItem key={method.value} value={method.value}>{method.label}</SelectItem>)}
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-
                                     <label className={cn(
                                         "flex items-start gap-3 rounded-2xl border px-3 py-3",
                                         remindersGloballyEnabled ? "cursor-pointer" : "bg-muted/30 text-muted-foreground",
@@ -584,13 +564,6 @@ export function PortalBooking({ data }: Props) {
                                             <span className="mt-1 block text-[11px] leading-4 text-muted-foreground">Recibe avisos antes de tu cita.</span>
                                         </span>
                                     </label>
-
-                                    {data.paymentInstructions ? (
-                                        <div className="rounded-2xl border bg-muted/20 px-3 py-3 text-xs leading-5 text-muted-foreground">
-                                            <span className="flex items-center gap-2 font-medium text-foreground"><CreditCard className="h-4 w-4" /> Información de pago</span>
-                                            <p className="mt-1">{data.paymentInstructions}</p>
-                                        </div>
-                                    ) : null}
 
                                     <Button
                                         onClick={handleSubmit}

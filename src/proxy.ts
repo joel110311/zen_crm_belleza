@@ -14,10 +14,7 @@ import {
 
 const protectedRoutes: Array<{ prefix: string; permission: PermissionKey }> = [
     { prefix: "/dashboard/contacts", permission: "contacts.manage" },
-    { prefix: "/dashboard/patients", permission: "patients.manage" },
     { prefix: "/dashboard/reception", permission: "reception.manage" },
-    { prefix: "/dashboard/billing", permission: "billing.manage" },
-    { prefix: "/dashboard/reports", permission: "reports.view" },
     { prefix: "/dashboard/inbox", permission: "chats.manage" },
     { prefix: "/dashboard/templates", permission: "templates.manage" },
     { prefix: "/dashboard/calendar", permission: "calendar.manage" },
@@ -142,10 +139,6 @@ export async function proxy(req: NextRequest) {
     }
 
     if (pathname.startsWith("/dashboard/pipeline")) {
-        return NextResponse.redirect(new URL("/dashboard/contacts", req.url));
-    }
-
-    if (pathname.startsWith("/dashboard/patients")) {
         return NextResponse.redirect(new URL("/dashboard/contacts", req.url));
     }
 

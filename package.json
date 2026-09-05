@@ -9,6 +9,7 @@
     "lint": "eslint",
     "monitor:chat": "node scripts/monitor-chat-api.mjs",
     "db:tenant:migrate": "node scripts/migrate-tenant.mjs",
+    "db:legacy:migrate": "node scripts/migrate-legacy.mjs",
     "db:tenant:seed": "node scripts/seed-tenant.mjs",
     "db:control:migrate": "node scripts/migrate-control-plane.mjs",
     "db:control:generate": "prisma generate --config prisma.control.config.ts",
@@ -16,7 +17,8 @@
     "provisioner:drain": "node scripts/provision-tenant.mjs --drain",
     "worker:tenant": "node scripts/tenant-work-worker.mjs --drain",
     "worker:account-deletion": "node scripts/account-deletion-worker.mjs --once",
-    "test:account-deletion": "node scripts/test-account-deletion.mjs"
+    "test:account-deletion": "node scripts/test-account-deletion.mjs",
+    "worker:billing-lifecycle": "node scripts/billing-lifecycle-worker.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1127.0",

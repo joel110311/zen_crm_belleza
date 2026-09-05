@@ -125,9 +125,14 @@ Cuando se decida activar Stripe, agregar además:
 BILLING_STRIPE_ENABLED=false
 STRIPE_SECRET_KEY=<solo-servicio-web>
 STRIPE_WEBHOOK_SECRET=<solo-servicio-web>
+TRIAL_IDENTITY_PEPPER=<secreto-aleatorio-estable-de-al-menos-32-bytes>
+TRIAL_IDENTITY_KEY_VERSION=1
+PLATFORM_ADMIN_EMAILS=<correos-de-administradores-separados-por-coma>
 ```
 
-Primero crear productos/precios en Stripe y registrar cada precio activo en `BillingPrice` con `provider=STRIPE`, periodicidad y el `externalPriceId` correspondiente. Después configurar el Customer Portal en Stripe y el endpoint firmado `POST /api/webhooks/stripe` para `customer.subscription.created`, `customer.subscription.updated` y `customer.subscription.deleted`. Sólo entonces cambiar `BILLING_STRIPE_ENABLED=true`. Los precios fundadores se crean como precios/cupones de Stripe; no se calculan en el navegador.
+Primero crear tres precios mensuales recurrentes en Stripe y registrarlos desde `/control`. Después configurar el Customer Portal y el endpoint firmado `POST /api/webhooks/stripe` para `checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.paid` e `invoice.payment_failed`. Sólo entonces cambiar `BILLING_STRIPE_ENABLED=true`. Los precios fundadores se crean como precios o cupones de Stripe; no se calculan en el navegador.
+
+El stack debe mantener una sola réplica de `belleza-billing-lifecycle-worker`. Ese proceso envía los avisos finales, cobra una selección diferida con clave idempotente, cierra el acceso al vencer y termina la gracia de impago. `TRIAL_IDENTITY_PEPPER` debe conservarse incluso después de rotar otros secretos: cambiarlo sin migrar los HMAC existentes permitiría repetir la promoción.
 
 ## Corte sin datos que preservar
 

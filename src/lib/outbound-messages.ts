@@ -10,6 +10,7 @@ import { getSystemSettingsOrDefaults } from "@/lib/system-settings";
 import { findOrCreateActiveConversationForContactSource } from "@/lib/source-conversations";
 import { sendWuzapiMediaMessage, sendWuzapiTextMessage } from "@/lib/wuzapi";
 import { sendMetaMediaMessage, sendMetaTextMessage } from "@/lib/meta-whatsapp";
+import { assertChatbotUsageAvailable, recordChatbotReply } from "@/lib/billing/chatbot-usage";
 
 export type OutboundMessageType = "text" | "image" | "document" | "audio" | "video";
 
@@ -42,6 +43,8 @@ export async function sendOutboundConversationMessage(
 ) {
     const type = params.type || "text";
     const content = typeof params.content === "string" ? params.content.trim() : "";
+    const isBotReply = params.senderType === "bot";
+    const usageAllowance = isBotReply ? await assertChatbotUsageAvailable() : null;
 
     if (!params.conversationId || (!content && !params.mediaUrl)) {
         throw new Error("conversationId and content or mediaUrl are required");
@@ -180,6 +183,7 @@ export async function sendOutboundConversationMessage(
                     providerMessageId,
                 },
             });
+            if (isBotReply) await recordChatbotReply(updatedMessage.id, usageAllowance);
 
             return {
                 message: updatedMessage,
@@ -191,6 +195,7 @@ export async function sendOutboundConversationMessage(
             where: { id: message.id },
             data: { status: "sent" },
         });
+        if (isBotReply) await recordChatbotReply(updatedMessage.id, usageAllowance);
 
         return {
             message: updatedMessage,

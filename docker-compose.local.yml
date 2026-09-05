@@ -38,6 +38,13 @@ services:
       - MULTITENANT_CHANNELS_ENABLED=${MULTITENANT_CHANNELS_ENABLED:-false}
       - MULTITENANT_PRIVATE_STORAGE_ENABLED=${MULTITENANT_PRIVATE_STORAGE_ENABLED:-false}
       - SECURITY_HASH_SALT=${SECURITY_HASH_SALT:-}
+      - TRIAL_IDENTITY_PEPPER=${TRIAL_IDENTITY_PEPPER:-}
+      - TRIAL_IDENTITY_KEY_VERSION=${TRIAL_IDENTITY_KEY_VERSION:-1}
+      - PLATFORM_ADMIN_EMAILS=${PLATFORM_ADMIN_EMAILS:-}
+      - LEGACY_APP_HOSTS=${LEGACY_APP_HOSTS:-crm-belleza.synapselogik.com}
+      - BILLING_STRIPE_ENABLED=${BILLING_STRIPE_ENABLED:-false}
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-}
+      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET:-}
       - TENANT_CREDENTIALS_ENCRYPTION_KEY=${TENANT_CREDENTIALS_ENCRYPTION_KEY:-}
       - TENANT_CREDENTIALS_KEY_VERSION=${TENANT_CREDENTIALS_KEY_VERSION:-1}
       - WHATSAPP_WEBHOOK_BASE_URL=${WHATSAPP_WEBHOOK_BASE_URL:-http://host.docker.internal:3008}
@@ -88,8 +95,9 @@ services:
       dockerfile: Dockerfile
       target: provisioner
     profiles: ["multitenant"]
-    command: ["sh", "-c", "node migrate-control-plane.mjs && while true; do node provision-tenant.mjs --drain || true; sleep ${PROVISIONER_POLL_SECONDS:-15}; done"]
+    command: ["sh", "-c", "node migrate-legacy.mjs && node migrate-control-plane.mjs && while true; do node provision-tenant.mjs --drain || true; sleep ${PROVISIONER_POLL_SECONDS:-15}; done"]
     environment:
+      - DATABASE_URL=postgresql://zencrm:${LOCAL_POSTGRES_PASSWORD:?Define LOCAL_POSTGRES_PASSWORD}@zen-crm-db:5432/zencrm
       - CONTROL_DATABASE_URL=postgresql://${CONTROL_POSTGRES_USER:-zencrm_control_runtime}:${CONTROL_POSTGRES_PASSWORD:-local-control-runtime-password}@zen-crm-db:5432/${CONTROL_POSTGRES_DB:-zencrm_control}
       - TENANT_POSTGRES_ADMIN_URL=postgresql://zencrm:${LOCAL_POSTGRES_PASSWORD:?Define LOCAL_POSTGRES_PASSWORD}@zen-crm-db:5432/postgres
       - CONTROL_DATABASE_REQUIRE_LEAST_PRIVILEGE=${CONTROL_DATABASE_REQUIRE_LEAST_PRIVILEGE:-true}
@@ -97,6 +105,9 @@ services:
       - TENANT_CREDENTIALS_ENCRYPTION_KEY=${TENANT_CREDENTIALS_ENCRYPTION_KEY:-}
       - TENANT_CREDENTIALS_KEY_VERSION=${TENANT_CREDENTIALS_KEY_VERSION:-1}
       - TENANT_TRIAL_DAYS=${TENANT_TRIAL_DAYS:-7}
+      - TRIAL_IDENTITY_PEPPER=${TRIAL_IDENTITY_PEPPER:-}
+      - TRIAL_IDENTITY_KEY_VERSION=${TRIAL_IDENTITY_KEY_VERSION:-1}
+      - SECURITY_HASH_SALT=${SECURITY_HASH_SALT:-}
       - PROVISIONER_POLL_SECONDS=${PROVISIONER_POLL_SECONDS:-15}
       - TZ=${TZ:-America/Mexico_City}
     depends_on:
@@ -133,6 +144,34 @@ services:
     depends_on:
       zen-crm-db:
         condition: service_healthy
+    networks:
+      - zen-crm-local
+    restart: unless-stopped
+
+  # Owns trial reminders, exact expirations, deferred plan activation and payment grace.
+  billing-lifecycle-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: billing-lifecycle-worker
+    profiles: ["multitenant"]
+    command: ["sh", "-c", "while true; do node billing-lifecycle-worker.mjs || true; sleep ${BILLING_LIFECYCLE_POLL_SECONDS:-60}; done"]
+    environment:
+      - CONTROL_DATABASE_URL=postgresql://${CONTROL_POSTGRES_USER:-zencrm_control_runtime}:${CONTROL_POSTGRES_PASSWORD:-local-control-runtime-password}@zen-crm-db:5432/${CONTROL_POSTGRES_DB:-zencrm_control}
+      - BILLING_STRIPE_ENABLED=${BILLING_STRIPE_ENABLED:-false}
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-}
+      - APP_BASE_URL=${APP_BASE_URL:-http://localhost:3008}
+      - RESEND_API_KEY=${RESEND_API_KEY:-}
+      - EMAIL_FROM=${EMAIL_FROM:-}
+      - EMAIL_REPLY_TO=${EMAIL_REPLY_TO:-}
+      - BILLING_LIFECYCLE_POLL_SECONDS=${BILLING_LIFECYCLE_POLL_SECONDS:-60}
+      - BILLING_LIFECYCLE_MAX_BATCH=${BILLING_LIFECYCLE_MAX_BATCH:-100}
+      - TZ=${TZ:-America/Mexico_City}
+    depends_on:
+      zen-crm-db:
+        condition: service_healthy
+      provisioner:
+        condition: service_started
     networks:
       - zen-crm-local
     restart: unless-stopped

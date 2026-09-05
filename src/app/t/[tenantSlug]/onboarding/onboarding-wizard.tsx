@@ -57,7 +57,6 @@ type InitialData = {
     clinicName: string;
     intro: string;
     primaryColor: string;
-    paymentInstructions: string;
     visibleServiceIds: string[];
   };
   services: { id: string; name: string }[];
@@ -358,6 +357,11 @@ export function TenantOnboardingWizard({
           <p className="mt-1 text-sm text-muted-foreground">
             Te recomendamos agregar ahora el resto del catálogo, con sus precios, duraciones, imágenes y especialistas.
           </p>
+        </div>
+        <div className="mt-4 rounded-xl border bg-muted/25 p-4">
+          <p className="font-medium">Puedes dejar preparado tu plan sin pagar hoy</p>
+          <p className="mt-1 text-sm leading-6 text-muted-foreground">Stripe guardará la tarjeta de forma segura. El primer cobro ocurrirá solamente cuando termine tu prueba; también puedes decidirlo después.</p>
+          <Button asChild variant="outline" className="mt-3"><Link href={`/billing/${tenantSlug}`}>Ver planes de $300, $500 y $800</Link></Button>
         </div>
         <div className="mt-7 flex flex-wrap gap-3">
           <Button asChild>
@@ -818,7 +822,7 @@ export function TenantOnboardingWizard({
               <Field label="Consecuencia por aviso tardío">
                 <select
                   className="h-10 w-full rounded-md border bg-background px-3 text-sm"
-                  value={policies.cancellation.lateChangeConsequence}
+                  value={["may_charge", "deposit_lost"].includes(policies.cancellation.lateChangeConsequence) ? "human_review" : policies.cancellation.lateChangeConsequence}
                   onChange={(event) =>
                     setPolicies((value) => ({
                       ...value,
@@ -830,38 +834,11 @@ export function TenantOnboardingWizard({
                     }))
                   }
                 >
-                  <option value="none">Sin cargo</option>
-                  <option value="may_charge">Puede aplicar cargo</option>
-                  <option value="deposit_lost">Pierde anticipo</option>
+                  <option value="none">Aceptar el cambio</option>
                   <option value="human_review">Revisión humana</option>
                 </select>
               </Field>
             </div>
-            <label className="flex items-start gap-3 rounded-xl border p-4 text-sm">
-              <input
-                className="mt-0.5 size-4"
-                type="checkbox"
-                checked={policies.deposits.required}
-                onChange={(event) =>
-                  setPolicies((value) => ({
-                    ...value,
-                    deposits: {
-                      ...value.deposits,
-                      required: event.target.checked,
-                    },
-                  }))
-                }
-              />
-              <span>
-                <span className="font-medium">
-                  Solicitar anticipo para reservar
-                </span>
-                <span className="mt-1 block text-muted-foreground">
-                  Podrás definir el importe exacto y métodos de pago más
-                  adelante.
-                </span>
-              </span>
-            </label>
             <label className="flex items-start gap-3 rounded-xl border p-4 text-sm">
               <input
                 className="mt-0.5 size-4"
@@ -970,20 +947,6 @@ export function TenantOnboardingWizard({
                       }))
                     }
                     className="min-h-24 w-full rounded-md border bg-background px-3 py-2 text-sm"
-                  />
-                </Field>
-              </div>
-              <div className="sm:col-span-2">
-                <Field label="Indicaciones de pago (opcional)">
-                  <Input
-                    maxLength={500}
-                    value={portal.paymentInstructions}
-                    onChange={(event) =>
-                      setPortal((value) => ({
-                        ...value,
-                        paymentInstructions: event.target.value,
-                      }))
-                    }
                   />
                 </Field>
               </div>

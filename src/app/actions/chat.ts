@@ -32,6 +32,7 @@ import {
 import { findOrCreateActiveConversationForContactSource } from "@/lib/source-conversations";
 import { markBulkCampaignReplyForContact } from "@/lib/bulk-campaigns";
 import { refreshWhatsAppAvatarForContact } from "@/lib/whatsapp-avatar";
+import { assertChatbotUsageAvailable, recordChatbotReply } from "@/lib/billing/chatbot-usage";
 import {
     buildInboundAdPreviewFingerprint,
     buildInboundAdPreviewMessageContent,
@@ -1214,6 +1215,7 @@ async function sendAutomatedBotText(params: {
 }) {
     const content = stripInternalDisclosureLines(params.content).trim();
     if (!content) return;
+    const usageAllowance = await assertChatbotUsageAvailable();
 
     const source = await getAutomatedConversationSource(params.conversationId);
 
@@ -1222,7 +1224,7 @@ async function sendAutomatedBotText(params: {
             ? await sendMetaTextMessage(params.phone, content)
             : await sendWuzapiTextMessage(params.phone, content);
 
-        await prisma.message.create({
+        const message = await prisma.message.create({
             data: {
                 conversationId: params.conversationId,
                 content,
@@ -1235,6 +1237,7 @@ async function sendAutomatedBotText(params: {
                 providerMessageId: transportResult?.Id || null,
             },
         });
+        await recordChatbotReply(message.id, usageAllowance);
         queueAvatarRefreshForConversation(params.conversationId);
     } catch (error) {
         await prisma.message.create({

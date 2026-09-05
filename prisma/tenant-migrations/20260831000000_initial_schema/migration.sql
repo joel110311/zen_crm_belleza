@@ -435,7 +435,7 @@ CREATE TABLE "PatientEducationArticle" (
     "summary" TEXT,
     "content" TEXT NOT NULL,
     "category" TEXT DEFAULT 'General',
-    "audience" TEXT DEFAULT 'pacientes',
+    "audience" TEXT DEFAULT 'clientes',
     "isPublished" BOOLEAN NOT NULL DEFAULT true,
     "featured" BOOLEAN NOT NULL DEFAULT false,
     "sortOrder" INTEGER NOT NULL DEFAULT 0,

@@ -6,6 +6,7 @@ import { getControlDb } from "@/lib/control-db";
 import { normalizeTenantSlug } from "@/lib/control-plane";
 import { hashSecurityIdentifier } from "@/lib/security";
 import { sendTransactionalEmail } from "@/lib/transactional-email";
+import { trialEmailHmac, trialIdentityKeyVersion } from "@/lib/billing/trial-identity";
 
 const SIGNUP_TOKEN_TTL_MS = 20 * 60 * 1000;
 const RESET_TOKEN_TTL_MS = 30 * 60 * 1000;
@@ -268,6 +269,7 @@ export async function verifySignupIntent(rawToken: string) {
   const hash = tokenHash(rawToken.trim());
   const db = getControlDb();
   const now = new Date();
+  const identityKeyVersion = trialIdentityKeyVersion();
   const intent = await db.signupIntent.findUnique({
     where: { tokenHash: hash },
     include: { tenant: { select: { slug: true } } },
@@ -313,6 +315,13 @@ export async function verifySignupIntent(rawToken: string) {
           return null;
         }
 
+        const emailHmac = trialEmailHmac(current.email);
+        const priorRedemption = await tx.trialRedemption.findUnique({
+          where: { emailHmac },
+          select: { id: true, redeemedAt: true },
+        });
+        const trialEligible = !priorRedemption?.redeemedAt;
+
         const user = await tx.user.create({
           data: {
             email: current.email,
@@ -328,10 +337,29 @@ export async function verifySignupIntent(rawToken: string) {
             displayName: current.displayName,
             timeZone: current.timeZone,
             createdByUserId: user.id,
+            ...(!trialEligible ? { billingStatus: "CANCELED" as const, accessMode: "BILLING_ONLY" as const } : {}),
             memberships: { create: { userId: user.id, role: "OWNER" } },
           },
           select: { id: true, slug: true },
         });
+        if (priorRedemption) {
+          await tx.trialRedemption.update({
+            where: { id: priorRedemption.id },
+            data: trialEligible
+              ? { tenantReference: tenant.id, reservedAt: now, lastAttemptAt: now, status: "RESERVED", keyVersion: identityKeyVersion }
+              : { lastAttemptAt: now },
+          });
+        } else {
+          await tx.trialRedemption.create({
+            data: {
+              emailHmac,
+              keyVersion: identityKeyVersion,
+              tenantReference: tenant.id,
+              reservedAt: now,
+              lastAttemptAt: now,
+            },
+          });
+        }
         await tx.provisioningJob.create({
           data: {
             tenantId: tenant.id,
@@ -341,6 +369,7 @@ export async function verifySignupIntent(rawToken: string) {
               requestedByUserId: user.id,
               source: "verified-public-signup",
               signupIntentId: current.id,
+              trialEligible,
             },
           },
         });
@@ -365,13 +394,23 @@ export async function verifySignupIntent(rawToken: string) {
             action: "public_signup_verified",
             resourceType: "SignupIntent",
             resourceId: current.id,
-            metadata: { source: "email_verification" },
+            metadata: { source: "email_verification", trialEligible },
             ipHash: current.ipHash,
+          },
+        });
+        await tx.commercialEvent.create({
+          data: {
+            tenantId: tenant.id,
+            userId: user.id,
+            event: "email_verified",
+            source: "public_signup",
+            metadata: { trialEligible },
           },
         });
         return {
           email: current.email,
           onboardingPath: `/onboarding/${tenant.slug}`,
+          trialEligible,
         };
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },

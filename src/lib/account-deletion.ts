@@ -2,6 +2,7 @@ import "server-only";
 import crypto from "node:crypto";
 import bcrypt from "bcryptjs";
 import { getControlDb } from "@/lib/control-db";
+import { trialEmailHmac, trialIdentityKeyVersion } from "@/lib/billing/trial-identity";
 
 export async function deletionPreview(userId: string) {
     const memberships = await getControlDb().tenantMembership.findMany({
@@ -27,7 +28,7 @@ export async function requestAccountDeletion(userId: string, body: { password?: 
         const current = await tx.user.findUnique({ where: { id: userId } });
         if (!current || current.passwordHash !== user.passwordHash) throw new Error("Tu cuenta cambió. Vuelve a iniciar sesión.");
         if (await tx.accountDeletion.findUnique({ where: { userId } })) throw new Error("La eliminación ya está en curso.");
-        const memberships = await tx.tenantMembership.findMany({ where: { userId, isActive: true }, include: { tenant: { include: { memberships: { where: { isActive: true } } } } } });
+        const memberships = await tx.tenantMembership.findMany({ where: { userId, isActive: true }, include: { tenant: { include: { memberships: { where: { isActive: true } }, trial: { select: { startsAt: true } } } } } });
         const close: string[] = [];
         for (const m of memberships) {
             if (m.role !== "OWNER" || m.tenant.memberships.some((other) => other.userId !== userId && other.role === "OWNER")) continue;
@@ -40,6 +41,28 @@ export async function requestAccountDeletion(userId: string, body: { password?: 
                 if (await tx.accountDeletion.findUnique({ where: { userId: decision } })) throw new Error("El nuevo propietario está eliminando su cuenta.");
                 await tx.tenantMembership.update({ where: { userId_tenantId: { userId: decision, tenantId: m.tenantId } }, data: { role: "OWNER" } });
             } else throw new Error(`Elige cerrar o transferir ${m.tenant.displayName}.`);
+        }
+        const redeemedTrial = memberships
+            .map((membership) => membership.tenant.trial?.startsAt)
+            .filter((value): value is Date => Boolean(value))
+            .sort((left, right) => left.getTime() - right.getTime())[0];
+        if (redeemedTrial) {
+            const emailHmac = trialEmailHmac(current.email);
+            await tx.trialRedemption.upsert({
+                where: { emailHmac },
+                create: {
+                    emailHmac,
+                    keyVersion: trialIdentityKeyVersion(),
+                    status: "REDEEMED",
+                    redeemedAt: redeemedTrial,
+                    lastAttemptAt: new Date(),
+                },
+                update: {
+                    status: "REDEEMED",
+                    redeemedAt: redeemedTrial,
+                    lastAttemptAt: new Date(),
+                },
+            });
         }
         await tx.accountDeletion.create({ data: { userId, tokenHash, targets: { close } } });
         await tx.user.update({ where: { id: userId }, data: { passwordHash: null, securityVersion: { increment: 1 } } });

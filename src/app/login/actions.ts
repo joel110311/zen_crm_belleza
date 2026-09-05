@@ -2,15 +2,24 @@
 
 import { signIn } from "@/lib/auth";
 import { AuthError } from "next-auth";
+import { headers } from "next/headers";
+import { isLegacyApplicationRequest, trustedRequestOrigin } from "@/lib/application-host";
 
 export async function loginAction(
     prevState: string | undefined,
     formData: FormData
 ): Promise<string | undefined> {
     try {
-        if (process.env.MULTITENANT_AUTH_ENABLED === "true") {
-            const requestedRedirect = String(formData.get("redirectTo") || "");
+        const requestHeaders = await headers();
+        const legacyRequest = isLegacyApplicationRequest(requestHeaders);
+        const requestedRedirect = String(formData.get("redirectTo") || "");
+        if (process.env.MULTITENANT_AUTH_ENABLED === "true" && !legacyRequest) {
             formData.set("redirectTo", /^\/(?:onboarding|t|tenants)(?:\/|$)/.test(requestedRedirect) ? requestedRedirect : "/tenants");
+        } else if (legacyRequest) {
+            const safePath = requestedRedirect.startsWith("/") && !requestedRedirect.startsWith("//")
+                ? requestedRedirect
+                : "/dashboard";
+            formData.set("redirectTo", `${trustedRequestOrigin(requestHeaders)}${safePath}`);
         }
         await signIn("credentials", formData);
     } catch (error) {

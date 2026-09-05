@@ -44,20 +44,29 @@ export async function POST(request: NextRequest) {
     try {
         const { tenant, user } = await requireBillingOwner(tenantSlug);
         const db = getControlDb();
-        const price = await db.billingPrice.findFirst({
-            where: {
-                provider: "STRIPE",
-                interval,
-                countryCode: null,
-                isActive: true,
-                plan: { slug: planSlug, isActive: true },
-            },
-            select: { externalPriceId: true, planId: true },
-        });
+        const [price, trial, pendingSelection] = await Promise.all([
+            db.billingPrice.findFirst({
+                where: {
+                    provider: "STRIPE",
+                    interval,
+                    countryCode: null,
+                    isActive: true,
+                    plan: { slug: planSlug, isActive: true },
+                },
+                select: { id: true, externalPriceId: true, planId: true },
+            }),
+            db.trial.findUnique({
+                where: { tenantId: tenant.tenantId },
+                select: { endsAt: true, status: true },
+            }),
+            db.billingSelection.findUnique({
+                where: { tenantId: tenant.tenantId },
+                select: { id: true, status: true, providerCustomerId: true, providerPaymentMethod: true },
+            }),
+        ]);
         if (!price) {
             return NextResponse.json({ error: "Este plan no está disponible para pago en línea." }, { status: 409 });
         }
-
         const existingSubscriptions = await db.subscription.findMany({
             where: { tenantId: tenant.tenantId, provider: "STRIPE", providerCustomerId: { not: null } },
             orderBy: { updatedAt: "desc" },
@@ -74,28 +83,110 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        const customerId = existingSubscriptions[0]?.providerCustomerId || undefined;
+        const customerId = existingSubscriptions[0]?.providerCustomerId || pendingSelection?.providerCustomerId || undefined;
         const baseUrl = getPlatformBaseUrl();
         const stripe = getStripeClient();
-        const checkout = await stripe.checkout.sessions.create({
-            mode: "subscription",
-            line_items: [{ price: price.externalPriceId, quantity: 1 }],
-            ...(customerId ? { customer: customerId } : { customer_email: user.email }),
-            client_reference_id: tenant.tenantId,
-            success_url: `${baseUrl}/billing/${tenant.slug}?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
-            cancel_url: `${baseUrl}/billing/${tenant.slug}?checkout=cancelled`,
-            metadata: {
-                tenantId: tenant.tenantId,
-                tenantSlug: tenant.slug,
-                planId: price.planId,
-                userId: user.id,
-            },
-            subscription_data: {
+        const now = new Date();
+        const trialActive = Boolean(trial && ["ACTIVE", "ENDING"].includes(trial.status) && trial.endsAt > now);
+        const canUseCheckoutTrial = Boolean(trialActive && trial!.endsAt.getTime() - now.getTime() >= (48 * 60 + 5) * 60 * 1_000);
+        if (trialActive && pendingSelection?.status === "SCHEDULED" && pendingSelection.providerPaymentMethod) {
+            await db.$transaction([
+                db.billingSelection.update({
+                    where: { id: pendingSelection.id },
+                    data: { planId: price.planId, billingPriceId: price.id, scheduledFor: trial!.endsAt, lastError: null },
+                }),
+                db.commercialEvent.create({
+                    data: {
+                        tenantId: tenant.tenantId,
+                        userId: user.id,
+                        event: "scheduled_plan_changed",
+                        source: "billing_page",
+                        metadata: { planId: price.planId, interval },
+                    },
+                }),
+            ]);
+            return NextResponse.json({ url: `${baseUrl}/billing/${tenant.slug}?checkout=scheduled` });
+        }
+        let checkout;
+        if (trialActive && !canUseCheckoutTrial) {
+            const resolvedCustomerId = customerId || (await stripe.customers.create({
+                email: user.email,
+                metadata: { tenantId: tenant.tenantId, tenantSlug: tenant.slug },
+            })).id;
+            const selection = await db.billingSelection.upsert({
+                where: { tenantId: tenant.tenantId },
+                create: {
+                    tenantId: tenant.tenantId,
+                    planId: price.planId,
+                    billingPriceId: price.id,
+                    providerCustomerId: resolvedCustomerId,
+                    scheduledFor: trial!.endsAt,
+                },
+                update: {
+                    planId: price.planId,
+                    billingPriceId: price.id,
+                    providerCustomerId: resolvedCustomerId,
+                    providerSetupIntentId: null,
+                    providerPaymentMethod: null,
+                    status: "PENDING_SETUP",
+                    scheduledFor: trial!.endsAt,
+                    lastError: null,
+                },
+                select: { id: true },
+            });
+            checkout = await stripe.checkout.sessions.create({
+                mode: "setup",
+                customer: resolvedCustomerId,
+                client_reference_id: tenant.tenantId,
+                success_url: `${baseUrl}/billing/${tenant.slug}?checkout=scheduled&session_id={CHECKOUT_SESSION_ID}`,
+                cancel_url: `${baseUrl}/billing/${tenant.slug}?checkout=cancelled`,
                 metadata: {
                     tenantId: tenant.tenantId,
                     tenantSlug: tenant.slug,
                     planId: price.planId,
+                    userId: user.id,
+                    billingSelectionId: selection.id,
                 },
+                setup_intent_data: {
+                    metadata: {
+                        tenantId: tenant.tenantId,
+                        planId: price.planId,
+                        billingSelectionId: selection.id,
+                    },
+                },
+            });
+        } else {
+            checkout = await stripe.checkout.sessions.create({
+                mode: "subscription",
+                line_items: [{ price: price.externalPriceId, quantity: 1 }],
+                ...(customerId ? { customer: customerId } : { customer_email: user.email }),
+                client_reference_id: tenant.tenantId,
+                success_url: `${baseUrl}/billing/${tenant.slug}?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
+                cancel_url: `${baseUrl}/billing/${tenant.slug}?checkout=cancelled`,
+                metadata: {
+                    tenantId: tenant.tenantId,
+                    tenantSlug: tenant.slug,
+                    planId: price.planId,
+                    userId: user.id,
+                },
+                subscription_data: {
+                    ...(canUseCheckoutTrial ? { trial_end: Math.floor(trial!.endsAt.getTime() / 1_000) } : {}),
+                    metadata: {
+                        tenantId: tenant.tenantId,
+                        tenantSlug: tenant.slug,
+                        planId: price.planId,
+                    },
+                },
+            });
+        }
+
+        await db.commercialEvent.create({
+            data: {
+                tenantId: tenant.tenantId,
+                userId: user.id,
+                event: "checkout_started",
+                source: "billing_page",
+                metadata: { planId: price.planId, interval, deferredSetup: trialActive && !canUseCheckoutTrial },
             },
         });
 

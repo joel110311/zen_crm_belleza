@@ -44,7 +44,6 @@ import { cn } from "@/lib/utils";
 
 type AppointmentQuickActionsProps = {
     appointmentId: string;
-    appointmentDate: string;
     clientName: string;
     contactId: string | null;
     patientId: string | null;
@@ -54,12 +53,10 @@ type AppointmentQuickActionsProps = {
     needsSpecialistAssignment: boolean;
     status: string;
     confirmationStatus: string;
-    paymentStatus: string;
 };
 
 export function AppointmentQuickActions({
     appointmentId,
-    appointmentDate,
     clientName,
     contactId,
     patientId,
@@ -69,12 +66,10 @@ export function AppointmentQuickActions({
     needsSpecialistAssignment,
     status,
     confirmationStatus,
-    paymentStatus,
 }: AppointmentQuickActionsProps) {
     const router = useRouter();
     const { toast } = useToast();
     const [isPending, startTransition] = useTransition();
-    const [isOpeningPayment, setIsOpeningPayment] = useState(false);
     const [assignmentDialogOpen, setAssignmentDialogOpen] = useState(false);
     const [clientPickerOpen, setClientPickerOpen] = useState(false);
     const [assignmentOptions, setAssignmentOptions] = useState<Awaited<ReturnType<typeof getAppointmentAssignmentOptions>> | null>(null);
@@ -149,9 +144,16 @@ export function AppointmentQuickActions({
         });
     };
 
-    const openPayment = () => {
-        setIsOpeningPayment(true);
-        router.push(`/dashboard/reception?date=${encodeURIComponent(appointmentDate)}&finish=${encodeURIComponent(appointmentId)}`);
+    const completeAppointment = () => {
+        startTransition(async () => {
+            const result = await updateAppointmentStatus(appointmentId, "completed");
+            if (!result.success) {
+                toast({ title: "No se pudo finalizar", description: result.error, variant: "destructive" });
+                return;
+            }
+            toast({ title: "Cita finalizada" });
+            router.refresh();
+        });
     };
 
     const deleteCurrentAppointment = () => {
@@ -343,10 +345,10 @@ export function AppointmentQuickActions({
             <Button
                 type="button"
                 size="sm"
-                className={cn("h-9 rounded-xl px-2.5 sm:px-3", isCompleted && paymentStatus !== "paid" && "bg-emerald-600 hover:bg-emerald-600")}
-                onClick={openPayment}
-                disabled={isOpeningPayment || paymentStatus === "paid"}
-                title={paymentStatus === "paid" ? "Cita pagada" : "Atendido y cobrar"}
+                className={cn("h-9 rounded-xl px-2.5 sm:px-3", isCompleted && "bg-emerald-600 hover:bg-emerald-600")}
+                onClick={completeAppointment}
+                disabled={isPending || isCompleted}
+                title={isCompleted ? "Cita completada" : "Marcar como atendida"}
             >
                 <CheckCircle2 className="h-4 w-4 sm:mr-1.5" />
                 <span className="hidden sm:inline">Atendido</span>
