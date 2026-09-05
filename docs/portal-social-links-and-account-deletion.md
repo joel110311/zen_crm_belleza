@@ -12,23 +12,26 @@ Antes de arrancar una imagen con este cambio, aplicar `20260905120000_portal_soc
 
 Prueba de validación y filtrado: `node scripts/test-portal-social-links.mjs`.
 
-## Eliminación de cuenta: estado real
+## Eliminación definitiva de cuenta
 
-`src/app/actions/users.ts`, función `deleteUser`, impide borrar la propia cuenta. En modo multitenant impide borrar al propietario y solo pone `TenantMembership.isActive=false` para los demás usuarios. No borra la identidad global, bases, archivos ni datos de integraciones. No se encontró un flujo de autoeliminación completo. La acción legacy borra un usuario local, pero no resuelve la baja del SaaS.
+La ruta pública `/delete-account`, enlazada desde Configuración y el aviso de privacidad, implementa la baja del SaaS. Exige sesión de control, contraseña actual y la frase exacta `ELIMINAR MI CUENTA`. Si la persona es la única propietaria de un negocio, debe transferirlo a otra cuenta activa o cerrar también el negocio. La confirmación revoca inmediatamente contraseña, sesiones, membresías y trabajos futuros de los negocios cerrados.
 
-Esta revisión no ejecuta bajas ni implementa borrados automáticos.
+La limpieza destructiva no ocurre en la petición web. `belleza-account-deletion-worker` procesa un registro idempotente bajo un advisory lock y reintenta fallos transitorios. Para un negocio cerrado cancela suscripciones, desconecta canales, revoca Google Calendar, retira objetos privados y archivos locales, elimina su base y roles PostgreSQL y finalmente borra el registro del control plane. En negocios que continúan, anonimiza la proyección local de la persona y desconecta Google si fue conectado con el mismo correo. Por último borra identidad, invitaciones, dispositivos, registros de correo y evidencia personal del control plane.
 
-## Requisitos y trabajo pendiente
+El navegador genera un comprobante aleatorio que permanece únicamente en el fragmento `#` del enlace. El servidor guarda solo su SHA-256; al finalizar conserva el comprobante anónimo y fechas, sin `userId`, correo ni nombre. Los comprobantes fiscales que un proveedor de pago deba retener no se recrean dentro del CRM.
+
+### Despliegue
+
+1. La imagen debe contener `scripts/account-deletion-worker.mjs` y `@aws-sdk/client-s3`.
+2. `belleza-tenant-provisioner` ejecuta primero `migrate-control-plane.mjs`, que aplica `20260905160000_account_deletion`. Confirmar que el provisionador está sano antes de probar el formulario.
+3. El stack crea `belleza-account-deletion-worker` con la URL administrativa de PostgreSQL, claves de canales/Google, credenciales de almacenamiento y, cuando correspondan, Stripe o Paddle. El servicio web no recibe la URL administrativa.
+4. Mantener montado `belleza_crm_uploads` en `/app/public/uploads` tanto en web como en este worker. Nunca apuntar `TENANT_DELETION_UPLOADS_DIR` a una ruta amplia.
+5. Probar con una cuenta y negocio desechables: acceso revocado al confirmar, estado `COMPLETED`, base `zencrm_t_<id>` inexistente, prefijo de almacenamiento vacío y ningún cambio en otro negocio.
+
+### Alcance de tiendas e integraciones
 
 - Apple: las apps con creación de cuentas deben permitir iniciar la eliminación desde la app. Desactivar no sustituye eliminar. Borrar datos asociados salvo retenciones legalmente necesarias y revocar tokens de Sign in with Apple si se incorpora. Fuente: https://developer.apple.com/support/offering-account-deletion-in-your-app/
 - Google Play: requiere un camino dentro de la app y un recurso web funcional para solicitar eliminación de cuenta y datos; describir las retenciones justificadas. Fuente: https://support.google.com/googleplay/android-developer/answer/13327111?hl=es
-- Meta: pendiente de confirmar el requisito exacto para los productos y permisos de la aplicación conectada. La documentación oficial de callbacks devolvió HTTP 429 durante esta revisión; no se certifica cumplimiento. Referencia: https://developers.facebook.com/docs/development/create-an-app/app-dashboard/data-deletion-callback/
+- Meta: la conexión de WhatsApp del CRM no se usa como inicio de sesión de la cuenta. Al cerrar un negocio se elimina la credencial y la ruta de webhook; las conexiones legacy con WABA conocido también cancelan `subscribed_apps`. Si en el futuro se añade Facebook Login, habrá que configurar además el callback de eliminación de Meta y validarlo en el panel de la aplicación. Referencia: https://developers.facebook.com/docs/development/create-an-app/app-dashboard/data-deletion-callback/
 
-Implementación necesaria antes de declarar lista la eliminación:
-
-1. Separar cerrar la cuenta personal de cerrar un negocio. Si el propietario conserva el negocio, transferir propiedad; si lo cierra, explicar qué afecta al equipo y clientes. Considerar usuarios con varios negocios.
-2. Añadir entrada visible en Configuración y página pública de solicitudes, verificación reciente de identidad y confirmación explícita.
-3. Registrar y procesar la solicitud de forma idempotente: revocar sesiones y tokens, cancelar suscripciones/cobros futuros, detener mensajes y trabajos pendientes, retirar portal e integraciones.
-4. Borrar o anonimizar identidad, referencias locales, datos asociados y archivos según el alcance confirmado. Conservar únicamente datos con fundamento y plazo documentados; establecer caducidad de backups y evitar reactivar datos borrados al restaurar.
-5. Confirmar la finalización y probar que la cuenta ya no inicia sesión, que otros negocios no se afectan y que un fallo puede reintentarse sin dejar una baja parcial.
-6. Configurar los enlaces reales en las tiendas y el mecanismo requerido por Meta, y probarlos una vez desplegados.
+Las copias de respaldo requieren una política operativa de caducidad y restauraciones que vuelvan a aplicar los comprobantes de baja. Esta implementación elimina datos activos; no afirma borrar instantáneamente copias administradas fuera de la aplicación.

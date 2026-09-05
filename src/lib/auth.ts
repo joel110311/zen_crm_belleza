@@ -54,6 +54,7 @@ async function findAuthIdentityByEmail(email: string): Promise<AuthIdentity | nu
         if (!user?.passwordHash) {
             return null;
         }
+        if (await getControlDb().accountDeletion.findUnique({ where: { userId: user.id } })) return null;
 
         return {
             id: user.id,
@@ -87,6 +88,7 @@ async function findAuthIdentityByEmail(email: string): Promise<AuthIdentity | nu
 
 async function refreshAuthIdentity(id: string, scope: "legacy" | "control"): Promise<Omit<AuthIdentity, "passwordHash"> | null> {
     if (scope === "control") {
+        if (await getControlDb().accountDeletion.findUnique({ where: { userId: id } })) return null;
         const user = await getControlDb().user.findUnique({
             where: { id },
             select: { id: true, email: true, name: true, securityVersion: true },

@@ -116,7 +116,9 @@ enum ChannelConnectionStatus {
   FAILED
 }
 
-/** Work is claimed only by the dedicated worker, never by a web request. */
+/**
+ * Work is claimed only by the dedicated worker, never by a web request.
+ */
 enum TenantWorkKind {
   WEBHOOK_EVENT
   OUTBOUND_MESSAGE
@@ -172,57 +174,57 @@ enum ProfessionalProfileProjectionStatus {
 }
 
 model User {
-  id                        String               @id @default(cuid())
-  email                     String               @unique
+  id                        String                   @id @default(cuid())
+  email                     String                   @unique
   name                      String?
   passwordHash              String?
   emailVerifiedAt           DateTime?
-  securityVersion           Int                  @default(1)
-  isPlatformAdmin           Boolean              @default(false)
-  createdAt                 DateTime             @default(now())
-  updatedAt                 DateTime             @updatedAt
+  securityVersion           Int                      @default(1)
+  isPlatformAdmin           Boolean                  @default(false)
+  createdAt                 DateTime                 @default(now())
+  updatedAt                 DateTime                 @updatedAt
   memberships               TenantMembership[]
-  createdTenants            Tenant[]             @relation("TenantCreator")
+  createdTenants            Tenant[]                 @relation("TenantCreator")
   deviceInstalls            DeviceInstallation[]
-  auditEvents               AuditLog[]           @relation("AuditActor")
-  signupIntents             SignupIntent[]       @relation("SignupIntentVerifiedUser")
-  legalAcceptances          LegalAcceptance[]    @relation("LegalAcceptanceUser")
-  emailDeliveries           EmailDelivery[]      @relation("EmailDeliveryUser")
+  auditEvents               AuditLog[]               @relation("AuditActor")
+  signupIntents             SignupIntent[]           @relation("SignupIntentVerifiedUser")
+  legalAcceptances          LegalAcceptance[]        @relation("LegalAcceptanceUser")
+  emailDeliveries           EmailDelivery[]          @relation("EmailDeliveryUser")
   passwordResetTokens       PasswordResetToken[]
-  sentTenantInvitations     TenantInvitation[]   @relation("TenantInvitationInviter")
-  acceptedTenantInvitations TenantInvitation[]   @relation("TenantInvitationAcceptor")
+  sentTenantInvitations     TenantInvitation[]       @relation("TenantInvitationInviter")
+  acceptedTenantInvitations TenantInvitation[]       @relation("TenantInvitationAcceptor")
   channelConnectionStates   ChannelConnectionState[] @relation("ChannelConnectionStateRequester")
 }
 
 model Tenant {
-  id                 String               @id @default(cuid())
-  slug               String               @unique
-  displayName        String
-  legalName          String?
-  timeZone           String               @default("America/Mexico_City")
-  status             TenantStatus         @default(PROVISIONING)
-  provisioningStatus ProvisioningStatus   @default(PENDING)
-  billingStatus      BillingStatus        @default(TRIALING)
-  accessMode         TenantAccessMode     @default(FULL)
-  createdByUserId    String?
-  createdAt          DateTime             @default(now())
-  updatedAt          DateTime             @updatedAt
-  createdBy          User?                @relation("TenantCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
-  memberships        TenantMembership[]
-  domains            TenantDomain[]
-  database           TenantDatabase?
-  trial              Trial?
-  subscriptions      Subscription[]
-  entitlements       BillingEntitlement[]
-  provisioningJobs   ProvisioningJob[]
-  webhookEvents      WebhookEvent[]
-  channelConnections ChannelConnection[]
+  id                      String                   @id @default(cuid())
+  slug                    String                   @unique
+  displayName             String
+  legalName               String?
+  timeZone                String                   @default("America/Mexico_City")
+  status                  TenantStatus             @default(PROVISIONING)
+  provisioningStatus      ProvisioningStatus       @default(PENDING)
+  billingStatus           BillingStatus            @default(TRIALING)
+  accessMode              TenantAccessMode         @default(FULL)
+  createdByUserId         String?
+  createdAt               DateTime                 @default(now())
+  updatedAt               DateTime                 @updatedAt
+  createdBy               User?                    @relation("TenantCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  memberships             TenantMembership[]
+  domains                 TenantDomain[]
+  database                TenantDatabase?
+  trial                   Trial?
+  subscriptions           Subscription[]
+  entitlements            BillingEntitlement[]
+  provisioningJobs        ProvisioningJob[]
+  webhookEvents           WebhookEvent[]
+  channelConnections      ChannelConnection[]
   channelConnectionStates ChannelConnectionState[]
-  workItems          TenantWorkItem[]
-  deviceInstalls     DeviceInstallation[]
-  auditEvents        AuditLog[]
-  signupIntent       SignupIntent?        @relation("SignupIntentTenant")
-  invitations        TenantInvitation[]
+  workItems               TenantWorkItem[]
+  deviceInstalls          DeviceInstallation[]
+  auditEvents             AuditLog[]
+  signupIntent            SignupIntent?            @relation("SignupIntentTenant")
+  invitations             TenantInvitation[]
 
   @@index([status, provisioningStatus])
   @@index([billingStatus, accessMode])
@@ -666,4 +668,20 @@ model SecurityRateLimit {
   updatedAt       DateTime @updatedAt
 
   @@index([windowEndsAt])
+}
+
+// Durable erasure receipt. No FK: completion removes the identity itself.
+model AccountDeletion {
+  id          String    @id @default(cuid())
+  userId      String?   @unique
+  tokenHash   String    @unique
+  status      String    @default("PENDING")
+  targets     Json
+  attempts    Int       @default(0)
+  nextRunAt   DateTime  @default(now())
+  lastError   String?
+  createdAt   DateTime  @default(now())
+  completedAt DateTime?
+
+  @@index([status, nextRunAt])
 }

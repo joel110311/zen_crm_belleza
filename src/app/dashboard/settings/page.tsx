@@ -498,6 +498,7 @@ function SettingsWorkspace() {
                             ? "Administra la apariencia, los usuarios, el calendario y las notificaciones del negocio."
                             : "Ajusta la apariencia, los canales y las integraciones del CRM sin tocar la operación diaria del equipo."}
                 </p>
+                {!businessOnly && isTenantWorkspace && <a href="/delete-account" className="mt-3 inline-block text-sm text-destructive underline">Eliminar mi cuenta</a>}
             </div>
 
             {!businessOnly ? <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">

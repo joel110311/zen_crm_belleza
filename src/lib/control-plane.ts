@@ -361,6 +361,7 @@ export async function getTenantAccessForUser(
     if (!normalizedUserId) {
         return null;
     }
+    if (await getControlDb().accountDeletion.findUnique({ where: { userId: normalizedUserId } })) return null;
 
     const slug = normalizeTenantSlug(rawSlug);
     const tenant = await getControlDb().tenant.findUnique({

@@ -137,6 +137,47 @@ services:
       - zen-crm-local
     restart: unless-stopped
 
+  # Processes irreversible account erasure outside the web request. Keep one replica.
+  account-deletion-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: account-deletion-worker
+    profiles: ["multitenant"]
+    command: ["sh", "-c", "while true; do node account-deletion-worker.mjs --once || true; sleep ${ACCOUNT_DELETION_POLL_SECONDS:-10}; done"]
+    environment:
+      - CONTROL_DATABASE_URL=postgresql://${CONTROL_POSTGRES_USER:-zencrm_control_runtime}:${CONTROL_POSTGRES_PASSWORD:-local-control-runtime-password}@zen-crm-db:5432/${CONTROL_POSTGRES_DB:-zencrm_control}
+      - TENANT_POSTGRES_ADMIN_URL=postgresql://zencrm:${LOCAL_POSTGRES_PASSWORD:?Define LOCAL_POSTGRES_PASSWORD}@zen-crm-db:5432/postgres
+      - TENANT_POSTGRES_CLUSTER_KEY=${TENANT_POSTGRES_CLUSTER_KEY:-local}
+      - TENANT_CREDENTIALS_ENCRYPTION_KEY=${TENANT_CREDENTIALS_ENCRYPTION_KEY:-}
+      - TENANT_CREDENTIALS_KEY_VERSION=${TENANT_CREDENTIALS_KEY_VERSION:-1}
+      - CHANNEL_CREDENTIALS_ENCRYPTION_KEY=${CHANNEL_CREDENTIALS_ENCRYPTION_KEY:-}
+      - GOOGLE_TOKEN_ENCRYPTION_KEY=${GOOGLE_TOKEN_ENCRYPTION_KEY:-}
+      - MULTITENANT_WUZAPI_BASE_URL=${MULTITENANT_WUZAPI_BASE_URL:-}
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-}
+      - PADDLE_API_KEY=${PADDLE_API_KEY:-}
+      - PADDLE_ENVIRONMENT=${PADDLE_ENVIRONMENT:-sandbox}
+      - TENANT_STORAGE_S3_ENDPOINT=${TENANT_STORAGE_S3_ENDPOINT:-}
+      - TENANT_STORAGE_S3_REGION=${TENANT_STORAGE_S3_REGION:-us-east-1}
+      - TENANT_STORAGE_S3_BUCKET=${TENANT_STORAGE_S3_BUCKET:-}
+      - TENANT_STORAGE_S3_ACCESS_KEY_ID=${TENANT_STORAGE_S3_ACCESS_KEY_ID:-}
+      - TENANT_STORAGE_S3_SECRET_ACCESS_KEY=${TENANT_STORAGE_S3_SECRET_ACCESS_KEY:-}
+      - TENANT_STORAGE_S3_SESSION_TOKEN=${TENANT_STORAGE_S3_SESSION_TOKEN:-}
+      - TENANT_STORAGE_S3_FORCE_PATH_STYLE=${TENANT_STORAGE_S3_FORCE_PATH_STYLE:-true}
+      - TENANT_DELETION_UPLOADS_DIR=/app/public/uploads
+      - ACCOUNT_DELETION_POLL_SECONDS=${ACCOUNT_DELETION_POLL_SECONDS:-10}
+      - TZ=${TZ:-America/Mexico_City}
+    volumes:
+      - zen_crm_uploads:/app/public/uploads
+    depends_on:
+      zen-crm-db:
+        condition: service_healthy
+      provisioner:
+        condition: service_started
+    networks:
+      - zen-crm-local
+    restart: unless-stopped
+
   whatsapp-gateway:
     image: asternic/wuzapi:sha-9487eca
     environment:

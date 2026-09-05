@@ -176,6 +176,54 @@ services:
       restart_policy:
         condition: on-failure
 
+  belleza-account-deletion-worker:
+    image: ghcr.io/joel110311/zen_crm_belleza:latest
+    command: ["sh", "-c", "while true; do node account-deletion-worker.mjs --once || true; sleep ${ACCOUNT_DELETION_POLL_SECONDS:-10}; done"]
+    environment:
+      - CONTROL_DATABASE_URL=${CONTROL_DATABASE_URL:-}
+      - TENANT_POSTGRES_ADMIN_URL=${TENANT_POSTGRES_ADMIN_URL:-}
+      - TENANT_POSTGRES_CLUSTER_KEY=${TENANT_POSTGRES_CLUSTER_KEY:-primary}
+      - TENANT_CREDENTIALS_ENCRYPTION_KEY=${TENANT_CREDENTIALS_ENCRYPTION_KEY:-}
+      - TENANT_CREDENTIALS_KEY_VERSION=${TENANT_CREDENTIALS_KEY_VERSION:-1}
+      - CHANNEL_CREDENTIALS_ENCRYPTION_KEY=${CHANNEL_CREDENTIALS_ENCRYPTION_KEY:-}
+      - GOOGLE_TOKEN_ENCRYPTION_KEY=${GOOGLE_TOKEN_ENCRYPTION_KEY:-}
+      - MULTITENANT_WUZAPI_BASE_URL=${MULTITENANT_WUZAPI_BASE_URL:-}
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-}
+      - PADDLE_API_KEY=${PADDLE_API_KEY:-}
+      - PADDLE_ENVIRONMENT=${PADDLE_ENVIRONMENT:-production}
+      - META_GRAPH_API_VERSION=${META_GRAPH_API_VERSION:-v26.0}
+      - TENANT_STORAGE_S3_ENDPOINT=${TENANT_STORAGE_S3_ENDPOINT:-}
+      - TENANT_STORAGE_S3_REGION=${TENANT_STORAGE_S3_REGION:-us-east-1}
+      - TENANT_STORAGE_S3_BUCKET=${TENANT_STORAGE_S3_BUCKET:-}
+      - TENANT_STORAGE_S3_ACCESS_KEY_ID=${TENANT_STORAGE_S3_ACCESS_KEY_ID:-}
+      - TENANT_STORAGE_S3_SECRET_ACCESS_KEY=${TENANT_STORAGE_S3_SECRET_ACCESS_KEY:-}
+      - TENANT_STORAGE_S3_SESSION_TOKEN=${TENANT_STORAGE_S3_SESSION_TOKEN:-}
+      - TENANT_STORAGE_S3_FORCE_PATH_STYLE=${TENANT_STORAGE_S3_FORCE_PATH_STYLE:-true}
+      - TENANT_DELETION_UPLOADS_DIR=/app/public/uploads
+      - ACCOUNT_DELETION_POLL_SECONDS=${ACCOUNT_DELETION_POLL_SECONDS:-10}
+      - TZ=${TZ:-America/Mexico_City}
+    volumes:
+      - belleza_crm_uploads:/app/public/uploads
+    networks:
+      - SociosNet
+    depends_on:
+      - belleza-crm-db
+      - belleza-tenant-provisioner
+    healthcheck:
+      test: ["CMD", "node", "-e", "const{Pool}=require('pg');const p=new Pool({connectionString:process.env.CONTROL_DATABASE_URL});p.query(`SELECT to_regclass('\\\"AccountDeletion\\\"') AS t`).then(r=>p.end().then(()=>process.exit(r.rows[0].t?0:1))).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      restart_policy:
+        condition: on-failure
+
   belleza-whatsapp-gateway:
     image: asternic/wuzapi:sha-9487eca
     environment:
