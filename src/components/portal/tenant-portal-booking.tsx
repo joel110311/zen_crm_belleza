@@ -3,6 +3,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { PortalSocialLinks } from "@/components/portal/portal-social-links";
+import type { PortalSocialLink } from "@/lib/portal-social-links";
 import { CalendarDays, CheckCircle2, Clock3, Loader2, MapPin, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,6 +17,7 @@ export type TenantPortalData = {
     subtitle: string;
     intro: string;
     primaryColor: string;
+    socialLinks?: PortalSocialLink[];
     paymentInstructions: string | null;
     logoUrl: string | null;
     logoScale: number;
@@ -189,6 +192,7 @@ export function TenantPortalBooking({ data }: Props) {
         </div></header>
         <div className="mx-auto grid w-full max-w-6xl gap-6 px-5 py-8 sm:px-8 lg:grid-cols-[minmax(0,1fr)_360px] lg:py-12">
             <section><p className="text-sm font-semibold uppercase tracking-[0.16em]" style={{ color: data.primaryColor }}>Reservas en línea</p><h1 className="mt-2 max-w-2xl text-balance text-3xl font-semibold tracking-tight sm:text-4xl">{data.intro}</h1><p className="mt-4 flex items-start gap-2 text-sm leading-6 text-muted-foreground"><Clock3 className="mt-0.5 size-4 shrink-0" />{data.scheduleSummary}</p>
+                <PortalSocialLinks links={data.socialLinks} />
                 <div className="mt-7 rounded-3xl border bg-background p-4 shadow-sm sm:p-6">
                     <div className="grid gap-5 sm:grid-cols-2"><Field label="Servicio"><select className="h-11 w-full rounded-xl border bg-background px-3" value={serviceId} onChange={(event) => setServiceId(event.target.value)}>{data.services.map((service) => <option key={service.id} value={service.id}>{service.name} · {service.durationMinutes} min{service.showPrice ? ` · ${money(service.price, service.currency, data.operationContext.locale)}` : ""}</option>)}</select></Field><Field label="Profesional"><select className="h-11 w-full rounded-xl border bg-background px-3" value={selectedSpecialist?.id || ""} onChange={(event) => setSpecialistId(event.target.value)}>{eligibleSpecialists.map((specialist) => <option key={specialist.id} value={specialist.id}>{specialist.displayName || specialist.name}{specialist.specialty ? ` · ${specialist.specialty}` : ""}</option>)}</select></Field><Field label="Fecha"><Input type="date" min={getOperationTodayKey(data.operationContext.timeZone)} value={date} onChange={(event) => setDate(event.target.value)} /></Field></div>
                     <div className="mt-6"><p className="text-sm font-medium">Horarios disponibles</p>{loadingSlots ? <p className="mt-3 flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" /> Consultando agenda…</p> : slots.length ? <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">{slots.map((slot) => <button key={slot} type="button" disabled={holdingSlot !== null} onClick={() => void selectSlot(slot)} className={`h-11 rounded-xl border text-sm font-medium transition ${selectedSlot === slot ? "border-transparent text-white" : "bg-background hover:border-primary/50"}`} style={selectedSlot === slot ? { backgroundColor: data.primaryColor } : undefined}>{holdingSlot === slot ? <Loader2 className="mx-auto size-4 animate-spin" /> : timeToOperationInputValue(slot, data.operationContext.timeZone)}</button>)}</div> : <p className="mt-3 rounded-xl bg-muted/40 p-3 text-sm text-muted-foreground">No hay horarios libres para esta selección.</p>}</div>

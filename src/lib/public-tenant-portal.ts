@@ -1,4 +1,5 @@
 import "server-only";
+import { publicPortalSocialLinks } from "@/lib/portal-social-links";
 
 import { randomUUID } from "node:crypto";
 import { Prisma, type PrismaClient } from "@prisma/client";
@@ -163,6 +164,7 @@ function serializedPortal(context: PublicPortalContext, services: Array<{
         subtitle: context.settings.clinicSubtitle || "",
         intro: context.settings.portalIntro || "Aparta el horario que prefieras.",
         primaryColor: context.settings.portalPrimaryColor || "#4B5F25",
+        socialLinks: publicPortalSocialLinks(context.settings.portalSocialLinks),
         paymentInstructions: context.settings.portalPaymentInstructions || null,
         logoUrl: context.settings.clinicLogoUrl || context.settings.brandLogoUrl || null,
         logoScale: context.settings.clinicLogoScale || 100,

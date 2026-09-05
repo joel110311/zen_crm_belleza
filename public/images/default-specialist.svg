@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 420" role="img" aria-labelledby="title desc">
+  <title id="title">Perfil predeterminado de especialista</title>
+  <desc id="desc">Silueta neutral para un perfil de especialista sin fotografía.</desc>
+  <defs>
+    <linearGradient id="background" x1="80" x2="560" y1="380" y2="40" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#E8F7F2"/>
+      <stop offset="1" stop-color="#E7F2FB"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="190" x2="460" y1="350" y2="80" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#278A73"/>
+      <stop offset="1" stop-color="#358FB0"/>
+    </linearGradient>
+  </defs>
+  <rect width="640" height="420" rx="44" fill="url(#background)"/>
+  <circle cx="320" cy="155" r="76" fill="url(#accent)"/>
+  <path d="M151 382c9-93 78-154 169-154s160 61 169 154" fill="url(#accent)"/>
+  <circle cx="497" cy="92" r="31" fill="#FFFFFF" opacity=".75"/>
+  <circle cx="126" cy="110" r="18" fill="#FFFFFF" opacity=".6"/>
+</svg>

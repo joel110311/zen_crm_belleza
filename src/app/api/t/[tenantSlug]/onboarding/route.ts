@@ -1,8 +1,11 @@
 import {
   BUSINESS_DAY_KEYS,
+  BUSINESS_DAY_LABELS,
   buildUniformBusinessWeeklySchedule,
+  normalizeBusinessHours,
   timeToMinutes,
   type BusinessDayKey,
+  type BusinessWeeklySchedule,
 } from "@/lib/calendar/business-hours";
 import {
   EMPTY_BUSINESS_POLICIES,
@@ -146,6 +149,31 @@ function enabledBusinessDays(value: unknown): BusinessDayKey[] {
   if (days.length === 0)
     throw new OnboardingRequestError("Selecciona al menos un día de atención.");
   return days;
+}
+
+function validWeeklySchedule(value: unknown): BusinessWeeklySchedule {
+  const input = asRecord(value);
+  const schedule = {} as BusinessWeeklySchedule;
+  let enabledCount = 0;
+
+  for (const day of BUSINESS_DAY_KEYS) {
+    const dayInput = asRecord(input[day]);
+    const enabled = dayInput.enabled === true;
+    const start = validTime(dayInput.start, `la apertura del ${BUSINESS_DAY_LABELS[day].toLowerCase()}`);
+    const end = validTime(dayInput.end, `el cierre del ${BUSINESS_DAY_LABELS[day].toLowerCase()}`);
+    if (enabled && timeToMinutes(end) <= timeToMinutes(start)) {
+      throw new OnboardingRequestError(
+        `El cierre del ${BUSINESS_DAY_LABELS[day].toLowerCase()} debe ser posterior a su apertura.`,
+      );
+    }
+    if (enabled) enabledCount += 1;
+    schedule[day] = { enabled, start, end };
+  }
+
+  if (enabledCount === 0) {
+    throw new OnboardingRequestError("Selecciona al menos un día de atención.");
+  }
+  return schedule;
 }
 
 function cleanVisibleServiceIds(value: unknown) {
@@ -292,6 +320,7 @@ export async function getOnboardingPayload(tenant: TenantServiceContext) {
       businessTimeZone: settings.businessTimeZone,
       businessHoursStart: settings.businessHoursStart,
       businessHoursEnd: settings.businessHoursEnd,
+      businessWeeklySchedule: normalizeBusinessHours(settings).weeklySchedule,
       businessPolicies: normalizeBusinessPolicies(settings.businessPolicies),
       portal: {
         enabled: settings.portalEnabled,
@@ -400,31 +429,34 @@ export async function updateOnboardingStep(
   }
 
   if (step === "hours") {
-    const start = validTime(body.start, "la hora de inicio");
-    const end = validTime(body.end, "la hora de cierre");
-    if (timeToMinutes(end) <= timeToMinutes(start))
-      throw new OnboardingRequestError(
-        "La hora de cierre debe ser posterior a la hora de inicio.",
-      );
-    const days = enabledBusinessDays(body.enabledDays);
-    const weeklySchedule = buildUniformBusinessWeeklySchedule(
-      start,
-      end,
-      false,
-    );
-    for (const day of days) weeklySchedule[day].enabled = true;
+    let weeklySchedule: BusinessWeeklySchedule;
+    if (body.weeklySchedule && typeof body.weeklySchedule === "object") {
+      weeklySchedule = validWeeklySchedule(body.weeklySchedule);
+    } else {
+      // Backward-compatible input for a browser that still has the previous wizard open.
+      const start = validTime(body.start, "la hora de inicio");
+      const end = validTime(body.end, "la hora de cierre");
+      if (timeToMinutes(end) <= timeToMinutes(start))
+        throw new OnboardingRequestError(
+          "La hora de cierre debe ser posterior a la hora de inicio.",
+        );
+      const days = enabledBusinessDays(body.enabledDays);
+      weeklySchedule = buildUniformBusinessWeeklySchedule(start, end, false);
+      for (const day of days) weeklySchedule[day].enabled = true;
+    }
+    const summary = normalizeBusinessHours({ businessWeeklySchedule: weeklySchedule });
     return tenant.db.$transaction(async (tx) => {
       await tx.systemSettings.upsert({
         where: { id: "default" },
         create: {
           id: "default",
-          businessHoursStart: start,
-          businessHoursEnd: end,
+          businessHoursStart: summary.start,
+          businessHoursEnd: summary.end,
           businessWeeklySchedule: weeklySchedule,
         },
         update: {
-          businessHoursStart: start,
-          businessHoursEnd: end,
+          businessHoursStart: summary.start,
+          businessHoursEnd: summary.end,
           businessWeeklySchedule: weeklySchedule,
         },
       });

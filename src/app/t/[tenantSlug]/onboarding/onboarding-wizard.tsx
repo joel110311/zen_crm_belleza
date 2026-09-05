@@ -23,8 +23,9 @@ import { Label } from "@/components/ui/label";
 import { OPERATION_COUNTRIES } from "@/lib/operation-context";
 import {
   BUSINESS_DAY_KEYS,
-  BUSINESS_DAY_SHORT_LABELS,
+  BUSINESS_DAY_LABELS,
   type BusinessDayKey,
+  type BusinessWeeklySchedule,
 } from "@/lib/calendar/business-hours";
 import type { BusinessPolicies } from "@/lib/ai/business-policies";
 import { TenantChannelSetup } from "@/components/tenant/tenant-channel-setup";
@@ -38,7 +39,7 @@ type InitialData = {
     businessTimeZone: string;
     defaultTimeZone: string;
   };
-  hours: { start: string; end: string; enabledDays: BusinessDayKey[] };
+  hours: { weeklySchedule: BusinessWeeklySchedule };
   service: {
     name: string;
     description: string;
@@ -301,12 +302,16 @@ export function TenantOnboardingWizard({
       businessTimeZone: country?.timeZone || value.businessTimeZone,
     }));
   }
-  function toggleDay(day: BusinessDayKey) {
+  function updateBusinessDay(
+    day: BusinessDayKey,
+    patch: Partial<BusinessWeeklySchedule[BusinessDayKey]>,
+  ) {
     setHours((value) => ({
       ...value,
-      enabledDays: value.enabledDays.includes(day)
-        ? value.enabledDays.filter((item) => item !== day)
-        : [...value.enabledDays, day],
+      weeklySchedule: {
+        ...value.weeklySchedule,
+        [day]: { ...value.weeklySchedule[day], ...patch },
+      },
     }));
   }
   function serviceIsVisible(id: string) {
@@ -348,6 +353,12 @@ export function TenantOnboardingWizard({
           quedaron guardados. Puedes completar el equipo y los canales desde
           Configuración cuando lo necesites.
         </p>
+        <div className="mt-5 rounded-xl border border-primary/25 bg-primary/5 p-4">
+          <p className="font-medium">Tu primer servicio ya está publicado</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Te recomendamos agregar ahora el resto del catálogo, con sus precios, duraciones, imágenes y especialistas.
+          </p>
+        </div>
         <div className="mt-7 flex flex-wrap gap-3">
           <Button asChild>
             <Link href={`/t/${tenantSlug}/dashboard`}>Abrir panel</Link>
@@ -360,6 +371,9 @@ export function TenantOnboardingWizard({
             }}
           >
             Actualizar configuración
+          </Button>
+          <Button asChild variant="outline">
+            <Link href={`/t/${tenantSlug}/services`}>Agregar más servicios</Link>
           </Button>
         </div>
       </section>
@@ -520,45 +534,42 @@ export function TenantOnboardingWizard({
               title="Horario de atención"
               description="El calendario sólo ofrecerá citas dentro de estos días y horarios."
             />
-            <div className="grid max-w-xl gap-5 sm:grid-cols-2">
-              <Field label="Hora de inicio">
-                <Input
-                  required
-                  type="time"
-                  value={hours.start}
-                  onChange={(event) =>
-                    setHours((value) => ({
-                      ...value,
-                      start: event.target.value,
-                    }))
-                  }
-                />
-              </Field>
-              <Field label="Hora de cierre">
-                <Input
-                  required
-                  type="time"
-                  value={hours.end}
-                  onChange={(event) =>
-                    setHours((value) => ({ ...value, end: event.target.value }))
-                  }
-                />
-              </Field>
-            </div>
-            <div>
-              <Label>Días de atención</Label>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {BUSINESS_DAY_KEYS.map((day) => (
-                  <button
-                    key={day}
-                    type="button"
-                    onClick={() => toggleDay(day)}
-                    className={`rounded-full border px-3 py-2 text-sm font-medium ${hours.enabledDays.includes(day) ? "border-primary bg-primary text-primary-foreground" : "bg-background hover:border-primary/50"}`}
-                  >
-                    {BUSINESS_DAY_SHORT_LABELS[day]}
-                  </button>
-                ))}
-              </div>
+            <div className="space-y-3">
+              {BUSINESS_DAY_KEYS.map((day) => {
+                const schedule = hours.weeklySchedule[day];
+                return (
+                  <div key={day} className="grid gap-3 rounded-xl border bg-muted/15 p-4 sm:grid-cols-[150px_1fr] sm:items-center">
+                    <label className="flex items-center gap-3 text-sm font-medium">
+                      <input
+                        type="checkbox"
+                        className="size-4 accent-primary"
+                        checked={schedule.enabled}
+                        onChange={(event) => updateBusinessDay(day, { enabled: event.target.checked })}
+                      />
+                      {BUSINESS_DAY_LABELS[day]}
+                    </label>
+                    {schedule.enabled ? (
+                      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+                        <Input
+                          required
+                          aria-label={`Apertura ${BUSINESS_DAY_LABELS[day]}`}
+                          type="time"
+                          value={schedule.start}
+                          onChange={(event) => updateBusinessDay(day, { start: event.target.value })}
+                        />
+                        <span className="text-sm text-muted-foreground">a</span>
+                        <Input
+                          required
+                          aria-label={`Cierre ${BUSINESS_DAY_LABELS[day]}`}
+                          type="time"
+                          value={schedule.end}
+                          onChange={(event) => updateBusinessDay(day, { end: event.target.value })}
+                        />
+                      </div>
+                    ) : <span className="text-sm text-muted-foreground">Cerrado</span>}
+                  </div>
+                );
+              })}
             </div>
             <StepFooter
               saving={saving}
@@ -1029,7 +1040,7 @@ export function TenantOnboardingWizard({
             <div className="rounded-2xl border bg-muted/30 p-5">
               <p className="font-medium">Configura a tu ritmo</p>
               <p className="mt-1 text-sm leading-6 text-muted-foreground">Puedes continuar con la publicación y agregar profesionales después. No se enviarán invitaciones ni correos automáticos.</p>
-              <Button asChild className="mt-4" variant="outline"><Link href={`/t/${tenantSlug}/settings?section=specialists`}>Abrir configuración del equipo</Link></Button>
+              <Button asChild className="mt-4" variant="outline"><Link href={`/t/${tenantSlug}/specialists`}>Abrir Especialistas</Link></Button>
             </div>
             <StepFooter
               saving={saving}

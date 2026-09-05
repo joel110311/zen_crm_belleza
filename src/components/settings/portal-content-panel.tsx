@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/use-toast";
 import { DEFAULT_BRAND_NAME } from "@/lib/branding";
+import { normalizePortalSocialLinks, SOCIAL_NETWORKS, type PortalSocialLink } from "@/lib/portal-social-links";
 
 type PortalSettings = {
     portalEnabled: boolean;
@@ -21,10 +22,12 @@ type PortalSettings = {
     portalIntro: string;
     portalPrimaryColor: string;
     portalPaymentInstructions: string;
+    portalSocialLinks: PortalSocialLink[];
 };
 
 const DEFAULT_PORTAL_SETTINGS: PortalSettings = {
     portalEnabled: true,
+    portalSocialLinks: [],
     portalSlug: "belleza",
     portalClinicName: "Zen CRM Belleza",
     portalIntro: "Aparta el horario para tu próximo servicio.",
@@ -62,6 +65,7 @@ export function PortalContentPanel() {
                 setBrandLogoUrl(settings.brandLogoUrl || "");
                 setPortalSettings({
                     portalEnabled: settings.portalEnabled !== false,
+                    portalSocialLinks: normalizePortalSocialLinks(settings.portalSocialLinks),
                     portalSlug: settings.portalSlug || "belleza",
                     portalClinicName: /oftalm/i.test(storedPortalName) ? "Zen CRM Belleza" : storedPortalName || "Zen CRM Belleza",
                     portalIntro: /oftalm/i.test(storedPortalIntro) ? DEFAULT_PORTAL_SETTINGS.portalIntro : storedPortalIntro || DEFAULT_PORTAL_SETTINGS.portalIntro,
@@ -105,11 +109,18 @@ export function PortalContentPanel() {
     }, [portalUrl]);
 
     const savePortalSettings = () => {
+        let socialLinks: PortalSocialLink[];
+        try {
+            socialLinks = normalizePortalSocialLinks(portalSettings.portalSocialLinks, true);
+        } catch (error) {
+            toast({ title: "Revisa las redes sociales", description: error instanceof Error ? error.message : "Enlace no válido.", variant: "destructive" });
+            return;
+        }
         startTransition(async () => {
             const response = await fetch("/api/settings", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(portalSettings),
+                body: JSON.stringify({ ...portalSettings, portalSocialLinks: socialLinks }),
             });
             if (!response.ok) {
                 const result = await response.json().catch(() => null);
@@ -325,6 +336,28 @@ export function PortalContentPanel() {
                             />
                         </div>
                     </div>
+                    <fieldset className="space-y-4 rounded-xl border p-4" disabled={isPending}>
+                        <legend className="px-2 text-base font-semibold">Redes sociales y enlaces</legend>
+                        <p className="text-sm text-muted-foreground">Agrega las redes del negocio o de su propietario. Marca solo los enlaces que quieras compartir con tus clientes.</p>
+                        {SOCIAL_NETWORKS.map((network) => {
+                            const link = portalSettings.portalSocialLinks.find((item) => item.network === network.id) || { network: network.id, url: "", enabled: false };
+                            const update = (patch: Partial<PortalSocialLink>) => setPortalSettings((current) => ({
+                                ...current,
+                                portalSocialLinks: [...current.portalSocialLinks.filter((item) => item.network !== network.id), { ...link, ...patch }],
+                            }));
+                            return <div key={network.id} className="grid min-w-0 gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+                                <div className="min-w-0 space-y-2">
+                                    <Label htmlFor={`social-${network.id}`}>{network.label}</Label>
+                                    <Input id={`social-${network.id}`} type="url" maxLength={2048} value={link.url} placeholder={network.placeholder} onChange={(event) => update({ url: event.target.value })} />
+                                </div>
+                                <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm">
+                                    <input type="checkbox" className="size-4 accent-primary" checked={link.enabled} onChange={(event) => update({ enabled: event.target.checked })} aria-label={`Mostrar ${network.label} en el portal`} />
+                                    Mostrar en el portal
+                                </label>
+                            </div>;
+                        })}
+                        <p className="text-xs text-muted-foreground">Desmarcar un enlace lo oculta sin borrarlo. Aplica los cambios con Guardar portal.</p>
+                    </fieldset>
                     <div className="flex items-center justify-between rounded-xl border px-4 py-3">
                         <div>
                             <p className="text-sm font-medium">Portal {portalSettings.portalEnabled ? "activo" : "desactivado"}</p>

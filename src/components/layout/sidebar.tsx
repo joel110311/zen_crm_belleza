@@ -17,6 +17,7 @@ import {
     LogOut,
     Menu,
     Settings,
+    Stethoscope,
     Store,
     Users,
     X,
@@ -34,6 +35,7 @@ type SidebarNavItem = {
     href: string;
     icon: React.ComponentType<{ className?: string }>;
     permission?: PermissionKey;
+    tenantOnly?: boolean;
 };
 
 const sidebarNavItems: SidebarNavItem[] = [
@@ -42,6 +44,7 @@ const sidebarNavItems: SidebarNavItem[] = [
     { title: "Servicios", href: "/dashboard/services", icon: BeautyLeafIcon, permission: "services.manage" },
     { title: "Chats", href: "/dashboard/inbox", icon: WhatsAppIcon, permission: "chats.manage" },
     { title: "Mi Negocio", href: "/dashboard/business", icon: Store, permission: "settings.manage" },
+    { title: "Especialistas", href: "/dashboard/specialists", icon: Stethoscope, permission: "specialists.manage", tenantOnly: true },
     { title: "Recepción", href: "/dashboard/reception", icon: ClipboardCheck, permission: "reception.manage" },
     { title: "Caja", href: "/dashboard/billing", icon: Banknote, permission: "billing.manage" },
     { title: "Reportes", href: "/dashboard/reports", icon: BarChart3, permission: "reports.view" },
@@ -91,6 +94,7 @@ export function Sidebar({ className }: React.HTMLAttributes<HTMLDivElement>) {
     }, []);
 
     const filteredNavItems = sidebarNavItems.filter((item) => {
+        if (item.tenantOnly && !tenantSlug) return false;
         if (sessionLoading) return !item.permission;
         return !item.permission || hasPermission(sessionUser, item.permission);
     });

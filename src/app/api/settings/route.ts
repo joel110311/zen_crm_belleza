@@ -7,6 +7,7 @@ import { ensureAuthenticatedResponse, getSessionAccessSubject } from "@/lib/auth
 import { hasAnyPermission, hasPermission, type PermissionKey } from "@/lib/permissions";
 import { syncFutureAppointmentReminders } from "@/lib/appointment-reminders";
 import { normalizeBusinessPolicies } from "@/lib/ai/business-policies";
+import { normalizePortalSocialLinks } from "@/lib/portal-social-links";
 
 const SETTINGS_READ_PERMISSIONS: PermissionKey[] = [
     "ai.manage",
@@ -93,6 +94,7 @@ const SETTINGS_FIELD_PERMISSIONS: Record<string, PermissionKey> = {
     portalIntro: "portal.manage",
     portalPrimaryColor: "portal.manage",
     portalPaymentInstructions: "portal.manage",
+    portalSocialLinks: "portal.manage",
     paymentDefaultCurrency: "settings.manage",
     posTaxEnabled: "settings.manage",
     posTaxRate: "settings.manage",
@@ -163,6 +165,13 @@ export async function POST(request: NextRequest) {
         if (unauthorized) return unauthorized;
 
         const data = await request.json();
+        if (Object.prototype.hasOwnProperty.call(data, "portalSocialLinks")) {
+            try {
+                data.portalSocialLinks = normalizePortalSocialLinks(data.portalSocialLinks, true);
+            } catch (error) {
+                return NextResponse.json({ error: error instanceof Error ? error.message : "Redes sociales no válidas." }, { status: 400 });
+            }
+        }
         if (Object.prototype.hasOwnProperty.call(data, "businessPolicies")) {
             data.businessPolicies = normalizeBusinessPolicies(data.businessPolicies);
         }

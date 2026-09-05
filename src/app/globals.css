@@ -1088,32 +1088,6 @@ body {
   }
 }
 
-.apple-page-transition {
-  min-height: 100%;
-  opacity: 1;
-  transform: translate3d(0, 0, 0) scale(1);
-  filter: blur(0);
-  transform-origin: 50% 20%;
-  transition:
-    opacity 130ms ease-out,
-    transform 220ms cubic-bezier(.22, .8, .24, 1),
-    filter 160ms ease-out;
-  will-change: opacity, transform, filter;
-}
-
-.apple-page-transition[data-transition-phase="leaving"] {
-  pointer-events: none;
-  opacity: 0;
-  transform: translate3d(0, -4px, 0) scale(.996);
-  filter: blur(1.5px);
-}
-
-.apple-page-transition[data-transition-phase="entering"] {
-  opacity: 0;
-  transform: translate3d(0, 8px, 0) scale(.996);
-  filter: blur(1.5px);
-}
-
 .apple-loading-shell {
   display: grid;
   gap: 17px;
@@ -1151,7 +1125,6 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .apple-page-transition,
   .apple-loading-heading,
   .apple-loading-card,
   .apple-loading-panel,

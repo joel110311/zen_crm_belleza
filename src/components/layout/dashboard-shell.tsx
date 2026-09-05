@@ -2,15 +2,15 @@
 
 import { usePathname } from "next/navigation";
 import { Header } from "@/components/layout/header";
-import { ApplePageTransition } from "@/components/layout/apple-page-transition";
 import { cn } from "@/lib/utils";
 
 export function DashboardShell({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
-    const isInbox = pathname === "/dashboard/inbox";
-    const isCalendar = pathname === "/dashboard/calendar";
-    const isClients = pathname.startsWith("/dashboard/contacts");
-    const isServices = pathname.startsWith("/dashboard/services");
+    const workspacePath = pathname.replace(/^\/t\/[^/]+/, "/dashboard");
+    const isInbox = workspacePath === "/dashboard/inbox";
+    const isCalendar = workspacePath === "/dashboard/calendar";
+    const isClients = workspacePath.startsWith("/dashboard/contacts");
+    const isServices = workspacePath.startsWith("/dashboard/services");
     const hidesGlobalHeader = isInbox || isCalendar || isClients || isServices;
 
     return (
@@ -26,7 +26,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
                         : "px-3.5 pb-5 pt-3 md:px-5 md:pb-6 md:pt-3.5 lg:px-6 xl:px-7",
                 )}
             >
-                <ApplePageTransition>{children}</ApplePageTransition>
+                {children}
             </main>
         </div>
     );

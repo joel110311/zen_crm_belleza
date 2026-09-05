@@ -1,6 +1,5 @@
 import { notFound, redirect } from "next/navigation";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
-import { ApplePageTransition } from "@/components/layout/apple-page-transition";
 import { InboxNotifier } from "@/components/layout/inbox-notifier";
 import { Sidebar } from "@/components/layout/sidebar";
 import { UnreadTabBadge } from "@/components/layout/unread-tab-badge";
@@ -63,7 +62,7 @@ export default async function TenantLayout({
                 <UnreadTabBadge />
                 <Sidebar />
                 <DashboardShell>
-                    <ApplePageTransition>{children}</ApplePageTransition>
+                    {children}
                 </DashboardShell>
             </div>
         </SessionProvider>

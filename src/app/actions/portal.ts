@@ -1,6 +1,7 @@
 "use server";
 
 import crypto from "crypto";
+import { publicPortalSocialLinks } from "@/lib/portal-social-links";
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { prisma } from "@/lib/db";
@@ -89,6 +90,7 @@ export async function getPortalData(slug = DEFAULT_PORTAL_SLUG) {
         clinicName: resolvePortalName(settings.clinicName || settings.portalClinicName),
         intro: resolvePortalIntro(settings.portalIntro),
         primaryColor: resolvePortalColor(settings.portalPrimaryColor),
+        socialLinks: publicPortalSocialLinks(settings.portalSocialLinks),
         paymentInstructions: resolvePortalPaymentInstructions(settings.portalPaymentInstructions),
         logoUrl: settings.clinicLogoUrl || settings.brandLogoUrl || null,
         logoScale: settings.clinicLogoScale || 100,

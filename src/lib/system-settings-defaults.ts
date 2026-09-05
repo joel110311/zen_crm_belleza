@@ -67,6 +67,7 @@ export const SYSTEM_SETTINGS_DEFAULTS = {
     portalClinicName: "Zen CRM Belleza",
     portalIntro: "Aparta el horario para tu proximo servicio.",
     portalPrimaryColor: "#4B5F25",
+    portalSocialLinks: [],
     portalPaymentInstructions: "Puedes pagar en recepcion o solicitar una liga de pago antes de tu cita.",
     portalVisibleServiceIds: [],
     paymentDefaultCurrency: DEFAULT_COUNTRY.defaultCurrency,

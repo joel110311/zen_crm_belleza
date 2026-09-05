@@ -75,18 +75,21 @@ const SECTIONS: Array<{
     icon: ComponentType<{ className?: string }>;
     permission?: PermissionKey;
     permissions?: PermissionKey[];
+    platformInternal?: boolean;
+    separateTenantPage?: boolean;
 }> = [
     { id: "theme", label: "Apariencia", description: "Tema y estilo general del CRM", icon: Palette },
     { id: "users", label: "Usuarios", description: "Accesos, roles y permisos", icon: Users, permission: "users.manage" },
-    { id: "ai", label: "Cerebro IA", description: "Claves y servicios de inteligencia", icon: Bot, permission: "ai.manage" },
-    { id: "whatsapp", label: "Canal WhatsApp", description: "WhatsApp API oficial y conexion alternativa por QR", icon: WhatsAppIcon, permission: "integrations.manage" },
+    { id: "ai", label: "Cerebro IA", description: "Claves y servicios de inteligencia", icon: Bot, permission: "ai.manage", platformInternal: true },
+    { id: "whatsapp", label: "Canal WhatsApp", description: "WhatsApp API oficial y conexion alternativa por QR", icon: WhatsAppIcon, permission: "integrations.manage", platformInternal: true },
     { id: "calendar", label: "Calendario", description: "Google Calendar y recordatorios de citas", icon: CalendarDays, permissions: ["calendar.manage", "integrations.manage"] },
-    { id: "specialists", label: "Especialistas", description: "Perfiles, agendas, servicios y bloqueos", icon: Stethoscope, permission: "specialists.manage" },
+    { id: "specialists", label: "Especialistas", description: "Perfiles, agendas, servicios y bloqueos", icon: Stethoscope, permission: "specialists.manage", separateTenantPage: true },
     { id: "chats", label: "Notificaciones", description: "Sonidos y preferencias del inbox", icon: Volume2 },
 ];
 
 function SettingsWorkspace() {
     const pathname = usePathname();
+    const isTenantWorkspace = /^\/t\/[^/]+(?:\/|$)/.test(pathname);
     const businessOnly = pathname === "/dashboard/business" || /^\/t\/[^/]+\/business$/.test(pathname);
     const [activeSection, setActiveSection] = useState<SectionId>(businessOnly ? "operation" : "theme");
     const [operationTab, setOperationTab] = useState<"brand" | "operation" | "portal">(businessOnly ? "operation" : "brand");
@@ -247,7 +250,12 @@ function SettingsWorkspace() {
             router.replace(`/dashboard/business?tab=${encodeURIComponent(tab)}`);
             return;
         } else if (requestedSection && SECTIONS.some((section) => section.id === requestedSection)) {
-            setActiveSection(requestedSection as SectionId);
+            const requestedDefinition = SECTIONS.find((section) => section.id === requestedSection);
+            if (isTenantWorkspace && (requestedDefinition?.platformInternal || requestedDefinition?.separateTenantPage)) {
+                setActiveSection("theme");
+            } else {
+                setActiveSection(requestedSection as SectionId);
+            }
             if (requestedSection === "operation" && ["brand", "operation", "portal"].includes(requestedOperationTab || "")) {
                 setOperationTab(requestedOperationTab as "brand" | "operation" | "portal");
             }
@@ -266,7 +274,7 @@ function SettingsWorkspace() {
                 variant: "destructive",
             });
         }
-    }, [businessOnly, router, searchParams, toast]);
+    }, [businessOnly, isTenantWorkspace, router, searchParams, toast]);
 
     const updateBusinessDay = (day: BusinessDayKey, patch: Partial<BusinessWeeklySchedule[BusinessDayKey]>) => {
         setBusinessWeeklySchedule((current) => ({
@@ -463,6 +471,7 @@ function SettingsWorkspace() {
     };
 
     const visibleSections = SECTIONS.filter((section) =>
+        (!isTenantWorkspace || (!section.platformInternal && !section.separateTenantPage)) &&
         (!section.permission || canAccess(section.permission)) &&
         (!section.permissions || section.permissions.some((permission) => canAccess(permission))),
     );
@@ -485,7 +494,9 @@ function SettingsWorkspace() {
                 <p className="mt-1 text-sm text-muted-foreground">
                     {businessOnly
                         ? "Administra la operación, la información comercial, el portal y la marca de tu negocio."
-                        : "Ajusta la apariencia, los canales y las integraciones del CRM sin tocar la operacion diaria del equipo."}
+                        : isTenantWorkspace
+                            ? "Administra la apariencia, los usuarios, el calendario y las notificaciones del negocio."
+                            : "Ajusta la apariencia, los canales y las integraciones del CRM sin tocar la operación diaria del equipo."}
                 </p>
             </div>
 
@@ -1030,7 +1041,7 @@ function SettingsWorkspace() {
                     </div>
                 )}
 
-                {activeSection === "ai" && canAccess("ai.manage") && (
+                {activeSection === "ai" && !isTenantWorkspace && canAccess("ai.manage") && (
                     <div className="max-w-xl space-y-4">
                         <div>
                             <h2 className="font-semibold">Inteligencia artificial</h2>
@@ -1051,7 +1062,7 @@ function SettingsWorkspace() {
                     </div>
                 )}
 
-                {activeSection === "whatsapp" && canAccess("integrations.manage") && (
+                {activeSection === "whatsapp" && !isTenantWorkspace && canAccess("integrations.manage") && (
                     <div className="space-y-6">
                         <MetaWhatsAppPanel />
 
@@ -1110,7 +1121,7 @@ function SettingsWorkspace() {
                     </div>
                 )}
 
-                {activeSection === "specialists" && canAccess("specialists.manage") && (
+                {activeSection === "specialists" && !isTenantWorkspace && canAccess("specialists.manage") && (
                     <SpecialistManagerPanel />
                 )}
 

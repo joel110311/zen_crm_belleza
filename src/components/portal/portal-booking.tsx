@@ -1,4 +1,5 @@
 "use client";
+import { PortalSocialLinks } from "@/components/portal/portal-social-links";
 
 import { useEffect, useMemo, useState, useTransition, type ComponentType } from "react";
 import {
@@ -308,6 +309,7 @@ export function PortalBooking({ data }: Props) {
             </header>
 
             <main id="reservar" className="mx-auto w-full max-w-[1760px] px-4 py-4 sm:px-6 lg:py-5 xl:px-8">
+                <div className="mb-4"><PortalSocialLinks links={data.socialLinks} /></div>
                 <div className="grid items-start gap-4 xl:grid-cols-[270px_minmax(440px,1fr)_330px] 2xl:grid-cols-[280px_minmax(640px,1fr)_360px] 2xl:gap-5">
                     <section id="servicios" className="self-start rounded-3xl border bg-white p-4 shadow-sm">
                         <div className="px-1 pb-4">

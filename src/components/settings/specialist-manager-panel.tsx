@@ -25,7 +25,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/use-toast";
 import { PhonePrefixInput } from "@/components/shared/phone-prefix-input";
 import { useOperationContext } from "@/components/shared/use-operation-context";
-import { DEFAULT_OPHTHALMOLOGIST_IMAGE } from "@/lib/specialist-profile";
+import { DEFAULT_SPECIALIST_IMAGE } from "@/lib/specialist-profile";
 import {
     dateTimeToOperationInputValue,
     operationInputValueToUtc,
@@ -64,10 +64,10 @@ const EMPTY_FORM = {
     id: "",
     name: "",
     displayName: "",
-    specialty: "Oftalmologia",
+    specialty: "Belleza y cuidado personal",
     email: "",
     phone: "",
-    professionalTitle: "Medico Oftalmologo",
+    professionalTitle: "Especialista",
     professionalLicense: "",
     color: "#2563EB",
     room: "",
@@ -143,7 +143,7 @@ export function SpecialistManagerPanel() {
             id: specialist.id,
             name: specialist.name,
             displayName: specialist.displayName || "",
-            specialty: specialist.specialty || "Oftalmologia",
+            specialty: specialist.specialty || "Belleza y cuidado personal",
             email: specialist.email || "",
             phone: specialist.phone || "",
             professionalTitle: specialist.professionalTitle || "",
@@ -290,7 +290,7 @@ export function SpecialistManagerPanel() {
                 <div>
                     <h2 className="font-semibold">Especialistas</h2>
                     <p className="text-sm text-muted-foreground">
-                        Administra hasta 5 agendas clinicas y sus bloqueos operativos.
+                        Administra hasta 5 agendas y sus bloqueos operativos.
                     </p>
                 </div>
                 <div className="flex flex-col gap-2 sm:flex-row">
@@ -300,7 +300,7 @@ export function SpecialistManagerPanel() {
                     </Button>
                     <Button onClick={handleSync} disabled={isPending}>
                         {isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-                        Sync Google
+                        Sincronizar Google
                     </Button>
                 </div>
             </div>
@@ -320,7 +320,7 @@ export function SpecialistManagerPanel() {
                                     <div className="flex min-w-0 gap-3">
                                         <div
                                             className="h-14 w-14 shrink-0 rounded-full border bg-muted bg-cover bg-center"
-                                            style={{ backgroundImage: `url("${specialist.photoUrl || DEFAULT_OPHTHALMOLOGIST_IMAGE}")` }}
+                                            style={{ backgroundImage: `url("${specialist.photoUrl || DEFAULT_SPECIALIST_IMAGE}")` }}
                                             role="img"
                                             aria-label={`Foto de ${specialist.displayName || specialist.name}`}
                                         />
@@ -337,7 +337,7 @@ export function SpecialistManagerPanel() {
                                             {specialist.googleCalendarSource ? <Badge variant="outline">Google</Badge> : null}
                                         </div>
                                         <p className="mt-1 text-sm text-muted-foreground">
-                                            {specialist.specialty || "Oftalmologia"} · {specialist.defaultDurationMinutes} min · {specialist.room || "Sin consultorio"}
+                                            {specialist.specialty || "Belleza y cuidado personal"} · {specialist.defaultDurationMinutes} min · {specialist.room || "Sin área asignada"}
                                         </p>
                                         <p className="mt-1 text-xs text-muted-foreground">
                                             {specialist._count.appointments} citas · {specialist._count.availabilityBlocks} bloqueos
@@ -405,7 +405,7 @@ export function SpecialistManagerPanel() {
                                 <div className="flex flex-col gap-4 sm:flex-row">
                                     <div
                                         className="h-28 w-28 shrink-0 rounded-2xl border bg-background bg-cover bg-center shadow-inner"
-                                        style={{ backgroundImage: `url("${form.photoUrl || DEFAULT_OPHTHALMOLOGIST_IMAGE}")` }}
+                                        style={{ backgroundImage: `url("${form.photoUrl || DEFAULT_SPECIALIST_IMAGE}")` }}
                                         role="img"
                                         aria-label="Vista previa de la foto del especialista"
                                     />
@@ -413,7 +413,7 @@ export function SpecialistManagerPanel() {
                                         <div>
                                             <Label>Foto del especialista</Label>
                                             <p className="mt-1 text-xs text-muted-foreground">
-                                                Si queda vacio, se mostrara la imagen default oftalmologica.
+                                                Si queda vacío, se mostrará la imagen predeterminada del negocio.
                                             </p>
                                         </div>
                                         <div className="space-y-2">
@@ -481,31 +481,35 @@ export function SpecialistManagerPanel() {
                                     <Input value={form.specialty} onChange={(event) => setForm((current) => ({ ...current, specialty: event.target.value }))} />
                                 </div>
                                 <div className="space-y-2">
-                                    <Label>Consultorio</Label>
-                                    <Input value={form.room} onChange={(event) => setForm((current) => ({ ...current, room: event.target.value }))} />
+                                    <Label>Área o estación</Label>
+                                    <Input
+                                        value={form.room}
+                                        onChange={(event) => setForm((current) => ({ ...current, room: event.target.value }))}
+                                        placeholder="Cabina, estación o sucursal"
+                                    />
                                 </div>
                             </div>
                             <div className="grid grid-cols-2 gap-3">
                                 <div className="space-y-2">
-                                    <Label>Titulo profesional</Label>
+                                    <Label>Título profesional</Label>
                                     <Input
                                         value={form.professionalTitle}
                                         onChange={(event) => setForm((current) => ({ ...current, professionalTitle: event.target.value }))}
-                                        placeholder="Medico Oftalmologo"
+                                        placeholder="Estilista, técnica, terapeuta..."
                                     />
                                 </div>
                                 <div className="space-y-2">
-                                    <Label>Cedula profesional</Label>
+                                    <Label>Certificación</Label>
                                     <Input
                                         value={form.professionalLicense}
                                         onChange={(event) => setForm((current) => ({ ...current, professionalLicense: event.target.value }))}
-                                        placeholder="Ced. Prof. 0000000"
+                                        placeholder="Certificación (opcional)"
                                     />
                                 </div>
                             </div>
                             <div className="grid grid-cols-2 gap-3">
                                 <div className="space-y-2">
-                                    <Label>Duracion default</Label>
+                                    <Label>Duración predeterminada</Label>
                                     <Input
                                         type="number"
                                         min={15}
@@ -535,7 +539,7 @@ export function SpecialistManagerPanel() {
                                     </SelectContent>
                                 </Select>
                                 <p className="text-xs text-muted-foreground">
-                                    Vincula el login con este perfil para recetas, citas atendidas y notificaciones del profesional.
+                                    Vincula el acceso de usuario con este perfil para citas atendidas y notificaciones del especialista.
                                 </p>
                             </div>
                             <div className="space-y-2">
@@ -559,7 +563,7 @@ export function SpecialistManagerPanel() {
                                 <Textarea
                                     value={form.bio}
                                     onChange={(event) => setForm((current) => ({ ...current, bio: event.target.value }))}
-                                    placeholder="Resumen breve del perfil, enfoque clínico o indicaciones visibles para clientes."
+                                    placeholder="Resumen breve del perfil, experiencia o indicaciones visibles para clientes."
                                     className="min-h-24"
                                 />
                             </div>
@@ -609,7 +613,7 @@ export function SpecialistManagerPanel() {
                                 </Select>
                             </div>
                             <div className="space-y-2">
-                                <Label>Titulo</Label>
+                                <Label>Título</Label>
                                 <Input value={blockForm.title} onChange={(event) => setBlockForm((current) => ({ ...current, title: event.target.value }))} />
                             </div>
                             <div className="grid grid-cols-2 gap-3">

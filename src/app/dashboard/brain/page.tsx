@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import { Bot, BrainCircuit, Loader2, Save, SearchCheck, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -29,6 +30,8 @@ import {
 } from "@/lib/calendar/business-hours";
 
 export default function BrainConfigPage() {
+    const pathname = usePathname();
+    const isTenantWorkspace = /^\/t\/[^/]+(?:\/|$)/.test(pathname);
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [isBotEnabled, setIsBotEnabled] = useState(false);
@@ -296,7 +299,7 @@ export default function BrainConfigPage() {
                             </CardContent>
                         </Card>
 
-                        <Card>
+                        {!isTenantWorkspace ? <Card>
                             <CardHeader>
                                 <CardTitle className="flex items-center gap-2">
                                     <Sparkles className="h-5 w-5 text-primary" />
@@ -364,7 +367,7 @@ export default function BrainConfigPage() {
                                     </p>
                                 </div>
                             </CardContent>
-                        </Card>
+                        </Card> : null}
                     </div>
 
                     <Card>

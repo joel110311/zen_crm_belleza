@@ -1013,6 +1013,7 @@ model SystemSettings {
   portalIntro                          String?                @default("Aparta el horario para tu proximo servicio.")
   portalPrimaryColor                   String?                @default("#4B5F25")
   portalPaymentInstructions            String?
+  portalSocialLinks                    Json?
   portalVisibleServiceIds              Json?
   paymentDefaultCurrency               String?                @default("MXN")
   paymentEnabledCurrencies             Json                   @default("[\"MXN\"]")

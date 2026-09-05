@@ -1,7 +1,6 @@
 import { notFound } from "next/navigation";
 import { auth } from "@/lib/auth";
 import {
-  BUSINESS_DAY_KEYS,
   DEFAULT_BUSINESS_TIME_ZONE,
   normalizeBusinessHours,
 } from "@/lib/calendar/business-hours";
@@ -89,11 +88,7 @@ export default async function TenantOnboardingPage({
               defaultTimeZone: tenant.timeZone,
             },
             hours: {
-              start: hours.start,
-              end: hours.end,
-              enabledDays: BUSINESS_DAY_KEYS.filter(
-                (day) => hours.weeklySchedule[day].enabled,
-              ),
+              weeklySchedule: hours.weeklySchedule,
             },
             service: {
               name: service?.name || "",
