@@ -40,6 +40,8 @@ export type PortalBookingData = {
     slug: string;
     clinicName: string;
     subtitle: string;
+    intro?: string;
+    scheduleSummary?: string;
     primaryColor: string;
     socialLinks?: PortalSocialLink[];
     logoUrl: string | null;
@@ -421,9 +423,12 @@ export function PortalBooking({ data, mode = "legacy" }: Props) {
                             <p className="truncate text-xs text-muted-foreground">{data.subtitle}</p>
                         </div>
                     </div>
-                    <h1 className="col-span-full text-balance text-center text-2xl font-semibold tracking-tight sm:text-3xl lg:col-span-1 lg:col-start-2 lg:row-start-1 2xl:text-4xl">
-                        Elige tu servicio y aparta el mejor horario para ti
-                    </h1>
+                    <div className="col-span-full text-center lg:col-span-1 lg:col-start-2 lg:row-start-1">
+                        <h1 className="text-balance text-2xl font-semibold tracking-tight sm:text-3xl 2xl:text-4xl">
+                            Elige tu servicio y aparta el mejor horario para ti
+                        </h1>
+                        {data.intro ? <p className="mx-auto mt-1 max-w-2xl text-sm text-muted-foreground">{data.intro}</p> : null}
+                    </div>
                     {data.address ? (
                         <div className="flex max-w-full items-center gap-2 justify-self-center rounded-full border bg-[#f8f8f4] px-3 py-2 text-xs text-muted-foreground lg:justify-self-end">
                             <MapPin className="h-4 w-4 shrink-0" style={{ color: data.primaryColor }} />
@@ -436,7 +441,15 @@ export function PortalBooking({ data, mode = "legacy" }: Props) {
             </header>
 
             <main id="reservar" className="mx-auto w-full max-w-[1760px] px-4 py-4 sm:px-6 lg:py-5 xl:px-8">
-                <div className="mb-4"><PortalSocialLinks links={data.socialLinks} /></div>
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                    <PortalSocialLinks links={data.socialLinks} />
+                    {data.scheduleSummary ? (
+                        <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <Clock className="h-4 w-4" />
+                            {data.scheduleSummary}
+                        </p>
+                    ) : null}
+                </div>
                 <div className="grid items-start gap-4 xl:grid-cols-[270px_minmax(440px,1fr)_330px] 2xl:grid-cols-[280px_minmax(640px,1fr)_360px] 2xl:gap-5">
                     <section id="servicios" className="self-start rounded-3xl border bg-white p-4 shadow-sm">
                         <div className="px-1 pb-4">
