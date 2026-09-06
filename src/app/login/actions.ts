@@ -4,6 +4,8 @@ import { signIn } from "@/lib/auth";
 import { AuthError } from "next-auth";
 import { headers } from "next/headers";
 import { isLegacyApplicationRequest, trustedRequestOrigin } from "@/lib/application-host";
+import { isGoogleSignInEnabled } from "@/lib/google-signin";
+import { redirect } from "next/navigation";
 
 export async function loginAction(
     prevState: string | undefined,
@@ -35,4 +37,17 @@ export async function loginAction(
         throw error;
     }
     return undefined;
+}
+
+export async function googleLoginAction(formData: FormData) {
+    const requestHeaders = await headers();
+    if (isLegacyApplicationRequest(requestHeaders) || !isGoogleSignInEnabled()) {
+        redirect("/login?error=google_not_configured");
+    }
+
+    const requestedRedirect = String(formData.get("redirectTo") || "");
+    const redirectTo = /^\/(?:onboarding|t|tenants)(?:\/|$)/.test(requestedRedirect)
+        ? requestedRedirect
+        : "/tenants";
+    await signIn("google", { redirectTo });
 }

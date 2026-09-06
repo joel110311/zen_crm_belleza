@@ -1,5 +1,6 @@
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
+import Google, { type GoogleProfile } from "next-auth/providers/google";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/db";
 import { getActiveTenantAccessSubject } from "@/lib/active-tenant-context";
@@ -7,6 +8,7 @@ import { getControlDb } from "@/lib/control-db";
 import { normalizePermissions, normalizeRole } from "@/lib/permissions";
 import { consumeRateLimit, getRequestIp, resetRateLimit } from "@/lib/security";
 import { isLegacyApplicationRequest, isTrustedApplicationRedirect } from "@/lib/application-host";
+import { isGoogleSignInEnabled } from "@/lib/google-signin";
 
 const AUTH_RATE_LIMIT = { limit: 8, windowMs: 15 * 60 * 1000 };
 
@@ -21,6 +23,8 @@ type AuthIdentity = {
     securityVersion: number;
     isPlatformAdmin: boolean;
 };
+
+type SessionIdentity = Omit<AuthIdentity, "passwordHash">;
 
 type AuthUserClaims = {
     role?: unknown;
@@ -146,6 +150,36 @@ async function refreshAuthIdentity(id: string, scope: "legacy" | "control"): Pro
     };
 }
 
+async function findGoogleIdentity(email: string): Promise<SessionIdentity | null> {
+    const user = await getControlDb().user.findUnique({
+        where: { email },
+        select: {
+            id: true,
+            email: true,
+            name: true,
+            emailVerifiedAt: true,
+            securityVersion: true,
+            isPlatformAdmin: true,
+            memberships: { where: { isActive: true }, select: { id: true }, take: 1 },
+        },
+    });
+
+    if (!user?.emailVerifiedAt) return null;
+    if (!user.isPlatformAdmin && !isConfiguredPlatformAdmin(user.email) && user.memberships.length === 0) return null;
+    if (await getControlDb().accountDeletion.findUnique({ where: { userId: user.id } })) return null;
+
+    return {
+        id: user.id,
+        email: user.email,
+        name: user.name || user.email,
+        role: "RECEPCION",
+        permissions: [],
+        scope: "control",
+        securityVersion: user.securityVersion,
+        isPlatformAdmin: user.isPlatformAdmin || isConfiguredPlatformAdmin(user.email),
+    };
+}
+
 export const { handlers, signIn, signOut, auth } = NextAuth(() => ({
     secret: process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET,
     trustHost: true,
@@ -199,8 +233,39 @@ export const { handlers, signIn, signOut, auth } = NextAuth(() => ({
                 };
             },
         }),
+        ...(isGoogleSignInEnabled() ? [Google({
+            clientId: process.env.GOOGLE_CLIENT_ID!.trim(),
+            clientSecret: process.env.GOOGLE_CLIENT_SECRET!.trim(),
+        })] : []),
     ],
     callbacks: {
+        async signIn({ user, account, profile }) {
+            if (account?.provider !== "google") return true;
+            if (!isGoogleSignInEnabled()) return false;
+
+            const googleProfile = profile as GoogleProfile | undefined;
+            const email = googleProfile?.email?.trim().toLowerCase();
+            if (!email || googleProfile?.email_verified !== true) {
+                return "/login?error=google_email_unverified";
+            }
+
+            const identity = await findGoogleIdentity(email);
+            if (!identity) {
+                return "/login?error=google_account_not_ready";
+            }
+
+            Object.assign(user, {
+                id: identity.id,
+                email: identity.email,
+                name: identity.name,
+                role: normalizeRole(identity.role),
+                permissions: normalizePermissions(identity.permissions),
+                authScope: identity.scope,
+                securityVersion: identity.securityVersion,
+                isPlatformAdmin: identity.isPlatformAdmin,
+            });
+            return true;
+        },
         async redirect({ url, baseUrl }) {
             if (url.startsWith("/")) return `${baseUrl}${url}`;
             return isTrustedApplicationRedirect(url) ? url : baseUrl;

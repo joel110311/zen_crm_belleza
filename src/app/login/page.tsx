@@ -9,14 +9,29 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { BrandLogo } from "@/components/brand/brand-logo";
 import { resolveBranding, type BrandingSettings } from "@/lib/branding";
-import { loginAction } from "./actions";
+import { googleLoginAction, loginAction } from "./actions";
 
 export default function LoginPage() {
     const [errorMessage, formAction, isPending] = useActionState(loginAction, undefined);
     const [showPassword, setShowPassword] = useState(false);
+    const [googleEnabled, setGoogleEnabled] = useState(false);
     const [branding, setBranding] = useState<BrandingSettings>(() => resolveBranding(null));
     const searchParams = useSearchParams();
     const redirectTo = searchParams.get("redirectTo") || searchParams.get("callbackUrl") || "/dashboard";
+    const oauthError = (() => {
+        switch (searchParams.get("error")) {
+            case "google_account_not_ready":
+                return "Este correo todavía no tiene una cuenta activa. Completa primero el registro y la verificación por correo.";
+            case "google_email_unverified":
+                return "Google no confirmó que el correo esté verificado.";
+            case "google_not_configured":
+                return "El acceso con Google todavía no está habilitado.";
+            case "AccessDenied":
+                return "No fue posible autorizar esta cuenta de Google.";
+            default:
+                return null;
+        }
+    })();
 
     useEffect(() => {
         let ignore = false;
@@ -30,6 +45,21 @@ export default function LoginPage() {
                 if (!ignore) setBranding(resolveBranding(null));
             });
 
+        return () => {
+            ignore = true;
+        };
+    }, []);
+
+    useEffect(() => {
+        let ignore = false;
+        fetch("/api/auth/capabilities", { cache: "no-store" })
+            .then((response) => response.json())
+            .then((data: { google?: boolean }) => {
+                if (!ignore) setGoogleEnabled(data.google === true);
+            })
+            .catch(() => {
+                if (!ignore) setGoogleEnabled(false);
+            });
         return () => {
             ignore = true;
         };
@@ -90,6 +120,28 @@ export default function LoginPage() {
                             <p className="mt-1 text-sm text-muted-foreground">Ingresa tus credenciales para continuar</p>
                         </div>
 
+                        {googleEnabled ? (
+                            <>
+                                <form action={googleLoginAction}>
+                                    <input type="hidden" name="redirectTo" value={redirectTo.startsWith("/") ? redirectTo : "/tenants"} />
+                                    <Button type="submit" variant="outline" className="h-12 w-full rounded-xl border-primary/20 bg-white text-base font-semibold shadow-none hover:bg-black/[0.025]">
+                                        <svg aria-hidden="true" viewBox="0 0 24 24" className="mr-3 h-5 w-5">
+                                            <path fill="#4285F4" d="M21.6 12.23c0-.71-.06-1.4-.18-2.07H12v3.92h5.38a4.6 4.6 0 0 1-2 3.02v2.54h3.24c1.9-1.75 2.98-4.33 2.98-7.41Z" />
+                                            <path fill="#34A853" d="M12 22c2.7 0 4.97-.9 6.62-2.36l-3.24-2.54c-.9.6-2.05.96-3.38.96-2.61 0-4.82-1.76-5.61-4.13H3.04v2.62A10 10 0 0 0 12 22Z" />
+                                            <path fill="#FBBC05" d="M6.39 13.93A6 6 0 0 1 6.07 12c0-.67.11-1.32.32-1.93V7.45H3.04A10 10 0 0 0 2 12c0 1.61.39 3.14 1.04 4.55l3.35-2.62Z" />
+                                            <path fill="#EA4335" d="M12 5.94c1.47 0 2.79.5 3.83 1.5l2.87-2.87A9.63 9.63 0 0 0 12 2a10 10 0 0 0-8.96 5.45l3.35 2.62C7.18 7.7 9.39 5.94 12 5.94Z" />
+                                        </svg>
+                                        Continuar con Google
+                                    </Button>
+                                </form>
+                                <div className="my-5 flex items-center gap-3" aria-hidden="true">
+                                    <span className="h-px flex-1 bg-border" />
+                                    <span className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">o con correo</span>
+                                    <span className="h-px flex-1 bg-border" />
+                                </div>
+                            </>
+                        ) : null}
+
                         <form action={formAction} className="space-y-5">
                             <input type="hidden" name="redirectTo" value={redirectTo.startsWith("/") ? redirectTo : "/dashboard"} />
 
@@ -133,9 +185,9 @@ export default function LoginPage() {
                                 </div>
                             </div>
 
-                            {errorMessage ? (
+                            {errorMessage || oauthError ? (
                                 <div role="alert" className="rounded-xl border border-destructive/20 bg-destructive/[0.07] px-4 py-3 text-sm text-destructive">
-                                    {errorMessage}
+                                    {errorMessage || oauthError}
                                 </div>
                             ) : null}
 

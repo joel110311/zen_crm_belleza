@@ -1,5 +1,6 @@
 "use client";
 import { PortalSocialLinks } from "@/components/portal/portal-social-links";
+import type { PortalSocialLink } from "@/lib/portal-social-links";
 
 import { useEffect, useMemo, useState, useTransition, type ComponentType } from "react";
 import {
@@ -34,10 +35,43 @@ import { bookPortalAppointment, getPortalAvailability } from "@/app/actions/port
 import { getOperationTodayKey, timeToOperationInputValue } from "@/lib/operation-dates";
 import { cn } from "@/lib/utils";
 
-type PortalData = NonNullable<Awaited<ReturnType<typeof import("@/app/actions/portal").getPortalData>>>;
+export type PortalBookingData = {
+    enabled: boolean;
+    slug: string;
+    clinicName: string;
+    subtitle: string;
+    primaryColor: string;
+    socialLinks?: PortalSocialLink[];
+    logoUrl: string | null;
+    logoScale: number;
+    address: string | null;
+    remindersEnabled?: boolean;
+    operationContext: { locale: string; timeZone: string; phoneDefaultCountry: string; callingCode: string };
+    specialists: Array<{
+        id: string;
+        name: string;
+        displayName: string | null;
+        specialty: string | null;
+        color: string | null;
+        room: string | null;
+        bio: string | null;
+    }>;
+    services: Array<{
+        id: string;
+        name: string;
+        description: string | null;
+        price: number;
+        currency: string;
+        durationMinutes: number;
+        imageUrl: string | null;
+        showPrice: boolean;
+        specialists: Array<{ specialistId: string }>;
+    }>;
+};
 
 type Props = {
-    data: PortalData;
+    data: PortalBookingData;
+    mode?: "legacy" | "tenant";
 };
 
 const SERVICE_ICONS: ComponentType<{ className?: string }>[] = [Scissors, Sparkles, Droplets];
@@ -59,7 +93,14 @@ function money(amount: number, currency: string, locale: string) {
     }).format(amount);
 }
 
-export function PortalBooking({ data }: Props) {
+function publicApiError(payload: unknown, fallback: string) {
+    const message = payload && typeof payload === "object" && "error" in payload
+        ? (payload as { error?: { message?: unknown } }).error?.message
+        : null;
+    return typeof message === "string" ? message : fallback;
+}
+
+export function PortalBooking({ data, mode = "legacy" }: Props) {
     const { toast } = useToast();
     const [isPending, startTransition] = useTransition();
     const operationContext = data.operationContext;
@@ -72,15 +113,20 @@ export function PortalBooking({ data }: Props) {
     const [date, setDate] = useState(() => getOperationTodayKey(operationContext.timeZone));
     const [slots, setSlots] = useState<string[]>([]);
     const [selectedSlot, setSelectedSlot] = useState("");
+    const [slotHoldToken, setSlotHoldToken] = useState("");
+    const [holdingSlot, setHoldingSlot] = useState("");
     const [isLoadingSlots, setIsLoadingSlots] = useState(false);
     const [firstName, setFirstName] = useState("");
+    const [lastName, setLastName] = useState("");
     const [phone, setPhone] = useState("");
+    const [email, setEmail] = useState("");
     const [reason, setReason] = useState(data.services[0]?.name || "Servicio de belleza");
     const [sendReminders, setSendReminders] = useState(Boolean(data.remindersEnabled));
     const [showCustomerForm, setShowCustomerForm] = useState(false);
     const [confirmationToken, setConfirmationToken] = useState<string | null>(null);
     const [confirmedClientName, setConfirmedClientName] = useState("");
     const remindersGloballyEnabled = Boolean(data.remindersEnabled);
+    const tenantEndpoint = `/api/public/t/${encodeURIComponent(data.slug)}/v1`;
 
     const selectedService = useMemo(
         () => data.services.find((entry) => entry.id === selectedServiceId),
@@ -121,8 +167,25 @@ export function PortalBooking({ data }: Props) {
         const load = async () => {
             setIsLoadingSlots(true);
             setSelectedSlot("");
+            setSlotHoldToken("");
             setShowCustomerForm(false);
             try {
+                if (mode === "tenant") {
+                    const query = new URLSearchParams({
+                        serviceId: selectedServiceId,
+                        specialistId: selectedSpecialistId,
+                        date,
+                    });
+                    const response = await fetch(`${tenantEndpoint}/availability?${query.toString()}`, { cache: "no-store" });
+                    const payload = await response.json().catch(() => null) as { data?: { slots?: string[] }; error?: { message?: string } } | null;
+                    if (!response.ok) {
+                        setSlots([]);
+                        toast({ title: "Sin disponibilidad", description: publicApiError(payload, "No fue posible consultar los horarios."), variant: "destructive" });
+                        return;
+                    }
+                    setSlots(payload?.data?.slots || []);
+                    return;
+                }
                 const result = await getPortalAvailability(
                     data.slug,
                     selectedSpecialistId,
@@ -141,7 +204,7 @@ export function PortalBooking({ data }: Props) {
         };
 
         void load();
-    }, [data.enabled, data.slug, date, selectedServiceId, selectedSpecialistId, toast]);
+    }, [data.enabled, data.slug, date, mode, selectedServiceId, selectedSpecialistId, tenantEndpoint, toast]);
 
     const selectService = (serviceId: string) => {
         setSelectedServiceId(serviceId);
@@ -151,6 +214,46 @@ export function PortalBooking({ data }: Props) {
         const assignedIds = service.specialists.map((entry) => entry.specialistId);
         if (assignedIds.length > 0 && !assignedIds.includes(selectedSpecialistId)) {
             setSelectedSpecialistId(data.specialists.find((entry) => assignedIds.includes(entry.id))?.id || "");
+        }
+    };
+
+    const selectSlot = async (slot: string) => {
+        setShowCustomerForm(false);
+        if (mode === "legacy") {
+            setSelectedSlot(slot);
+            return;
+        }
+        if (!selectedService || !specialist) return;
+
+        setHoldingSlot(slot);
+        setSelectedSlot("");
+        setSlotHoldToken("");
+        try {
+            const response = await fetch(`${tenantEndpoint}/slot-holds`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() },
+                body: JSON.stringify({
+                    serviceId: selectedService.id,
+                    specialistId: specialist.id,
+                    date,
+                    time: timeToOperationInputValue(slot, operationContext.timeZone),
+                }),
+            });
+            const payload = await response.json().catch(() => null) as { data?: { holdToken?: string }; error?: { message?: string } } | null;
+            if (!response.ok || !payload?.data?.holdToken) {
+                throw new Error(publicApiError(payload, "Ese horario ya no está disponible."));
+            }
+            setSelectedSlot(slot);
+            setSlotHoldToken(payload.data.holdToken);
+        } catch (cause) {
+            setSlots((current) => current.filter((entry) => entry !== slot));
+            toast({
+                title: "Horario no disponible",
+                description: cause instanceof Error ? cause.message : "Selecciona otro horario.",
+                variant: "destructive",
+            });
+        } finally {
+            setHoldingSlot("");
         }
     };
 
@@ -165,6 +268,40 @@ export function PortalBooking({ data }: Props) {
         }
 
         startTransition(async () => {
+            if (mode === "tenant") {
+                if (!slotHoldToken || !selectedService || !specialist) {
+                    toast({ title: "Vuelve a elegir el horario", description: "El apartado temporal ya no está disponible.", variant: "destructive" });
+                    return;
+                }
+                const response = await fetch(`${tenantEndpoint}/bookings`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() },
+                    body: JSON.stringify({
+                        holdToken: slotHoldToken,
+                        serviceId: selectedService.id,
+                        specialistId: specialist.id,
+                        date,
+                        time: timeToOperationInputValue(selectedSlot, operationContext.timeZone),
+                        firstName: firstName.trim(),
+                        lastName: lastName.trim(),
+                        phone,
+                        email: email.trim(),
+                    }),
+                });
+                const payload = await response.json().catch(() => null) as {
+                    data?: { bookingToken?: string };
+                    error?: { message?: string };
+                } | null;
+                if (!response.ok || !payload?.data?.bookingToken) {
+                    toast({ title: "No se pudo reservar", description: publicApiError(payload, "No fue posible confirmar la reservación."), variant: "destructive" });
+                    return;
+                }
+                setConfirmedClientName(firstName.trim());
+                setConfirmationToken(payload.data.bookingToken);
+                toast({ title: "Horario apartado", description: "El negocio recibió tu solicitud para confirmarla." });
+                return;
+            }
+
             const slotDate = new Date(selectedSlot);
             const result = await bookPortalAppointment({
                 slug: data.slug,
@@ -257,7 +394,7 @@ export function PortalBooking({ data }: Props) {
                         </p>
                     </div>
                     <Button className="mt-6 h-11 w-full" asChild style={{ backgroundColor: data.primaryColor }}>
-                        <a href={`/portal/turno/${confirmationToken}`}>Ver el estado de mi cita</a>
+                        <a href={mode === "tenant" ? `/portal/${data.slug}/turno/${confirmationToken}` : `/portal/turno/${confirmationToken}`}>Ver el estado de mi cita</a>
                     </Button>
                 </div>
             </div>
@@ -434,17 +571,15 @@ export function PortalBooking({ data }: Props) {
                                                         <button
                                                             key={slot}
                                                             type="button"
-                                                            onClick={() => {
-                                                                setSelectedSlot(slot);
-                                                                setShowCustomerForm(false);
-                                                            }}
+                                                            onClick={() => void selectSlot(slot)}
+                                                            disabled={Boolean(holdingSlot)}
                                                             className={cn(
                                                                 "flex h-12 items-center justify-center rounded-full border bg-white text-base font-semibold transition",
                                                                 active ? "text-white shadow-sm" : "bg-white hover:bg-muted/30",
                                                             )}
                                                             style={active ? { backgroundColor: data.primaryColor, borderColor: data.primaryColor } : undefined}
                                                         >
-                                                            {timeToOperationInputValue(slot, operationContext.timeZone)}
+                                                            {holdingSlot === slot ? <Loader2 className="h-4 w-4 animate-spin" /> : timeToOperationInputValue(slot, operationContext.timeZone)}
                                                         </button>
                                                     );
                                                 })}
@@ -539,9 +674,15 @@ export function PortalBooking({ data }: Props) {
                                     </div>
 
                                     <div className="space-y-2">
-                                        <Label>Nombre completo</Label>
+                                        <Label>Nombre</Label>
                                         <Input value={firstName} onChange={(event) => setFirstName(event.target.value)} placeholder="Tu nombre" className="h-11 rounded-xl" />
                                     </div>
+                                    {mode === "tenant" ? (
+                                        <div className="space-y-2">
+                                            <Label>Apellidos (opcional)</Label>
+                                            <Input value={lastName} onChange={(event) => setLastName(event.target.value)} autoComplete="family-name" className="h-11 rounded-xl" />
+                                        </div>
+                                    ) : null}
                                     <div className="space-y-2">
                                         <Label>WhatsApp</Label>
                                         <PhonePrefixInput value={phone} onChange={setPhone} placeholder="10 dígitos" required />
@@ -549,21 +690,28 @@ export function PortalBooking({ data }: Props) {
                                             Si ya tienes registro, lo vincularemos por tu numero; si el nombre era generico, lo actualizaremos.
                                         </p>
                                     </div>
-                                    <label className={cn(
-                                        "flex items-start gap-3 rounded-2xl border px-3 py-3",
-                                        remindersGloballyEnabled ? "cursor-pointer" : "bg-muted/30 text-muted-foreground",
-                                    )}>
-                                        <Checkbox
-                                            checked={sendReminders}
-                                            onCheckedChange={(checked) => setSendReminders(Boolean(checked))}
-                                            disabled={!remindersGloballyEnabled}
-                                            className="mt-0.5"
-                                        />
-                                        <span className="min-w-0">
-                                            <span className="flex items-center gap-2 text-sm font-medium"><Bell className="h-4 w-4" /> Recordatorios por WhatsApp</span>
-                                            <span className="mt-1 block text-[11px] leading-4 text-muted-foreground">Recibe avisos antes de tu cita.</span>
-                                        </span>
-                                    </label>
+                                    {mode === "tenant" ? (
+                                        <div className="space-y-2">
+                                            <Label>Correo (opcional)</Label>
+                                            <Input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" className="h-11 rounded-xl" />
+                                        </div>
+                                    ) : (
+                                        <label className={cn(
+                                            "flex items-start gap-3 rounded-2xl border px-3 py-3",
+                                            remindersGloballyEnabled ? "cursor-pointer" : "bg-muted/30 text-muted-foreground",
+                                        )}>
+                                            <Checkbox
+                                                checked={sendReminders}
+                                                onCheckedChange={(checked) => setSendReminders(Boolean(checked))}
+                                                disabled={!remindersGloballyEnabled}
+                                                className="mt-0.5"
+                                            />
+                                            <span className="min-w-0">
+                                                <span className="flex items-center gap-2 text-sm font-medium"><Bell className="h-4 w-4" /> Recordatorios por WhatsApp</span>
+                                                <span className="mt-1 block text-[11px] leading-4 text-muted-foreground">Recibe avisos antes de tu cita.</span>
+                                            </span>
+                                        </label>
+                                    )}
 
                                     <Button
                                         onClick={handleSubmit}

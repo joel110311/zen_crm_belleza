@@ -114,6 +114,16 @@ No actives `MULTITENANT_PUBLIC_SIGNUP_ENABLED=true` hasta que el control plane y
 
 El alta primero guarda una intención y evidencia de aceptación legal; sólo un enlace de correo de un solo uso crea usuario, tenant y trabajo de provisionamiento. Antes de abrir tráfico real, ejecuta `npm run db:control:migrate` y verifica que el provisionador aplique las migraciones tenant nuevas.
 
+### Acceso con Google
+
+El acceso con Google reutiliza la identidad del control plane y nunca crea cuentas, negocios ni pruebas gratuitas. Sólo permite entrar cuando Google confirma el correo y ese mismo correo ya fue verificado por el alta o una invitación, conserva una membresía activa y no tiene una eliminación pendiente.
+
+1. En el cliente OAuth web de Google agrega `https://app.synapselogik.com/api/auth/callback/google` a los URI de redirección autorizados. Para desarrollo puede agregarse también `http://localhost:3000/api/auth/callback/google`.
+2. Conserva `GOOGLE_CLIENT_ID` y `GOOGLE_CLIENT_SECRET` únicamente en secretos del despliegue.
+3. Activa `GOOGLE_SIGNIN_ENABLED=true` sólo después de guardar el URI en Google. Con la bandera apagada el botón no aparece.
+
+El acceso del CRM clásico no se modifica y el permiso efectivo continúa resolviéndose desde la membresía del negocio seleccionado.
+
 ### Equipo y portal público multitenant
 
 Las invitaciones y el portal nuevo se activan por separado para que el stack legacy continúe intacto durante la transición:
