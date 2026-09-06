@@ -43,12 +43,14 @@ import { PortalContentPanel } from "@/components/settings/portal-content-panel";
 import { LogoCropDialog } from "@/components/settings/logo-crop-dialog";
 import { UserAccessPanel } from "@/components/settings/user-access-panel";
 import { BusinessPolicyConfigurator } from "@/components/settings/business-policy-configurator";
+import { TenantChannelSetup } from "@/components/tenant/tenant-channel-setup";
 import { Slider } from "@/components/ui/slider";
 import { WhatsAppIcon } from "@/components/icons/whatsapp-icon";
 import { hasPermission, type PermissionKey } from "@/lib/permissions";
 import { OPERATION_COUNTRIES, getOperationCountry, normalizeCurrencyList } from "@/lib/operation-context";
 import { DEFAULT_BRAND_FAVICON_URL, DEFAULT_BRAND_NAME } from "@/lib/branding";
 import { BrandLogo } from "@/components/brand/brand-logo";
+import { tenantSlugFromPath } from "@/lib/tenant-request-routing";
 import {
     BUSINESS_DAY_KEYS,
     BUSINESS_DAY_LABELS,
@@ -62,7 +64,7 @@ import {
     type BusinessPolicies,
 } from "@/lib/ai/business-policies";
 
-type SectionId = "theme" | "brand" | "operation" | "users" | "ai" | "whatsapp" | "calendar" | "specialists" | "portal" | "chats";
+type SectionId = "theme" | "brand" | "operation" | "users" | "ai" | "whatsapp" | "tenantChannels" | "calendar" | "specialists" | "portal" | "chats";
 type LogoCropTarget = "brand" | "clinic";
 
 const SECTIONS: Array<{
@@ -74,18 +76,21 @@ const SECTIONS: Array<{
     permissions?: PermissionKey[];
     platformInternal?: boolean;
     separateTenantPage?: boolean;
+    tenantOnly?: boolean;
 }> = [
     { id: "theme", label: "Apariencia", description: "Tema y estilo general del CRM", icon: Palette },
     { id: "users", label: "Usuarios", description: "Accesos, roles y permisos", icon: Users, permission: "users.manage" },
     { id: "ai", label: "Cerebro IA", description: "Claves y servicios de inteligencia", icon: Bot, permission: "ai.manage", platformInternal: true },
     { id: "whatsapp", label: "Canal WhatsApp", description: "WhatsApp API oficial y conexion alternativa por QR", icon: WhatsAppIcon, permission: "integrations.manage", platformInternal: true },
+    { id: "tenantChannels", label: "WhatsApp", description: "Conecta Meta Cloud o WuzAPI con este negocio", icon: WhatsAppIcon, permission: "integrations.manage", tenantOnly: true },
     { id: "calendar", label: "Calendario", description: "Google Calendar y recordatorios de citas", icon: CalendarDays, permissions: ["calendar.manage", "integrations.manage"] },
     { id: "specialists", label: "Especialistas", description: "Equipo, servicios, agenda y disponibilidad", icon: UserRoundCog, permission: "specialists.manage", separateTenantPage: true },
     { id: "chats", label: "Notificaciones", description: "Sonidos y preferencias del inbox", icon: Volume2 },
 ];
 
-function SettingsWorkspace() {
+export function SettingsWorkspace({ channelsEnabled = false }: { channelsEnabled?: boolean }) {
     const pathname = usePathname();
+    const tenantSlug = tenantSlugFromPath(pathname);
     const isTenantWorkspace = /^\/t\/[^/]+(?:\/|$)/.test(pathname);
     const businessOnly = pathname === "/dashboard/business" || /^\/t\/[^/]+\/business$/.test(pathname);
     const [activeSection, setActiveSection] = useState<SectionId>(businessOnly ? "operation" : "theme");
@@ -447,6 +452,7 @@ function SettingsWorkspace() {
     };
 
     const visibleSections = SECTIONS.filter((section) =>
+        (!section.tenantOnly || isTenantWorkspace) &&
         (!isTenantWorkspace || (!section.platformInternal && !section.separateTenantPage)) &&
         (!section.permission || canAccess(section.permission)) &&
         (!section.permissions || section.permissions.some((permission) => canAccess(permission))),
@@ -939,6 +945,18 @@ function SettingsWorkspace() {
                             onSave={handleSave}
                             isSaving={isSaving}
                         />
+                    </div>
+                )}
+
+                {activeSection === "tenantChannels" && isTenantWorkspace && tenantSlug && canAccess("integrations.manage") && (
+                    <div className="space-y-5">
+                        <div>
+                            <h2 className="font-semibold">WhatsApp del negocio</h2>
+                            <p className="mt-1 text-sm text-muted-foreground">
+                                Conecta Meta Cloud API o WuzAPI ahora o en cualquier momento después del asistente inicial.
+                            </p>
+                        </div>
+                        <TenantChannelSetup tenantSlug={tenantSlug} enabled={channelsEnabled} />
                     </div>
                 )}
 
