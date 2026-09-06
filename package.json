@@ -12,6 +12,7 @@
     "db:legacy:migrate": "node scripts/migrate-legacy.mjs",
     "db:tenant:seed": "node scripts/seed-tenant.mjs",
     "db:control:migrate": "node scripts/migrate-control-plane.mjs",
+    "db:tenant:migrate-existing": "node scripts/migrate-existing-tenants.mjs",
     "db:control:generate": "prisma generate --config prisma.control.config.ts",
     "provisioner:once": "node scripts/provision-tenant.mjs",
     "provisioner:drain": "node scripts/provision-tenant.mjs --drain",

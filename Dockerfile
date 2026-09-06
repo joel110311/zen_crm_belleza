@@ -67,6 +67,7 @@ COPY --from=builder /app/scripts/migrate-tenant.mjs ./migrate-tenant.mjs
 COPY --from=builder /app/scripts/migrate-legacy.mjs ./migrate-legacy.mjs
 COPY --from=builder /app/scripts/seed-tenant.mjs ./seed-tenant.mjs
 COPY --from=builder /app/scripts/migrate-control-plane.mjs ./migrate-control-plane.mjs
+COPY --from=builder /app/scripts/migrate-existing-tenants.mjs ./migrate-existing-tenants.mjs
 COPY --from=builder /app/scripts/provision-tenant.mjs ./provision-tenant.mjs
 COPY --from=builder /app/scripts/tenant-work-worker.mjs ./tenant-work-worker.mjs
 COPY --from=builder /app/scripts/account-deletion-worker.mjs ./account-deletion-worker.mjs

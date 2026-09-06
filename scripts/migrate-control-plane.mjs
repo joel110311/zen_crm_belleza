@@ -1,5 +1,7 @@
 import "dotenv/config";
 import { spawn } from "node:child_process";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { Pool } from "pg";
 
 const databaseUrl = process.env.CONTROL_DATABASE_URL?.trim();
@@ -7,6 +9,7 @@ const adminDatabaseUrl = process.env.TENANT_POSTGRES_ADMIN_URL?.trim();
 const requireLeastPrivilege = process.env.CONTROL_DATABASE_REQUIRE_LEAST_PRIVILEGE === "true";
 const maxAttempts = Number.parseInt(process.env.CONTROL_MIGRATION_DB_MAX_ATTEMPTS || "40", 10);
 const retryMs = Number.parseInt(process.env.CONTROL_MIGRATION_DB_RETRY_MS || "3000", 10);
+const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 
 if (!databaseUrl) {
     throw new Error("CONTROL_DATABASE_URL is required to migrate the control plane database.");
@@ -156,6 +159,26 @@ async function migrate(connectionString) {
     });
 }
 
+async function migrateExistingTenants() {
+    if (!adminDatabaseUrl) return;
+
+    await new Promise((resolve, reject) => {
+        const child = spawn(process.execPath, [path.join(scriptDirectory, "migrate-existing-tenants.mjs")], {
+            stdio: "inherit",
+            env: process.env,
+        });
+
+        child.on("error", reject);
+        child.on("exit", (code) => {
+            if (code === 0) {
+                resolve(undefined);
+                return;
+            }
+            reject(new Error(`Existing tenant migration failed with exit code ${code}`));
+        });
+    });
+}
+
 async function grantRuntimeAccess(connectionString, target) {
     if (!target.hasDedicatedRuntimeRole) return;
 
@@ -196,6 +219,8 @@ try {
     } finally {
         await runtimePool.end();
     }
+
+    await migrateExistingTenants();
 } catch (error) {
     console.error("[Control migration] Fatal:", error instanceof Error ? error.message : error);
     process.exitCode = 1;
