@@ -94,7 +94,7 @@ export function Sidebar({ className }: React.HTMLAttributes<HTMLDivElement>) {
 
     const filteredNavItems = sidebarNavItems.filter((item) => {
         if (item.tenantOnly && !tenantSlug) return false;
-        if (item.platformOnly && !sessionUser?.isPlatformAdmin) return false;
+        if (item.platformOnly && (tenantSlug || !sessionUser?.isPlatformAdmin)) return false;
         if (sessionLoading) return !item.permission;
         return !item.permission || hasPermission(sessionUser, item.permission);
     });

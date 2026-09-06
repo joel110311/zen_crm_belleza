@@ -205,9 +205,19 @@ export default function LoginPage() {
                                     "Iniciar sesión"
                                 )}
                             </Button>
-                            <p className="text-center text-sm text-muted-foreground">
-                                <Link href="/forgot-password" className="font-medium text-primary hover:underline">¿Olvidaste tu contraseña?</Link>
-                            </p>
+                            <div className="space-y-2 text-center text-sm">
+                                <p>
+                                    <Link href="/forgot-password" className="font-medium text-primary hover:underline">
+                                        ¿Olvidaste tu contraseña?
+                                    </Link>
+                                </p>
+                                <p className="text-muted-foreground">
+                                    ¿Aún no tienes una cuenta?{" "}
+                                    <Link href="/signup" className="font-semibold text-primary hover:underline">
+                                        Crear cuenta
+                                    </Link>
+                                </p>
+                            </div>
                         </form>
                     </div>
 
