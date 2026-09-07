@@ -239,26 +239,11 @@ export async function completeMetaEmbeddedSignup(params: {
         resource: `${phoneNumberId}?fields=id,display_phone_number`,
         accessToken,
     });
-    await graphRequest<{ success?: boolean }>(config, {
-        resource: `${wabaId}/subscribed_apps`,
-        accessToken,
-        method: "POST",
-        body: {
-            override_callback_uri: callbackUrl,
-            verify_token: routeToken,
-            fields: ["messages", "account_update", "message_template_status_update"],
-        },
-    });
-    if (registrationPin) {
-        await graphRequest<{ success?: boolean }>(config, {
-            resource: `${phoneNumberId}/register`, accessToken, method: "POST",
-            body: { messaging_product: "whatsapp", pin: registrationPin },
-        });
-    }
     const encrypted = encryptChannelSecret(accessToken);
+    let reservation: { id: string };
 
     try {
-        const connection = await getControlDb().$transaction(async (tx) => {
+        reservation = await getControlDb().$transaction(async (tx) => {
             const existing = await tx.channelConnection.findUnique({ where: { provider_externalAccountId: { provider: "META_CLOUD", externalAccountId: phoneNumberId } } });
             if (existing && existing.tenantId !== params.tenantId) {
                 throw new TenantServiceError("CONFLICT", "Este número de WhatsApp ya está conectado a otro negocio.");
@@ -269,20 +254,16 @@ export async function completeMetaEmbeddedSignup(params: {
                     tenantId: params.tenantId,
                     provider: "META_CLOUD",
                     externalAccountId: phoneNumberId,
-                    status: "CONNECTED",
+                    status: "PENDING",
                     secretCiphertext: encrypted.ciphertext,
                     secretKeyVersion: encrypted.keyVersion,
                     routeSecretHash: channelRouteHash(routeToken),
-                    connectedAt: new Date(),
                 },
                 update: {
-                    status: "CONNECTED", secretCiphertext: encrypted.ciphertext, secretKeyVersion: encrypted.keyVersion,
-                    routeSecretHash: channelRouteHash(routeToken), connectedAt: new Date(), disconnectedAt: null, lastError: null,
+                    status: "PENDING", secretCiphertext: encrypted.ciphertext, secretKeyVersion: encrypted.keyVersion,
+                    routeSecretHash: channelRouteHash(routeToken), connectedAt: null, disconnectedAt: null, lastError: null,
                 },
-                select: {
-                    id: true, provider: true, externalAccountId: true, status: true, connectedAt: true,
-                    disconnectedAt: true, lastWebhookAt: true, lastError: true, secretCiphertext: true,
-                },
+                select: { id: true },
             });
             const consumed = await tx.channelConnectionState.updateMany({
                 where: { id: connectionState.id, consumedAt: null, expiresAt: { gt: new Date() } },
@@ -291,18 +272,54 @@ export async function completeMetaEmbeddedSignup(params: {
             if (consumed.count !== 1) throw new TenantServiceError("CONFLICT", "Este estado de conexión ya fue usado o venció.");
             return result;
         });
-        return {
-            channel: serializeChannel(connection),
-            displayPhoneNumber: phone.display_phone_number?.trim() || null,
-            wabaId,
-            businessId: businessId || null,
-        };
     } catch (error) {
         if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
             throw new TenantServiceError("CONFLICT", "Este número de WhatsApp ya está conectado a otro negocio.");
         }
         throw error;
     }
+
+    try {
+        await graphRequest<{ success?: boolean }>(config, {
+            resource: `${wabaId}/subscribed_apps`,
+            accessToken,
+            method: "POST",
+            body: {
+                override_callback_uri: callbackUrl,
+                verify_token: routeToken,
+            },
+        });
+        if (registrationPin) {
+            await graphRequest<{ success?: boolean }>(config, {
+                resource: `${phoneNumberId}/register`, accessToken, method: "POST",
+                body: { messaging_product: "whatsapp", pin: registrationPin },
+            });
+        }
+    } catch (error) {
+        await getControlDb().channelConnection.update({
+            where: { id: reservation.id },
+            data: {
+                status: "FAILED",
+                lastError: error instanceof Error ? error.message.slice(0, 500) : "Meta webhook configuration failed.",
+            },
+        }).catch(() => {});
+        throw error;
+    }
+
+    const connection = await getControlDb().channelConnection.update({
+        where: { id: reservation.id },
+        data: { status: "CONNECTED", connectedAt: new Date(), disconnectedAt: null, lastError: null },
+        select: {
+            id: true, provider: true, externalAccountId: true, status: true, connectedAt: true,
+            disconnectedAt: true, lastWebhookAt: true, lastError: true, secretCiphertext: true,
+        },
+    });
+    return {
+        channel: serializeChannel(connection),
+        displayPhoneNumber: phone.display_phone_number?.trim() || null,
+        wabaId,
+        businessId: businessId || null,
+    };
 }
 
 async function configureWuzapiWebhook(userToken: string, callbackUrl: string) {
@@ -394,6 +411,18 @@ export async function getChannelForRoute(provider: ChannelProvider, routeToken: 
     return getControlDb().channelConnection.findFirst({
         where: { provider, routeSecretHash: channelRouteHash(routeToken), status: "CONNECTED" },
         select: { id: true, tenantId: true, provider: true, externalAccountId: true, status: true },
+    });
+}
+
+export async function getChannelForRouteVerification(provider: ChannelProvider, routeToken: string) {
+    if (!/^[A-Za-z0-9_-]{32,128}$/.test(routeToken)) return null;
+    return getControlDb().channelConnection.findFirst({
+        where: {
+            provider,
+            routeSecretHash: channelRouteHash(routeToken),
+            status: { in: ["PENDING", "CONNECTED"] },
+        },
+        select: { id: true },
     });
 }
 

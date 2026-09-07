@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { isMultitenantChannelsEnabled } from "@/lib/multitenant-features";
-import { getChannelForRoute, touchChannelWebhook } from "@/lib/tenant-channels";
+import { getChannelForRoute, getChannelForRouteVerification, touchChannelWebhook } from "@/lib/tenant-channels";
 import { safeSecretEqual } from "@/lib/security";
 import { ingestTenantWebhook } from "@/lib/tenant-work-queue";
 import { normalizeMetaWebhook, webhookBodyHash } from "@/lib/tenant-webhook-payload";
@@ -19,7 +19,7 @@ function verifyMetaSignature(rawBody: string, signature: string | null) {
 export async function GET(request: NextRequest, { params }: { params: Promise<{ routeToken: string }> }) {
     if (!isMultitenantChannelsEnabled()) return new NextResponse(null, { status: 404 });
     const { routeToken } = await params;
-    const connection = await getChannelForRoute("META_CLOUD", routeToken);
+    const connection = await getChannelForRouteVerification("META_CLOUD", routeToken);
     const mode = request.nextUrl.searchParams.get("hub.mode");
     const token = request.nextUrl.searchParams.get("hub.verify_token") || "";
     const challenge = request.nextUrl.searchParams.get("hub.challenge") || "";
