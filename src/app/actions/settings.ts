@@ -14,13 +14,15 @@ export async function getSystemSettings() {
         const settings = await prisma.systemSettings.findFirst();
         const resolved = withSettingsDefaults(settings);
         const subject = getSessionAccessSubject(session);
+        const isHostedAccount = (session as { user?: { authScope?: unknown } } | null)?.user?.authScope === "control";
         const canManageAi = hasPermission(subject, "ai.manage");
         const canManageIntegrations = hasPermission(subject, "integrations.manage");
 
         return {
             ...resolved,
-            openaiApiKey: canManageAi ? resolved.openaiApiKey : null,
-            geminiApiKey: canManageAi ? resolved.geminiApiKey : null,
+            openaiApiKey: canManageAi && !isHostedAccount ? resolved.openaiApiKey : null,
+            geminiApiKey: canManageAi && !isHostedAccount ? resolved.geminiApiKey : null,
+            openaiModel: isHostedAccount ? null : resolved.openaiModel,
             n8nWebhookUrl: canManageAi ? resolved.n8nWebhookUrl : null,
             whatsappAccessToken: canManageIntegrations ? resolved.whatsappAccessToken : null,
             whatsappMetaAppSecret: canManageIntegrations ? resolved.whatsappMetaAppSecret : null,
@@ -85,7 +87,12 @@ export async function updateSystemSettings(data: {
     catalogIncludeLink?: boolean;
 }) {
     try {
-        await requirePermission("ai.manage");
+        const session = await requirePermission("ai.manage");
+        if ((session as { user?: { authScope?: unknown } } | null)?.user?.authScope === "control") {
+            delete data.openaiApiKey;
+            delete data.geminiApiKey;
+            delete data.openaiModel;
+        }
 
         if (data.businessPolicies) {
             data.businessPolicies = normalizeBusinessPolicies(data.businessPolicies) as unknown as Prisma.InputJsonValue;

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getControlDb } from "@/lib/control-db";
 import { PlatformAdminAccessError, requirePlatformAdmin } from "@/lib/platform-admin";
 import { isSameApplicationOrigin } from "@/lib/security";
+import { normalizeChatModelSelection, SUPPORTED_CHAT_MODELS } from "@/lib/ai/models";
+import { PLATFORM_AI_RUNTIME_KEY } from "@/lib/ai/platform-runtime";
 
 export const runtime = "nodejs";
 
@@ -30,6 +32,31 @@ export async function PATCH(request: NextRequest) {
         const body = await request.json() as Record<string, unknown>;
         const action = cleanText(body.action, 60, true);
         const db = getControlDb();
+
+        if (action === "ai-runtime") {
+            const requestedModel = cleanText(body.chatModel, 120, true);
+            const chatModel = normalizeChatModelSelection(requestedModel);
+            if (!SUPPORTED_CHAT_MODELS.some((model) => model.id === requestedModel) || chatModel !== requestedModel) {
+                throw new Error("El modelo seleccionado no está permitido.");
+            }
+            await db.$transaction(async (tx) => {
+                await tx.platformRuntimeSetting.upsert({
+                    where: { key: PLATFORM_AI_RUNTIME_KEY },
+                    create: { key: PLATFORM_AI_RUNTIME_KEY, value: { chatModel } },
+                    update: { value: { chatModel } },
+                });
+                await tx.auditLog.create({
+                    data: {
+                        actorUserId: admin.id,
+                        action: "ai_runtime.updated",
+                        resourceType: "PlatformRuntimeSetting",
+                        resourceId: PLATFORM_AI_RUNTIME_KEY,
+                        metadata: { chatModel },
+                    },
+                });
+            });
+            return NextResponse.json({ saved: true });
+        }
 
         if (action === "policy") {
             const trialDays = integer(body.trialDays, 1, 60);

@@ -830,3 +830,13 @@ model AccountDeletion {
 
   @@index([status, nextRunAt])
 }
+
+/**
+ * Non-secret platform runtime choices. Provider credentials always remain in
+ * deployment secrets and are never persisted here.
+ */
+model PlatformRuntimeSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+}

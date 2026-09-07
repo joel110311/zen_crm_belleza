@@ -11,6 +11,17 @@ export function allowEnvironmentAiFallback() {
 }
 
 export async function resolveAiProviderKey(provider: "openai" | "gemini") {
+    const envKey =
+        provider === "openai"
+            ? process.env.OPENAI_API_KEY?.trim()
+            : process.env.GEMINI_API_KEY?.trim();
+
+    // In the hosted multi-business application, credentials are platform secrets.
+    // Never allow a value stored inside an individual business database to override them.
+    if (process.env.MULTITENANT_RUNTIME_ENABLED === "true") {
+        return allowEnvironmentAiFallback() ? envKey || null : null;
+    }
+
     let settings:
         | {
             openaiApiKey: string | null;
@@ -42,11 +53,6 @@ export async function resolveAiProviderKey(provider: "openai" | "gemini") {
     if (!allowEnvironmentAiFallback()) {
         return null;
     }
-
-    const envKey =
-        provider === "openai"
-            ? process.env.OPENAI_API_KEY?.trim()
-            : process.env.GEMINI_API_KEY?.trim();
 
     return envKey || null;
 }

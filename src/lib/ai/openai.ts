@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { SYSTEM_SETTINGS_DEFAULTS } from "@/lib/system-settings-defaults";
 import { resolveChatModelSelection, resolveGeminiRestModelPath } from "@/lib/ai/models";
 import { resolveAiProviderKey } from "@/lib/ai/provider-keys";
+import { getPlatformChatModelSelection } from "@/lib/ai/platform-runtime";
 
 const DEFAULT_IMAGE_OCR_PROMPT =
     "Extrae en espanol todo el texto legible de esta imagen. Conserva titulos, precios, ubicaciones, bullets y datos comerciales. Si una seccion no se alcanza a leer completa, transcribe lo visible y no inventes nada.";
@@ -300,7 +301,11 @@ async function runGeminiInlineMediaPrompt(
         console.warn("[AI OCR] Could not read stored model selection, using Gemini fallback model:", error);
     }
 
-    const selectedModel = resolveChatModelSelection(settings?.openaiModel);
+    const selectedModel = resolveChatModelSelection(
+        process.env.MULTITENANT_RUNTIME_ENABLED === "true"
+            ? await getPlatformChatModelSelection()
+            : settings?.openaiModel,
+    );
     const model =
         selectedModel.provider === "gemini"
             ? selectedModel.model
@@ -381,7 +386,9 @@ export async function generateCompletion(
     try {
         const settings = await prisma.systemSettings.findFirst();
         const selectedModel = resolveChatModelSelection(
-            settings?.openaiModel || SYSTEM_SETTINGS_DEFAULTS.openaiModel,
+            process.env.MULTITENANT_RUNTIME_ENABLED === "true"
+                ? await getPlatformChatModelSelection()
+                : settings?.openaiModel || SYSTEM_SETTINGS_DEFAULTS.openaiModel,
         );
 
         if (selectedModel.provider === "gemini") {

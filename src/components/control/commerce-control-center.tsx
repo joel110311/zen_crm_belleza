@@ -2,11 +2,13 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Loader2 } from "lucide-react";
+import { BrainCircuit, CheckCircle2, CircleAlert, Loader2 } from "lucide-react";
+import { SUPPORTED_CHAT_MODELS } from "@/lib/ai/models";
 
 type Policy = { trialDays: number; warningHours: number; finalWarningHours: number; graceDays: number; version: number };
 type Plan = { id: string; slug: string; name: string; monthlyAmountCents: number | null; stripePriceId: string };
 type TenantRow = { id: string; displayName: string; slug: string; accessMode: string; billingStatus: string; trialEndsAt: string | null; trialStatus: string | null; selectionStatus: string | null; lastError: string | null };
+type AiControl = { chatModel: string; geminiKeyConfigured: boolean; openaiKeyConfigured: boolean; environmentFallbackEnabled: boolean };
 
 async function mutate(body: Record<string, unknown>) {
     const response = await fetch("/api/control/commerce", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -14,7 +16,7 @@ async function mutate(body: Record<string, unknown>) {
     if (!response.ok) throw new Error(payload.error || "No fue posible guardar el cambio.");
 }
 
-export function CommerceControlCenter({ policy, plans, tenants }: { policy: Policy; plans: Plan[]; tenants: TenantRow[] }) {
+export function CommerceControlCenter({ ai, policy, plans, tenants }: { ai: AiControl; policy: Policy; plans: Plan[]; tenants: TenantRow[] }) {
     const router = useRouter();
     const [pending, setPending] = useState<string | null>(null);
     const [notice, setNotice] = useState<string | null>(null);
@@ -28,6 +30,29 @@ export function CommerceControlCenter({ policy, plans, tenants }: { policy: Poli
 
     return <div className="space-y-6">
         {notice ? <p role="status" className="rounded-xl border bg-card px-4 py-3 text-sm">{notice}</p> : null}
+        <section className="rounded-2xl border bg-card p-5 shadow-sm">
+            <div className="flex items-start gap-3">
+                <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><BrainCircuit className="size-5" /></div>
+                <div><p className="text-xs font-semibold uppercase tracking-wider text-primary">Configuración interna</p><h2 className="mt-1 text-xl font-semibold">Motor de inteligencia artificial</h2><p className="mt-1 text-sm text-muted-foreground">El modelo se aplica a todos los negocios. Las claves permanecen en los secretos del despliegue y nunca se muestran aquí.</p></div>
+            </div>
+
+            <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                <KeyStatus label="Gemini" configured={ai.geminiKeyConfigured} />
+                <KeyStatus label="OpenAI" configured={ai.openaiKeyConfigured} />
+                <KeyStatus label="Lectura desde Portainer" configured={ai.environmentFallbackEnabled} />
+            </div>
+
+            <form className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end" onSubmit={(event) => { event.preventDefault(); const data = new FormData(event.currentTarget); void submit("ai-runtime", { action: "ai-runtime", chatModel: String(data.get("chatModel") || "") }); }}>
+                <label className="text-sm font-medium">Modelo conversacional
+                    <select name="chatModel" defaultValue={ai.chatModel} className="mt-1.5 h-11 w-full rounded-md border bg-background px-3">
+                        {SUPPORTED_CHAT_MODELS.map((model) => <option key={model.id} value={model.id}>{model.label} · {model.provider === "gemini" ? "Gemini" : "OpenAI"}</option>)}
+                    </select>
+                    <span className="mt-1.5 block text-xs text-muted-foreground">Gemini atiende la conversación cuando eliges un modelo Gemini. OpenAI sigue disponible para búsqueda semántica, audio y análisis de archivos.</span>
+                </label>
+                <button disabled={pending !== null} className="inline-flex h-11 items-center justify-center rounded-full bg-primary px-5 text-sm font-semibold text-primary-foreground">{pending === "ai-runtime" ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}Guardar motor</button>
+            </form>
+        </section>
+
         <section className="rounded-2xl border bg-card p-5 shadow-sm">
             <div className="flex flex-wrap items-end justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-wider text-primary">Política vigente · v{policy.version}</p><h2 className="mt-1 text-xl font-semibold">Prueba y recuperación de pago</h2></div></div>
             <form className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4" onSubmit={(event) => { event.preventDefault(); const data = new FormData(event.currentTarget); void submit("policy", { action: "policy", trialDays: Number(data.get("trialDays")), warningHours: Number(data.get("warningHours")), finalWarningHours: Number(data.get("finalWarningHours")), graceDays: Number(data.get("graceDays")) }); }}>
@@ -43,4 +68,8 @@ export function CommerceControlCenter({ policy, plans, tenants }: { policy: Poli
 
         <section className="rounded-2xl border bg-card p-5 shadow-sm"><h2 className="text-xl font-semibold">Pruebas y activaciones</h2><p className="mt-1 text-sm text-muted-foreground">Las extensiones y reintentos requieren un motivo y quedan en auditoría.</p><div className="mt-5 overflow-x-auto"><table className="w-full min-w-[850px] text-left text-sm"><thead className="border-b text-xs uppercase tracking-wide text-muted-foreground"><tr><th className="px-3 py-2">Negocio</th><th className="px-3 py-2">Prueba</th><th className="px-3 py-2">Acceso</th><th className="px-3 py-2">Activación</th><th className="px-3 py-2">Acciones</th></tr></thead><tbody>{tenants.map((tenant) => <tr key={tenant.id} className="border-b last:border-0"><td className="px-3 py-3"><p className="font-medium">{tenant.displayName}</p><p className="text-xs text-muted-foreground">/{tenant.slug}</p></td><td className="px-3 py-3">{tenant.trialEndsAt ? <><p>{new Intl.DateTimeFormat("es-MX", { dateStyle: "medium" }).format(new Date(tenant.trialEndsAt))}</p><p className="text-xs text-muted-foreground">{tenant.trialStatus}</p></> : "Sin prueba"}</td><td className="px-3 py-3"><p>{tenant.billingStatus}</p><p className="text-xs text-muted-foreground">{tenant.accessMode}</p></td><td className="max-w-56 px-3 py-3"><p>{tenant.selectionStatus || "—"}</p>{tenant.lastError ? <p className="truncate text-xs text-destructive" title={tenant.lastError}>{tenant.lastError}</p> : null}</td><td className="px-3 py-3"><div className="flex flex-wrap gap-2">{tenant.trialEndsAt ? <button type="button" disabled={pending !== null} onClick={() => { const reason = window.prompt("Motivo de la extensión"); if (reason) void submit(`extend:${tenant.id}`, { action: "extend-trial", tenantId: tenant.id, days: 7, reason }); }} className="rounded-full border px-3 py-1.5 text-xs font-semibold">+7 días</button> : null}{tenant.selectionStatus === "FAILED" ? <button type="button" disabled={pending !== null} onClick={() => { const reason = window.prompt("Motivo del reintento"); if (reason) void submit(`retry:${tenant.id}`, { action: "retry-selection", tenantId: tenant.id, reason }); }} className="rounded-full border px-3 py-1.5 text-xs font-semibold">Reintentar cobro</button> : null}</div></td></tr>)}</tbody></table></div></section>
     </div>;
+}
+
+function KeyStatus({ label, configured }: { label: string; configured: boolean }) {
+    return <div className="flex items-center gap-3 rounded-xl border bg-background px-4 py-3">{configured ? <CheckCircle2 className="size-5 shrink-0 text-emerald-600" /> : <CircleAlert className="size-5 shrink-0 text-amber-600" />}<div><p className="text-sm font-semibold">{label}</p><p className="text-xs text-muted-foreground">{configured ? "Configurado" : "Falta cargar"}</p></div></div>;
 }

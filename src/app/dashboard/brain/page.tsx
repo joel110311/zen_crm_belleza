@@ -122,7 +122,7 @@ export default function BrainConfigPage() {
                 agentPrompt,
                 welcomeMessage,
                 welcomeRepeatHours: Math.max(1, Number(welcomeRepeatHours) || 24),
-                openaiModel,
+                ...(!isTenantWorkspace ? { openaiModel } : {}),
                 knowledgeTopK: Number(knowledgeTopK) || 6,
                 agentTemperature: temperature[0] || 0.3,
                 autoReplyDelayMs: 4000,

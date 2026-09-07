@@ -127,6 +127,8 @@ const SERVER_MANAGED_GOOGLE_FIELDS = new Set([
     "googleLastSyncedAt",
 ]);
 
+const PLATFORM_INTERNAL_AI_FIELDS = new Set(["openaiApiKey", "geminiApiKey", "openaiModel"]);
+
 export async function GET() {
     console.log("[API] GET /api/settings called");
     try {
@@ -139,8 +141,12 @@ export async function GET() {
         }
 
         const settings = withSettingsDefaults(await prisma.systemSettings.findFirst());
+        const isHostedAccount = (session as { user?: { authScope?: unknown } } | null)?.user?.authScope === "control";
         return NextResponse.json({
             ...settings,
+            openaiApiKey: isHostedAccount ? undefined : settings.openaiApiKey,
+            geminiApiKey: isHostedAccount ? undefined : settings.geminiApiKey,
+            openaiModel: isHostedAccount ? undefined : settings.openaiModel,
             whatsappAccessToken: undefined,
             whatsappMetaAppSecret: undefined,
             whatsappRegistrationPin: undefined,
@@ -177,6 +183,13 @@ export async function POST(request: NextRequest) {
         }
         const subject = getSessionAccessSubject(session);
         const requestedFields = Object.keys(data);
+        const isHostedAccount = (session as { user?: { authScope?: unknown } } | null)?.user?.authScope === "control";
+        if (isHostedAccount && requestedFields.some((field) => PLATFORM_INTERNAL_AI_FIELDS.has(field))) {
+            return NextResponse.json(
+                { error: "El motor y las credenciales de IA se administran únicamente desde el centro de mando." },
+                { status: 403 },
+            );
+        }
         if (requestedFields.some((field) => META_CONNECTION_FIELDS.has(field))) {
             return NextResponse.json(
                 { error: "Los datos de conexion de Meta solo se actualizan mediante Embedded Signup." },
