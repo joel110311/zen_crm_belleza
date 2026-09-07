@@ -1,18 +1,22 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CheckCircle2, Copy, Loader2, RefreshCw, Wifi } from "lucide-react";
+import Image from "next/image";
+import { CheckCircle2, Loader2, QrCode, RefreshCw, ShieldCheck, Smartphone, Unplug } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 type Channel = {
     id: string;
     provider: "META_CLOUD" | "WUZAPI";
-    externalAccountId: string;
     status: string;
-    credentialConfigured: boolean;
-    connectedAt: string | null;
-    lastWebhookAt: string | null;
-    lastError: string | null;
+};
+
+type QrSession = {
+    configured: boolean;
+    active: boolean;
+    connected: boolean;
+    phone: string | null;
+    qrCode: string | null;
 };
 
 type MetaSdkWindow = Window & {
@@ -51,10 +55,9 @@ export function TenantChannelSetup({
     const [channels, setChannels] = useState<Channel[]>([]);
     const [loading, setLoading] = useState(enabled);
     const [message, setMessage] = useState<string | null>(null);
-    const [busy, setBusy] = useState<"meta" | "wuzapi" | null>(null);
-    const [wuzapiAccount, setWuzapiAccount] = useState("");
-    const [wuzapiToken, setWuzapiToken] = useState("");
-    const [manualCallback, setManualCallback] = useState<string | null>(null);
+    const [busy, setBusy] = useState<"meta" | "qr" | "disconnect" | null>(null);
+    const [qrSession, setQrSession] = useState<QrSession>({ configured: false, active: false, connected: false, phone: null, qrCode: null });
+    const [qrRiskAccepted, setQrRiskAccepted] = useState(false);
 
     const endpoint = `/api/t/${encodeURIComponent(tenantSlug)}/v1/channels`;
 
@@ -66,6 +69,7 @@ export function TenantChannelSetup({
             const body = await responseBody(response) as { data?: { channels?: Channel[] }; error?: { message?: string } };
             if (!response.ok) throw new Error(body.error?.message || "No fue posible consultar los canales.");
             setChannels(body.data?.channels || []);
+            await refreshQr(false);
         } catch (error) {
             setMessage(error instanceof Error ? error.message : "No fue posible consultar los canales.");
         } finally {
@@ -73,7 +77,21 @@ export function TenantChannelSetup({
         }
     }
 
+    async function refreshQr(includeQr: boolean) {
+        const response = await fetch(`${endpoint}/wuzapi${includeQr ? "?includeQr=1" : ""}`, { cache: "no-store" });
+        const body = await responseBody(response) as { data?: QrSession; error?: { message?: string } };
+        if (!response.ok) throw new Error(body.error?.message || "No fue posible consultar la conexión mediante QR.");
+        if (body.data) setQrSession(body.data);
+        return body.data;
+    }
+
     useEffect(() => { void refresh(); }, [enabled]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    useEffect(() => {
+        if (!enabled || !qrSession.configured || qrSession.active) return;
+        const timer = window.setInterval(() => { void refreshQr(true).catch(() => undefined); }, 5_000);
+        return () => window.clearInterval(timer);
+    }, [enabled, qrSession.configured, qrSession.active]); // eslint-disable-line react-hooks/exhaustive-deps
 
     async function ensureFacebookSdk(appId: string) {
         const browser = window as MetaSdkWindow;
@@ -165,7 +183,7 @@ export function TenantChannelSetup({
             });
             const complete = await responseBody(completeResponse);
             if (!completeResponse.ok) throw new Error(complete.error?.message || "Meta no pudo terminar la conexión.");
-            setMessage("Meta Cloud API quedó conectada a este negocio.");
+            setMessage("La conexión oficial de WhatsApp quedó activa.");
             onConfigured?.("META_CLOUD");
             await refresh();
         } catch (error) {
@@ -175,24 +193,42 @@ export function TenantChannelSetup({
         }
     }
 
-    async function connectWuzapi() {
-        setBusy("wuzapi");
+    async function connectQr() {
+        setBusy("qr");
         setMessage(null);
         try {
             const response = await fetch(`${endpoint}/wuzapi`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() },
-                body: JSON.stringify({ externalAccountId: wuzapiAccount, userToken: wuzapiToken }),
+                body: JSON.stringify({ action: "connect", riskAccepted: qrRiskAccepted }),
             });
-            const body = await responseBody(response) as { data?: { callbackUrl?: string; configuredRemotely?: boolean }; error?: { message?: string } };
-            if (!response.ok) throw new Error(body.error?.message || "No fue posible conectar WuzAPI.");
-            setWuzapiToken("");
-            setManualCallback(body.data?.configuredRemotely ? null : body.data?.callbackUrl || null);
-            setMessage(body.data?.configuredRemotely ? "WuzAPI quedó conectado y su webhook fue configurado." : "WuzAPI quedó registrado. Copia la URL una sola vez en la configuración del gateway.");
+            const body = await responseBody(response) as { data?: QrSession; error?: { message?: string } };
+            if (!response.ok) throw new Error(body.error?.message || "No fue posible preparar la conexión mediante QR.");
+            if (body.data) setQrSession(body.data);
+            setMessage(body.data?.active ? "WhatsApp quedó vinculado correctamente." : "Escanea el código desde WhatsApp para terminar la vinculación.");
             onConfigured?.("WUZAPI");
-            await refresh();
         } catch (error) {
-            setMessage(error instanceof Error ? error.message : "No fue posible conectar WuzAPI.");
+            setMessage(error instanceof Error ? error.message : "No fue posible preparar la conexión mediante QR.");
+        } finally {
+            setBusy(null);
+        }
+    }
+
+    async function disconnectQr() {
+        setBusy("disconnect");
+        setMessage(null);
+        try {
+            const response = await fetch(`${endpoint}/wuzapi`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() },
+                body: JSON.stringify({ action: "disconnect" }),
+            });
+            const body = await responseBody(response);
+            if (!response.ok) throw new Error(body.error?.message || "No fue posible desvincular WhatsApp.");
+            setQrSession({ configured: true, active: false, connected: false, phone: null, qrCode: null });
+            setMessage("El teléfono quedó desvinculado. Puedes enlazarlo de nuevo cuando quieras.");
+        } catch (error) {
+            setMessage(error instanceof Error ? error.message : "No fue posible desvincular WhatsApp.");
         } finally {
             setBusy(null);
         }
@@ -200,12 +236,33 @@ export function TenantChannelSetup({
 
     if (!enabled) return <p className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">La conexión segura por negocio se habilitará cuando se configuren las credenciales de plataforma.</p>;
 
+    const official = channels.find((channel) => channel.provider === "META_CLOUD" && channel.status === "CONNECTED");
+
     return <div className="space-y-4 rounded-2xl border bg-muted/20 p-4">
-        <div className="flex items-start justify-between gap-3"><div><p className="font-medium">Conexiones de este negocio</p><p className="text-sm text-muted-foreground">Las credenciales se cifran y el webhook se procesa fuera de la web.</p></div><Button type="button" variant="outline" size="sm" onClick={() => void refresh()} disabled={loading}><RefreshCw className="mr-2 size-4" />Actualizar</Button></div>
-        {loading ? <p className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" />Consultando canales…</p> : channels.length > 0 ? <div className="space-y-2">{channels.map((channel) => <div key={channel.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border bg-background p-3 text-sm"><span><span className="font-medium">{channel.provider === "META_CLOUD" ? "Meta Cloud API" : "WuzAPI"}</span><span className="ml-2 text-muted-foreground">{channel.externalAccountId}</span></span><span className="flex items-center gap-1 text-emerald-700"><CheckCircle2 className="size-4" />{channel.status.toLocaleLowerCase()}</span></div>)}</div> : <p className="text-sm text-muted-foreground">Todavía no hay un canal conectado.</p>}
-        <div className="flex flex-wrap gap-3"><Button type="button" onClick={() => void connectMeta()} disabled={busy !== null}>{busy === "meta" ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Wifi className="mr-2 size-4" />}Conectar Meta Cloud</Button></div>
-        <div className="grid gap-2 rounded-xl border bg-background p-3 sm:grid-cols-[1fr_1fr_auto]"><input value={wuzapiAccount} onChange={(event) => setWuzapiAccount(event.target.value)} placeholder="Instancia WuzAPI" className="h-10 rounded-md border bg-transparent px-3 text-sm" autoComplete="off" /><input value={wuzapiToken} onChange={(event) => setWuzapiToken(event.target.value)} placeholder="Token de usuario WuzAPI" type="password" className="h-10 rounded-md border bg-transparent px-3 text-sm" autoComplete="new-password" /><Button type="button" variant="outline" onClick={() => void connectWuzapi()} disabled={busy !== null || !wuzapiAccount.trim() || !wuzapiToken.trim()}>{busy === "wuzapi" ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}Conectar WuzAPI</Button></div>
-        {manualCallback ? <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3 text-sm"><p className="font-medium">Configura esta URL una sola vez en WuzAPI</p><p className="mt-1 break-all font-mono text-xs">{manualCallback}</p><Button type="button" variant="ghost" size="sm" className="mt-2" onClick={() => void navigator.clipboard.writeText(manualCallback)}><Copy className="mr-2 size-4" />Copiar</Button></div> : null}
+        <div className="flex items-start justify-between gap-3"><div><p className="font-medium">Conecta WhatsApp</p><p className="text-sm text-muted-foreground">Elige una forma de conexión. La configuración técnica se administra de manera segura por la plataforma.</p></div><Button type="button" variant="outline" size="sm" onClick={() => void refresh()} disabled={loading}><RefreshCw className="mr-2 size-4" />Actualizar</Button></div>
+        {loading ? <p className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" />Consultando conexiones…</p> : null}
+        <div className="grid gap-4 lg:grid-cols-2">
+            <section className="flex flex-col rounded-2xl border bg-background p-4">
+                <div className="flex items-start justify-between gap-3"><span className="flex size-10 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-700"><ShieldCheck className="size-5" /></span>{official ? <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-semibold text-emerald-700"><CheckCircle2 className="size-3.5" />Activa</span> : <span className="rounded-full border px-2.5 py-1 text-xs text-muted-foreground">Oficial</span>}</div>
+                <h3 className="mt-4 font-semibold">Conexión oficial de WhatsApp</h3>
+                <p className="mt-1 flex-1 text-sm text-muted-foreground">Recomendada para operar con la plataforma oficial de Meta, plantillas aprobadas y mayor estabilidad.</p>
+                <Button type="button" className="mt-4 w-full" onClick={() => void connectMeta()} disabled={busy !== null || Boolean(official)}>{busy === "meta" ? <Loader2 className="mr-2 size-4 animate-spin" /> : <ShieldCheck className="mr-2 size-4" />}{official ? "Conexión activa" : "Conectar oficialmente"}</Button>
+            </section>
+
+            <section className="flex flex-col rounded-2xl border bg-background p-4">
+                <div className="flex items-start justify-between gap-3"><span className="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary"><QrCode className="size-5" /></span>{qrSession.active ? <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-semibold text-emerald-700"><CheckCircle2 className="size-3.5" />Activa</span> : <span className="rounded-full border px-2.5 py-1 text-xs text-muted-foreground">No oficial</span>}</div>
+                <h3 className="mt-4 font-semibold">Conexión (no oficial) mediante QR</h3>
+                <p className="mt-1 text-sm text-muted-foreground">Vincula el WhatsApp de tu teléfono escaneando un código, sin capturar datos técnicos.</p>
+                <p className="mt-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs leading-relaxed text-amber-900 dark:text-amber-200">Esta modalidad no utiliza la API oficial de Meta. WhatsApp puede limitar o suspender el número, especialmente ante automatizaciones, envíos masivos o incumplimientos de sus políticas. Úsala bajo tu responsabilidad.</p>
+                {!qrSession.active ? <label className="mt-3 flex items-start gap-2 text-xs leading-relaxed text-muted-foreground"><input type="checkbox" checked={qrRiskAccepted} onChange={(event) => setQrRiskAccepted(event.target.checked)} className="mt-0.5 size-4 shrink-0 accent-primary" />Entiendo que es una conexión no oficial y acepto el riesgo antes de vincular este número.</label> : null}
+                {qrSession.phone ? <div className="mt-3 rounded-xl border bg-muted/30 px-3 py-2"><p className="text-xs text-muted-foreground">Número vinculado</p><p className="break-all text-sm font-medium">{qrSession.phone.replace(/@.+$/, "")}</p></div> : null}
+                {qrSession.qrCode && !qrSession.active ? <div className="mt-4 rounded-2xl border border-dashed bg-white p-3"><Image src={qrSession.qrCode} alt="Código QR para vincular WhatsApp" width={224} height={224} unoptimized className="mx-auto h-auto w-full max-w-56" /><p className="mt-2 text-center text-xs text-slate-600">En WhatsApp abre Dispositivos vinculados, toca Vincular dispositivo y escanea este código.</p></div> : null}
+                <div className="mt-4 flex flex-wrap gap-2">
+                    {qrSession.active ? <Button type="button" variant="outline" className="flex-1" onClick={() => void disconnectQr()} disabled={busy !== null}>{busy === "disconnect" ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Unplug className="mr-2 size-4" />}Desvincular</Button> : <Button type="button" variant="outline" className="flex-1" onClick={() => void connectQr()} disabled={busy !== null || !qrRiskAccepted}>{busy === "qr" ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Smartphone className="mr-2 size-4" />}{qrSession.qrCode ? "Generar otro código" : "Conectar por QR bajo mi responsabilidad"}</Button>}
+                    {qrSession.configured && !qrSession.active ? <Button type="button" variant="ghost" onClick={() => void refreshQr(true)} disabled={busy !== null}><RefreshCw className="mr-2 size-4" />Revisar estado</Button> : null}
+                </div>
+            </section>
+        </div>
         {message ? <p className="text-sm text-muted-foreground" role="status">{message}</p> : null}
     </div>;
 }

@@ -82,7 +82,7 @@ const SECTIONS: Array<{
     { id: "users", label: "Usuarios", description: "Accesos, roles y permisos", icon: Users, permission: "users.manage" },
     { id: "ai", label: "Cerebro IA", description: "Claves y servicios de inteligencia", icon: Bot, permission: "ai.manage", platformInternal: true },
     { id: "whatsapp", label: "Canal WhatsApp", description: "WhatsApp API oficial y conexion alternativa por QR", icon: WhatsAppIcon, permission: "integrations.manage", platformInternal: true },
-    { id: "tenantChannels", label: "WhatsApp", description: "Conecta Meta Cloud o WuzAPI con este negocio", icon: WhatsAppIcon, permission: "integrations.manage", tenantOnly: true },
+    { id: "tenantChannels", label: "WhatsApp", description: "Conecta WhatsApp de forma oficial o mediante una conexión no oficial por QR", icon: WhatsAppIcon, permission: "integrations.manage", tenantOnly: true },
     { id: "calendar", label: "Calendario", description: "Google Calendar y recordatorios de citas", icon: CalendarDays, permissions: ["calendar.manage", "integrations.manage"] },
     { id: "specialists", label: "Especialistas", description: "Equipo, servicios, agenda y disponibilidad", icon: UserRoundCog, permission: "specialists.manage", separateTenantPage: true },
     { id: "chats", label: "Notificaciones", description: "Sonidos y preferencias del inbox", icon: Volume2 },
@@ -953,7 +953,7 @@ export function SettingsWorkspace({ channelsEnabled = false }: { channelsEnabled
                         <div>
                             <h2 className="font-semibold">WhatsApp del negocio</h2>
                             <p className="mt-1 text-sm text-muted-foreground">
-                                Conecta Meta Cloud API o WuzAPI ahora o en cualquier momento después del asistente inicial.
+                                Elige la conexión oficial de WhatsApp o vincula un teléfono mediante QR, ahora o después del asistente inicial.
                             </p>
                         </div>
                         <TenantChannelSetup tenantSlug={tenantSlug} enabled={channelsEnabled} />

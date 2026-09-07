@@ -4,6 +4,7 @@ import { PlatformAdminAccessError, requirePlatformAdmin } from "@/lib/platform-a
 import { isSameApplicationOrigin } from "@/lib/security";
 import { normalizeChatModelSelection, SUPPORTED_CHAT_MODELS } from "@/lib/ai/models";
 import { PLATFORM_AI_RUNTIME_KEY } from "@/lib/ai/platform-runtime";
+import { encryptChannelSecret } from "@/lib/tenant-channel-secrets";
 
 export const runtime = "nodejs";
 
@@ -54,6 +55,42 @@ export async function PATCH(request: NextRequest) {
                         metadata: { chatModel },
                     },
                 });
+            });
+            return NextResponse.json({ saved: true });
+        }
+
+        if (action === "qr-proxy") {
+            const tenantId = cleanText(body.tenantId, 100, true);
+            const enabled = body.enabled === true;
+            const clear = body.clear === true;
+            const proxyUrl = cleanText(body.proxyUrl, 2_048);
+            if (proxyUrl) {
+                let parsed: URL;
+                try { parsed = new URL(proxyUrl); }
+                catch { throw new Error("La dirección del proxy no es válida."); }
+                if (!["http:", "https:", "socks5:"].includes(parsed.protocol) || !parsed.hostname || !parsed.port) {
+                    throw new Error("El proxy debe incluir protocolo, host y puerto.");
+                }
+            }
+            const current = await db.tenantQrChannelConfiguration.findUnique({ where: { tenantId } });
+            if (enabled && !proxyUrl && (clear || !current?.proxyUrlCiphertext)) throw new Error("Captura la dirección del proxy antes de activarlo.");
+            const encrypted = proxyUrl ? encryptChannelSecret(proxyUrl) : null;
+            await db.$transaction(async (tx) => {
+                await tx.tenant.findUniqueOrThrow({ where: { id: tenantId }, select: { id: true } });
+                await tx.tenantQrChannelConfiguration.upsert({
+                    where: { tenantId },
+                    create: {
+                        tenantId,
+                        proxyEnabled: enabled,
+                        proxyUrlCiphertext: encrypted?.ciphertext || null,
+                        proxyUrlKeyVersion: encrypted?.keyVersion || null,
+                    },
+                    update: {
+                        proxyEnabled: enabled,
+                        ...(encrypted ? { proxyUrlCiphertext: encrypted.ciphertext, proxyUrlKeyVersion: encrypted.keyVersion } : clear ? { proxyUrlCiphertext: null, proxyUrlKeyVersion: null } : {}),
+                    },
+                });
+                await tx.auditLog.create({ data: { tenantId, actorUserId: admin.id, action: "qr_proxy.updated", resourceType: "TenantQrChannelConfiguration", resourceId: tenantId, metadata: { enabled, configured: Boolean(encrypted || (!clear && current?.proxyUrlCiphertext)) } } });
             });
             return NextResponse.json({ saved: true });
         }

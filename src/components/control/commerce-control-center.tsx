@@ -2,12 +2,12 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { BrainCircuit, CheckCircle2, CircleAlert, Loader2 } from "lucide-react";
+import { BrainCircuit, CheckCircle2, CircleAlert, Loader2, Network } from "lucide-react";
 import { SUPPORTED_CHAT_MODELS } from "@/lib/ai/models";
 
 type Policy = { trialDays: number; warningHours: number; finalWarningHours: number; graceDays: number; version: number };
 type Plan = { id: string; slug: string; name: string; monthlyAmountCents: number | null; stripePriceId: string };
-type TenantRow = { id: string; displayName: string; slug: string; accessMode: string; billingStatus: string; trialEndsAt: string | null; trialStatus: string | null; selectionStatus: string | null; lastError: string | null };
+type TenantRow = { id: string; displayName: string; slug: string; accessMode: string; billingStatus: string; trialEndsAt: string | null; trialStatus: string | null; selectionStatus: string | null; lastError: string | null; qrProxyEnabled: boolean; qrProxyConfigured: boolean };
 type AiControl = { chatModel: string; geminiKeyConfigured: boolean; openaiKeyConfigured: boolean; environmentFallbackEnabled: boolean };
 
 async function mutate(body: Record<string, unknown>) {
@@ -51,6 +51,26 @@ export function CommerceControlCenter({ ai, policy, plans, tenants }: { ai: AiCo
                 </label>
                 <button disabled={pending !== null} className="inline-flex h-11 items-center justify-center rounded-full bg-primary px-5 text-sm font-semibold text-primary-foreground">{pending === "ai-runtime" ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}Guardar motor</button>
             </form>
+        </section>
+
+        <section className="rounded-2xl border bg-card p-5 shadow-sm">
+            <div className="flex items-start gap-3">
+                <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><Network className="size-5" /></div>
+                <div><p className="text-xs font-semibold uppercase tracking-wider text-primary">Configuración interna</p><h2 className="mt-1 text-xl font-semibold">Proxy residencial opcional</h2><p className="mt-1 text-sm text-muted-foreground">Configura una salida estable por negocio para su conexión mediante QR. La dirección y sus credenciales se cifran y nunca se muestran al cliente.</p></div>
+            </div>
+            <div className="mt-5 grid gap-4 lg:grid-cols-2">
+                {tenants.map((tenant) => <form key={`proxy:${tenant.id}`} className="rounded-xl border bg-background p-4" onSubmit={(event) => {
+                    event.preventDefault();
+                    const data = new FormData(event.currentTarget);
+                    void submit(`proxy:${tenant.id}`, { action: "qr-proxy", tenantId: tenant.id, enabled: data.get("enabled") === "on", proxyUrl: String(data.get("proxyUrl") || ""), clear: data.get("clear") === "on" });
+                }}>
+                    <div className="flex flex-wrap items-start justify-between gap-2"><div><p className="font-semibold">{tenant.displayName}</p><p className="text-xs text-muted-foreground">/{tenant.slug}</p></div><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${tenant.qrProxyEnabled ? "bg-emerald-500/10 text-emerald-700" : "bg-muted text-muted-foreground"}`}>{tenant.qrProxyEnabled ? "Activo" : tenant.qrProxyConfigured ? "Guardado" : "Sin configurar"}</span></div>
+                    <label className="mt-4 flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5 text-sm font-medium">Activar proxy para este negocio<input name="enabled" type="checkbox" defaultChecked={tenant.qrProxyEnabled} className="size-4 accent-primary" /></label>
+                    <label className="mt-3 block text-sm font-medium">Proxy URL<input name="proxyUrl" type="password" autoComplete="new-password" placeholder={tenant.qrProxyConfigured ? "Guardado; deja vacío para conservar" : "http://usuario:contraseña@host:puerto"} className="mt-1.5 h-10 w-full rounded-md border bg-background px-3 font-mono text-xs" /><span className="mt-1.5 block text-xs text-muted-foreground">Admite http://, https:// y socks5:// con host y puerto. Se aplicará al preparar o renovar la sesión.</span></label>
+                    {tenant.qrProxyConfigured ? <label className="mt-3 flex items-center gap-2 text-xs text-muted-foreground"><input name="clear" type="checkbox" className="size-4 accent-destructive" />Eliminar la dirección guardada</label> : null}
+                    <button disabled={pending !== null} className="mt-4 inline-flex h-9 items-center justify-center rounded-full border px-4 text-sm font-semibold">{pending === `proxy:${tenant.id}` ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}Guardar proxy</button>
+                </form>)}
+            </div>
         </section>
 
         <section className="rounded-2xl border bg-card p-5 shadow-sm">

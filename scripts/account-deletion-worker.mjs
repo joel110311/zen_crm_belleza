@@ -30,6 +30,22 @@ async function request(url, options, allowedStatuses = [404]) {
     return response;
 }
 
+async function deleteQrGatewayUser(base, channel, userToken) {
+    const adminToken = process.env.WUZAPI_ADMIN_TOKEN?.trim();
+    if (!adminToken) throw new Error("qr_gateway_admin_token_required");
+    const response = await request(`${base}/admin/users`, { headers: { Authorization: adminToken } });
+    if (response.status === 404) return;
+    const payload = await response.json().catch(() => []);
+    const data = payload && typeof payload === "object" && "data" in payload ? payload.data : payload;
+    const users = Array.isArray(data)
+        ? data
+        : data && typeof data === "object"
+            ? Object.values(data).flatMap((value) => Array.isArray(value) ? value : value && typeof value === "object" ? [value] : [])
+            : [];
+    const user = users.find((value) => value && typeof value === "object" && (value.name === channel.externalAccountId || value.token === userToken));
+    if (user?.id !== undefined) await request(`${base}/admin/users/${encodeURIComponent(user.id)}`, { method: "DELETE", headers: { Authorization: adminToken } });
+}
+
 function decryptGoogleToken(value) {
     if (!value) return null;
     if (!value.startsWith("enc:v1:")) return value;
@@ -172,9 +188,11 @@ async function purgeTenant(control, admin, tenantId) {
     const channels = (await control.query('SELECT * FROM "ChannelConnection" WHERE "tenantId"=$1 AND "secretCiphertext" IS NOT NULL', [tenantId])).rows;
     for (const channel of channels) {
         if (channel.provider === "WUZAPI") {
-            const base = process.env.MULTITENANT_WUZAPI_BASE_URL?.replace(/\/$/, "");
+            const base = (process.env.MULTITENANT_WUZAPI_BASE_URL || process.env.WHATSAPP_GATEWAY_URL || "").replace(/\/$/, "");
             if (!base) throw new Error("wuzapi_url_required");
-            await request(`${base}/session/logout`, { method: "POST", headers: { Token: decryptChannel(channel) } }, [401, 404]);
+            const userToken = decryptChannel(channel);
+            await request(`${base}/session/logout`, { method: "POST", headers: { Token: userToken } }, [401, 404]);
+            await deleteQrGatewayUser(base, channel, userToken);
         }
         // The Meta token is dedicated to this connection, but its WABA id is not stored in the
         // control plane. Removing the secret and route prevents all future access and callbacks.

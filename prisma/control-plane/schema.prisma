@@ -246,6 +246,7 @@ model Tenant {
   webhookEvents           WebhookEvent[]
   channelConnections      ChannelConnection[]
   channelConnectionStates ChannelConnectionState[]
+  qrChannelConfiguration  TenantQrChannelConfiguration?
   workItems               TenantWorkItem[]
   deviceInstalls          DeviceInstallation[]
   auditEvents             AuditLog[]
@@ -618,6 +619,20 @@ model ChannelConnection {
 
   @@unique([provider, externalAccountId])
   @@index([tenantId, provider, status])
+}
+
+/**
+ * Platform-managed settings for the tenant QR channel. Proxy credentials are encrypted
+ * and can only be managed from the platform control center; tenant users never receive them.
+ */
+model TenantQrChannelConfiguration {
+  tenantId                  String   @id
+  proxyEnabled              Boolean  @default(false)
+  proxyUrlCiphertext        Bytes?
+  proxyUrlKeyVersion        Int?
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+  tenant                    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 }
 
 /**

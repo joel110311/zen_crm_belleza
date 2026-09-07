@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 import { Prisma, type ChannelProvider } from "@/generated/control-plane";
 import { getControlDb } from "@/lib/control-db";
 import { hashSecurityIdentifier, safeSecretEqual } from "@/lib/security";
-import { encryptChannelSecret } from "@/lib/tenant-channel-secrets";
+import { decryptChannelSecret, encryptChannelSecret } from "@/lib/tenant-channel-secrets";
 import { TenantServiceError } from "@/lib/tenant-services/context";
 
 type ChannelStatePayload = {
@@ -148,13 +148,10 @@ function serializeChannel(connection: {
     return {
         id: connection.id,
         provider: connection.provider,
-        externalAccountId: connection.externalAccountId,
         status: connection.status,
-        credentialConfigured: Boolean(connection.secretCiphertext),
         connectedAt: connection.connectedAt?.toISOString() || null,
         disconnectedAt: connection.disconnectedAt?.toISOString() || null,
         lastWebhookAt: connection.lastWebhookAt?.toISOString() || null,
-        lastError: connection.lastError || null,
     };
 }
 
@@ -322,88 +319,205 @@ export async function completeMetaEmbeddedSignup(params: {
     };
 }
 
-async function configureWuzapiWebhook(userToken: string, callbackUrl: string) {
-    const baseUrl = process.env.MULTITENANT_WUZAPI_BASE_URL?.trim().replace(/\/+$/, "") || "";
-    if (!baseUrl) return false;
-    const response = await fetch(`${baseUrl}/webhook`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Token: userToken },
-        body: JSON.stringify({ webhookURL: callbackUrl }),
-        cache: "no-store",
-    });
-    if (!response.ok) throw new Error(`WuzAPI respondió ${response.status} al registrar el webhook.`);
-    const hmacKey = process.env.MULTITENANT_WUZAPI_WEBHOOK_HMAC_KEY?.trim() || "";
-    if (hmacKey) {
-        const hmacResponse = await fetch(`${baseUrl}/session/hmac/config`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", Token: userToken },
-            body: JSON.stringify({ hmac_key: hmacKey }),
-            cache: "no-store",
-        });
-        if (!hmacResponse.ok) throw new Error(`WuzAPI respondió ${hmacResponse.status} al configurar la firma del webhook.`);
-    }
-    return true;
+type QrGatewayUser = { id?: string | number; name?: string; token?: string };
+type QrGatewayStatus = { connected?: boolean; loggedIn?: boolean; jid?: string; qrcode?: string };
+
+function qrGatewayBaseUrl() {
+    const value = (process.env.MULTITENANT_WUZAPI_BASE_URL || process.env.WHATSAPP_GATEWAY_URL || "").trim().replace(/\/+$/, "");
+    if (!value) throw new Error("Falta configurar el servicio interno para la conexión mediante QR.");
+    return value;
 }
 
-export async function connectWuzapiChannel(params: { tenantId: string; externalAccountId: unknown; userToken: unknown }) {
-    const externalAccountId = safeExternalAccountId(params.externalAccountId, "externalAccountId");
-    const userToken = text(params.userToken, "userToken", 4096);
-    if (!(process.env.MULTITENANT_WUZAPI_WEBHOOK_HMAC_KEY || "").trim()) {
-        throw new Error("MULTITENANT_WUZAPI_WEBHOOK_HMAC_KEY es obligatorio para conectar WuzAPI por tenant.");
+function qrGatewayAdminToken() {
+    const value = (process.env.WUZAPI_ADMIN_TOKEN || "").trim();
+    if (!value) throw new Error("Falta configurar la credencial maestra del servicio de conexión mediante QR.");
+    return value;
+}
+
+function qrWebhookHmacKey() {
+    const value = (process.env.MULTITENANT_WUZAPI_WEBHOOK_HMAC_KEY || process.env.WUZAPI_GLOBAL_HMAC_KEY || "").trim();
+    if (!value) throw new Error("Falta configurar la firma de seguridad para los mensajes recibidos mediante QR.");
+    return value;
+}
+
+function qrInstanceName(tenantId: string) {
+    return `tenant-${crypto.createHash("sha256").update(tenantId).digest("hex").slice(0, 24)}`;
+}
+
+function qrImage(value: unknown) {
+    const normalized = typeof value === "string" ? value.trim() : "";
+    if (!normalized) return null;
+    if (normalized.startsWith("data:image/")) return normalized;
+    if (/^[A-Za-z0-9+/=\r\n]+$/.test(normalized)) return `data:image/png;base64,${normalized.replace(/\s+/g, "")}`;
+    return null;
+}
+
+function unwrapGatewayResponse<T>(payload: unknown): T {
+    if (payload && typeof payload === "object" && "data" in payload) return (payload as { data: T }).data;
+    return payload as T;
+}
+
+async function qrGatewayRequest<T>(params: { path: string; token?: string; admin?: boolean; method?: "GET" | "POST" | "PUT" | "DELETE"; body?: unknown }) {
+    const headers = new Headers();
+    if (params.admin) headers.set("Authorization", qrGatewayAdminToken());
+    else if (params.token) headers.set("Token", params.token);
+    if (params.body !== undefined) headers.set("Content-Type", "application/json");
+    const response = await fetch(`${qrGatewayBaseUrl()}${params.path.startsWith("/") ? params.path : `/${params.path}`}`, {
+        method: params.method || "GET",
+        headers,
+        body: params.body === undefined ? undefined : JSON.stringify(params.body),
+        cache: "no-store",
+        signal: AbortSignal.timeout(20_000),
+    });
+    const raw = await response.text();
+    let payload: unknown = {};
+    if (raw) {
+        try { payload = JSON.parse(raw) as unknown; }
+        catch { payload = raw; }
     }
+    if (!response.ok) {
+        const details = typeof payload === "string" ? payload : (payload as { message?: string; error?: string }).message || (payload as { error?: string }).error;
+        throw new Error(details || `El servicio de conexión mediante QR respondió ${response.status}.`);
+    }
+    return unwrapGatewayResponse<T>(payload);
+}
+
+async function tenantQrProxy(tenantId: string) {
+    const setting = await getControlDb().tenantQrChannelConfiguration.findUnique({ where: { tenantId } });
+    if (!setting?.proxyEnabled || !setting.proxyUrlCiphertext || !setting.proxyUrlKeyVersion) return { enabled: false, url: "" };
+    return {
+        enabled: true,
+        url: decryptChannelSecret(setting.proxyUrlCiphertext, setting.proxyUrlKeyVersion),
+    };
+}
+
+async function qrConnection(tenantId: string) {
+    return getControlDb().channelConnection.findFirst({
+        where: { tenantId, provider: "WUZAPI" },
+        orderBy: { createdAt: "asc" },
+    });
+}
+
+function connectionToken(connection: { secretCiphertext: Uint8Array | null; secretKeyVersion: number | null }) {
+    if (!connection.secretCiphertext || !connection.secretKeyVersion) throw new Error("La conexión mediante QR no tiene una credencial válida.");
+    return decryptChannelSecret(connection.secretCiphertext, connection.secretKeyVersion);
+}
+
+async function synchronizeQrStatus(connection: { id: string }, status: QrGatewayStatus) {
+    const active = Boolean(status.loggedIn);
+    await getControlDb().channelConnection.update({
+        where: { id: connection.id },
+        data: active
+            ? { status: "CONNECTED", connectedAt: new Date(), disconnectedAt: null, lastError: null }
+            : { status: "PENDING", connectedAt: null, lastError: null },
+    });
+    return active;
+}
+
+async function provisionQrGatewayUser(params: { tenantId: string; instanceName: string; userToken: string; callbackUrl: string }) {
+    const proxy = await tenantQrProxy(params.tenantId);
+    const usersPayload = await qrGatewayRequest<unknown>({ path: "/admin/users", admin: true });
+    const users = Array.isArray(usersPayload)
+        ? usersPayload.filter((value): value is QrGatewayUser => Boolean(value) && typeof value === "object")
+        : usersPayload && typeof usersPayload === "object"
+            ? Object.values(usersPayload).flatMap((value) => Array.isArray(value) ? value : value && typeof value === "object" ? [value] : []).filter((value): value is QrGatewayUser => Boolean(value) && typeof value === "object")
+            : [];
+    const existing = users.find((user) => user.name === params.instanceName || user.token === params.userToken);
+    const payload = {
+        name: params.instanceName,
+        token: params.userToken,
+        webhook: params.callbackUrl,
+        events: "Message,HistorySync",
+        proxyConfig: { enabled: proxy.enabled, proxyURL: proxy.enabled ? proxy.url : "" },
+    };
+    if (!existing) {
+        await qrGatewayRequest({ path: "/admin/users", admin: true, method: "POST", body: payload });
+    } else if (existing.id !== undefined) {
+        await qrGatewayRequest({ path: `/admin/users/${existing.id}`, admin: true, method: "PUT", body: payload }).catch((error) => {
+            if (proxy.enabled) throw error;
+            // Older gateway versions may not support updating a user. The per-user calls below
+            // still rotate the webhook and signature when no proxy change is required.
+        });
+    }
+    await qrGatewayRequest({ path: "/webhook", token: params.userToken, method: "POST", body: { webhookURL: params.callbackUrl } });
+    await qrGatewayRequest({ path: "/session/hmac/config", token: params.userToken, method: "POST", body: { hmac_key: qrWebhookHmacKey() } });
+}
+
+/** Provisions the internal user and starts a QR ceremony without exposing platform credentials. */
+export async function beginTenantQrConnection(tenantId: string, actorUserId: string | null) {
+    qrWebhookHmacKey();
+    const existing = await qrConnection(tenantId);
+    const instanceName = existing?.externalAccountId || qrInstanceName(tenantId);
+    const userToken = existing?.secretCiphertext && existing.secretKeyVersion
+        ? decryptChannelSecret(existing.secretCiphertext, existing.secretKeyVersion)
+        : crypto.randomBytes(32).toString("base64url");
+    const encrypted = encryptChannelSecret(userToken);
     const routeToken = makeRouteToken();
     const callbackUrl = `${callbackBaseUrl()}/api/webhooks/tenant/wuzapi/${routeToken}`;
-    let reservation: { id: string };
+    const connection = await getControlDb().channelConnection.upsert({
+        where: { provider_externalAccountId: { provider: "WUZAPI", externalAccountId: instanceName } },
+        create: {
+            tenantId, provider: "WUZAPI", externalAccountId: instanceName, status: "PENDING",
+            secretCiphertext: encrypted.ciphertext, secretKeyVersion: encrypted.keyVersion,
+            routeSecretHash: channelRouteHash(routeToken),
+        },
+        update: {
+            status: "PENDING", secretCiphertext: encrypted.ciphertext, secretKeyVersion: encrypted.keyVersion,
+            routeSecretHash: channelRouteHash(routeToken), connectedAt: null, disconnectedAt: null, lastError: null,
+        },
+    });
     try {
-        reservation = await getControlDb().$transaction(async (tx) => {
-            const existing = await tx.channelConnection.findUnique({
-                where: { provider_externalAccountId: { provider: "WUZAPI", externalAccountId } },
-                select: { tenantId: true },
-            });
-            if (existing && existing.tenantId !== params.tenantId) {
-                throw new TenantServiceError("CONFLICT", "Esta instancia WuzAPI ya está conectada a otro negocio.");
-            }
-            return tx.channelConnection.upsert({
-                where: { provider_externalAccountId: { provider: "WUZAPI", externalAccountId } },
-                create: {
-                    tenantId: params.tenantId, provider: "WUZAPI", externalAccountId, status: "PENDING",
-                    routeSecretHash: channelRouteHash(routeToken),
-                },
-                update: { status: "PENDING", routeSecretHash: channelRouteHash(routeToken), lastError: null },
-                select: { id: true },
-            });
+        await provisionQrGatewayUser({ tenantId, instanceName, userToken, callbackUrl });
+        await qrGatewayRequest({ path: "/session/connect", token: userToken, method: "POST", body: { Subscribe: ["Message", "HistorySync"], Immediate: false } });
+        const status = await qrGatewayRequest<QrGatewayStatus>({ path: "/session/status", token: userToken });
+        const qrPayload = status.loggedIn ? null : await qrGatewayRequest<{ QRCode?: string }>({ path: "/session/qr", token: userToken }).catch(() => null);
+        const active = await synchronizeQrStatus(connection, status);
+        await getControlDb().auditLog.create({
+            data: {
+                tenantId,
+                actorUserId,
+                action: "qr_connection.risk_accepted",
+                resourceType: "ChannelConnection",
+                resourceId: connection.id,
+                metadata: { disclosureVersion: 1 },
+            },
         });
-    } catch (error) {
-        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-            throw new TenantServiceError("CONFLICT", "Esta instancia WuzAPI ya está conectada a otro negocio.");
-        }
-        throw error;
-    }
-
-    let configuredRemotely: boolean;
-    try {
-        configuredRemotely = await configureWuzapiWebhook(userToken, callbackUrl);
+        return { configured: true, active, connected: Boolean(status.connected), phone: status.jid || null, qrCode: qrImage(qrPayload?.QRCode || status.qrcode) };
     } catch (error) {
         await getControlDb().channelConnection.update({
-            where: { id: reservation.id },
-            data: { status: "FAILED", lastError: error instanceof Error ? error.message.slice(0, 500) : "WuzAPI webhook configuration failed." },
+            where: { id: connection.id },
+            data: { status: "FAILED", lastError: error instanceof Error ? error.message.slice(0, 500) : "No fue posible preparar la conexión mediante QR." },
         }).catch(() => {});
         throw error;
     }
+}
 
-    const encrypted = encryptChannelSecret(userToken);
-    const connection = await getControlDb().channelConnection.update({
-        where: { id: reservation.id },
-        data: {
-            status: "CONNECTED", secretCiphertext: encrypted.ciphertext, secretKeyVersion: encrypted.keyVersion,
-            connectedAt: new Date(), disconnectedAt: null, lastError: null,
-        },
-        select: {
-            id: true, provider: true, externalAccountId: true, status: true, connectedAt: true,
-            disconnectedAt: true, lastWebhookAt: true, lastError: true, secretCiphertext: true,
-        },
+export async function getTenantQrConnection(tenantId: string, includeQr = false) {
+    const connection = await qrConnection(tenantId);
+    if (!connection?.secretCiphertext || !connection.secretKeyVersion) return { configured: false, active: false, connected: false, phone: null, qrCode: null };
+    const token = connectionToken(connection);
+    const status = await qrGatewayRequest<QrGatewayStatus>({ path: "/session/status", token });
+    const qrPayload = includeQr && !status.loggedIn
+        ? await qrGatewayRequest<{ QRCode?: string }>({ path: "/session/qr", token }).catch(() => null)
+        : null;
+    const active = await synchronizeQrStatus(connection, status);
+    return { configured: true, active, connected: Boolean(status.connected), phone: status.jid || null, qrCode: qrImage(qrPayload?.QRCode || status.qrcode) };
+}
+
+export async function disconnectTenantQrConnection(tenantId: string) {
+    const connection = await qrConnection(tenantId);
+    if (!connection) return { disconnected: true };
+    if (connection.secretCiphertext && connection.secretKeyVersion) {
+        const token = connectionToken(connection);
+        await qrGatewayRequest({ path: "/session/logout", token, method: "POST", body: {} }).catch(async () => {
+            await qrGatewayRequest({ path: "/session/disconnect", token, method: "POST", body: {} });
+        });
+    }
+    await getControlDb().channelConnection.update({
+        where: { id: connection.id },
+        data: { status: "DISCONNECTED", connectedAt: null, disconnectedAt: new Date(), lastError: null },
     });
-    return { channel: serializeChannel(connection), callbackUrl, configuredRemotely };
+    return { disconnected: true };
 }
 
 export async function getChannelForRoute(provider: ChannelProvider, routeToken: string) {

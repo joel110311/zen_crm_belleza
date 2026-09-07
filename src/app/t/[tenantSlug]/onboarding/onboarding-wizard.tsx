@@ -1023,7 +1023,7 @@ export function TenantOnboardingWizard({
           >
             <StepHeading
               title="Canales de mensajería"
-              description="Meta Cloud API es la integración principal. WuzAPI queda como alternativa explícita. Conectar un canal es opcional y no bloquea la agenda."
+              description="La conexión oficial es la opción recomendada. También puedes vincular un teléfono mediante QR. Este paso es opcional y no bloquea la agenda."
             />
             <div className="space-y-3">
               {(
@@ -1035,12 +1035,12 @@ export function TenantOnboardingWizard({
                   ],
                   [
                     "META_CLOUD",
-                    "Meta Cloud API",
+                    "Conexión oficial de WhatsApp",
                     "Canal recomendado para WhatsApp Business.",
                   ],
                   [
                     "WUZAPI",
-                    "WuzAPI",
+                    "Conexión (no oficial) mediante QR",
                     "Alternativa si ya operas una instancia compatible.",
                   ],
                 ] as const

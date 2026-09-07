@@ -10,7 +10,7 @@ export const runtime = "nodejs";
 const maxWebhookBytes = 1_048_576;
 
 function hasValidWuzapiSignature(rawBody: string, request: Request) {
-    const key = process.env.MULTITENANT_WUZAPI_WEBHOOK_HMAC_KEY?.trim() || "";
+    const key = (process.env.MULTITENANT_WUZAPI_WEBHOOK_HMAC_KEY || process.env.WUZAPI_GLOBAL_HMAC_KEY || "").trim();
     const received = (request.headers.get("x-hmac-signature") || "").trim().replace(/^sha256=/i, "").toLowerCase();
     if (!key || !/^[a-f0-9]{64}$/.test(received)) return false;
     return safeSecretEqual(received, crypto.createHmac("sha256", key).update(rawBody).digest("hex"));
