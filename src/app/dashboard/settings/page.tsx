@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type ChangeEvent, type ComponentType } from "react";
 import { useSession } from "next-auth/react";
+import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
     CalendarDays,
@@ -10,6 +11,7 @@ import {
     Loader2,
     Palette,
     Play,
+    ReceiptText,
     Save,
     Settings,
     Store,
@@ -88,7 +90,13 @@ const SECTIONS: Array<{
     { id: "chats", label: "Notificaciones", description: "Sonidos y preferencias del inbox", icon: Volume2 },
 ];
 
-export function SettingsWorkspace({ channelsEnabled = false }: { channelsEnabled?: boolean }) {
+export function SettingsWorkspace({
+    billingHref,
+    channelsEnabled = false,
+}: {
+    billingHref?: string;
+    channelsEnabled?: boolean;
+}) {
     const pathname = usePathname();
     const tenantSlug = tenantSlugFromPath(pathname);
     const isTenantWorkspace = /^\/t\/[^/]+(?:\/|$)/.test(pathname);
@@ -511,6 +519,24 @@ export function SettingsWorkspace({ channelsEnabled = false }: { channelsEnabled
                         </button>
                     );
                 })}
+                {billingHref ? (
+                    <Link
+                        href={billingHref}
+                        className="min-w-0 rounded-2xl border bg-card px-4 py-4 text-left transition hover:border-primary/35 hover:bg-muted/20"
+                    >
+                        <div className="flex min-h-[112px] flex-col justify-between gap-4">
+                            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                                <ReceiptText className="h-5 w-5" />
+                            </div>
+                            <div className="min-w-0">
+                                <p className="font-medium">Plan y facturación</p>
+                                <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                                    Plan actual, pagos y métodos de pago
+                                </p>
+                            </div>
+                        </div>
+                    </Link>
+                ) : null}
             </div> : null}
 
             <div className="rounded-2xl border bg-card p-4 sm:p-5 md:p-7">
