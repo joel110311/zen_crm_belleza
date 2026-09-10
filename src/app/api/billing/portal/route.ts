@@ -2,16 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { BillingAccessError, requireBillingOwner } from "@/lib/billing/context";
 import { getPlatformBaseUrl, getStripeClient, StripeBillingConfigurationError } from "@/lib/billing/stripe";
 import { getControlDb } from "@/lib/control-db";
+import { isSameApplicationOrigin } from "@/lib/security";
 
 export const runtime = "nodejs";
 
-function isSameOriginRequest(request: NextRequest): boolean {
-    const origin = request.headers.get("origin");
-    return !origin || origin === new URL(request.url).origin;
-}
-
 export async function POST(request: NextRequest) {
-    if (!isSameOriginRequest(request)) {
+    if (!isSameApplicationOrigin(request)) {
         return NextResponse.json({ error: "Origen no permitido." }, { status: 403 });
     }
 
