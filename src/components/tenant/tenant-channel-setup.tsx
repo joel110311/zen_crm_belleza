@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Image from "next/image";
-import { CheckCircle2, Loader2, QrCode, RefreshCw, ShieldCheck, Smartphone, Unplug } from "lucide-react";
+import { CheckCircle2, CreditCard, ExternalLink, Loader2, QrCode, RefreshCw, ShieldCheck, Smartphone, Unplug } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 type Channel = {
@@ -247,6 +247,44 @@ export function TenantChannelSetup({
                 <h3 className="mt-4 font-semibold">Conexión oficial de WhatsApp</h3>
                 <p className="mt-1 flex-1 text-sm text-muted-foreground">Recomendada para operar con la plataforma oficial de Meta, plantillas aprobadas y mayor estabilidad.</p>
                 <Button type="button" className="mt-4 w-full" onClick={() => void connectMeta()} disabled={busy !== null || Boolean(official)}>{busy === "meta" ? <Loader2 className="mr-2 size-4 animate-spin" /> : <ShieldCheck className="mr-2 size-4" />}{official ? "Conexión activa" : "Conectar oficialmente"}</Button>
+                <div className="mt-4 rounded-xl border border-sky-500/25 bg-sky-500/5 p-3">
+                    <div className="flex items-start gap-2.5">
+                        <CreditCard className="mt-0.5 size-4 shrink-0 text-sky-700 dark:text-sky-300" aria-hidden="true" />
+                        <div className="min-w-0">
+                            <p className="text-sm font-semibold">Para entregar mensajes de plantilla</p>
+                            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                                Meta necesita un método de pago válido asociado a la cuenta de WhatsApp de este negocio. La tarjeta se captura directamente en Meta y nunca se comparte con el CRM.
+                            </p>
+                        </div>
+                    </div>
+                    <details className="mt-3 text-xs">
+                        <summary className="cursor-pointer select-none font-semibold text-primary">
+                            Ver guía para configurar la tarjeta en Meta
+                        </summary>
+                        <ol className="mt-3 list-decimal space-y-2 pl-5 leading-relaxed text-muted-foreground">
+                            <li>Entra con la cuenta de Facebook que tenga control total y permisos financieros sobre el portafolio del negocio.</li>
+                            <li>Abre <strong className="text-foreground">Facturación y pagos</strong> y selecciona la cuenta de WhatsApp Business o cuenta de mensajería conectada.</li>
+                            <li>Elige <strong className="text-foreground">Agregar método de pago</strong>, registra la tarjeta y déjala como predeterminada para esa cuenta.</li>
+                            <li>Completa los datos de facturación que solicite Meta y comprueba que el estado del método de pago sea activo.</li>
+                            <li>Regresa al CRM y prueba el envío con una plantilla aprobada por Meta.</li>
+                        </ol>
+                        <Button asChild variant="outline" size="sm" className="mt-3 w-full">
+                            <a href="https://business.facebook.com/billing_hub" target="_blank" rel="noopener noreferrer">
+                                Abrir facturación de Meta
+                                <ExternalLink className="ml-2 size-3.5" aria-hidden="true" />
+                            </a>
+                        </Button>
+                        <p className="mt-3 rounded-lg bg-background/80 px-3 py-2 leading-relaxed text-muted-foreground">
+                            Este cobro corresponde al uso de WhatsApp y es independiente de la suscripción de SynapseLogik. Asegúrate de elegir la cuenta de WhatsApp del negocio, no solamente una cuenta publicitaria.
+                        </p>
+                    </details>
+                </div>
+                <details className="mt-3 rounded-xl border bg-muted/25 px-3 py-2.5 text-xs">
+                    <summary className="cursor-pointer select-none font-semibold">Portafolio y verificación del negocio</summary>
+                    <p className="mt-2 leading-relaxed text-muted-foreground">
+                        Crear un portafolio comercial no significa que ya esté verificado. Meta puede solicitar verificación y documentos según el país, el tipo de negocio, la capacidad o las funciones utilizadas. No es lo mismo que comprar la insignia Meta Verified. Si Meta la solicita, los datos registrados deben coincidir con los documentos del titular o del negocio.
+                    </p>
+                </details>
             </section>
 
             <section className="flex flex-col rounded-2xl border bg-background p-4">
