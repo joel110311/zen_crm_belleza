@@ -1,5 +1,6 @@
 import "server-only";
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { getMercadoPagoEnvironment, getMercadoPagoEnvironmentFallback, type MercadoPagoEnvironment } from "@/lib/billing/platform-runtime";
 
 const API_BASE_URL = "https://api.mercadopago.com";
 
@@ -21,31 +22,64 @@ export function isMercadoPagoBillingEnabled() {
     return process.env.MERCADO_PAGO_ENABLED === "true";
 }
 
-function getAccessToken() {
+export type MercadoPagoRuntimeConfiguration = {
+    environment: MercadoPagoEnvironment;
+    applicationId: string;
+    accessToken: string;
+    webhookSecret: string;
+};
+
+function environmentCredentials(environment: MercadoPagoEnvironment) {
+    const legacyEnvironment = getMercadoPagoEnvironmentFallback();
+    return {
+        accessToken: (environment === "production"
+            ? process.env.MERCADO_PAGO_PRODUCTION_ACCESS_TOKEN
+            : process.env.MERCADO_PAGO_TEST_ACCESS_TOKEN)?.trim()
+            || (environment === legacyEnvironment ? process.env.MERCADO_PAGO_ACCESS_TOKEN?.trim() : "")
+            || "",
+        webhookSecret: (environment === "production"
+            ? process.env.MERCADO_PAGO_PRODUCTION_WEBHOOK_SECRET
+            : process.env.MERCADO_PAGO_TEST_WEBHOOK_SECRET)?.trim()
+            || (environment === legacyEnvironment ? process.env.MERCADO_PAGO_WEBHOOK_SECRET?.trim() : "")
+            || "",
+    };
+}
+
+export async function getMercadoPagoRuntimeConfiguration(): Promise<MercadoPagoRuntimeConfiguration> {
     if (!isMercadoPagoBillingEnabled()) {
         throw new MercadoPagoBillingConfigurationError("El cobro con Mercado Pago aún no está habilitado.");
     }
-    const value = process.env.MERCADO_PAGO_ACCESS_TOKEN?.trim();
-    if (!value) throw new MercadoPagoBillingConfigurationError("Falta configurar MERCADO_PAGO_ACCESS_TOKEN.");
-    return value;
+    const environment = await getMercadoPagoEnvironment();
+    const applicationId = process.env.MERCADO_PAGO_APPLICATION_ID?.trim() || "";
+    const { accessToken, webhookSecret } = environmentCredentials(environment);
+    if (!applicationId) throw new MercadoPagoBillingConfigurationError("Falta configurar MERCADO_PAGO_APPLICATION_ID.");
+    if (!accessToken) throw new MercadoPagoBillingConfigurationError(`Falta configurar el Access Token de ${environment === "production" ? "producción" : "prueba"}.`);
+    if (!webhookSecret) throw new MercadoPagoBillingConfigurationError(`Falta configurar el secreto del webhook de ${environment === "production" ? "producción" : "prueba"}.`);
+    return { environment, applicationId, accessToken, webhookSecret };
 }
 
-export function getMercadoPagoWebhookSecret() {
-    const value = process.env.MERCADO_PAGO_WEBHOOK_SECRET?.trim();
-    if (!value) throw new MercadoPagoBillingConfigurationError("Falta configurar MERCADO_PAGO_WEBHOOK_SECRET.");
-    return value;
+export function getMercadoPagoWebhookRuntimeConfigurations(): MercadoPagoRuntimeConfiguration[] {
+    if (!isMercadoPagoBillingEnabled()) {
+        throw new MercadoPagoBillingConfigurationError("El cobro con Mercado Pago aún no está habilitado.");
+    }
+    const applicationId = process.env.MERCADO_PAGO_APPLICATION_ID?.trim() || "";
+    if (!applicationId) throw new MercadoPagoBillingConfigurationError("Falta configurar MERCADO_PAGO_APPLICATION_ID.");
+    const configurations = (["test", "production"] as const).flatMap((environment) => {
+        const credentials = environmentCredentials(environment);
+        return credentials.accessToken && credentials.webhookSecret
+            ? [{ environment, applicationId, ...credentials }]
+            : [];
+    });
+    if (!configurations.length) throw new MercadoPagoBillingConfigurationError("No hay credenciales completas de Mercado Pago.");
+    return configurations;
 }
 
-export function isMercadoPagoProduction() {
-    return process.env.MERCADO_PAGO_ENVIRONMENT?.trim().toLowerCase() === "production";
-}
-
-async function requestMercadoPago<T>(path: string, init?: RequestInit & { idempotencyKey?: string }): Promise<T> {
+async function requestMercadoPago<T>(runtime: MercadoPagoRuntimeConfiguration, path: string, init?: RequestInit & { idempotencyKey?: string }): Promise<T> {
     const response = await fetch(`${API_BASE_URL}${path}`, {
         ...init,
         cache: "no-store",
         headers: {
-            Authorization: `Bearer ${getAccessToken()}`,
+            Authorization: `Bearer ${runtime.accessToken}`,
             "Content-Type": "application/json",
             ...(init?.idempotencyKey ? { "X-Idempotency-Key": init.idempotencyKey } : {}),
             ...init?.headers,
@@ -63,6 +97,7 @@ export type MercadoPagoPreference = {
     id: string;
     init_point?: string;
     sandbox_init_point?: string;
+    environment: MercadoPagoEnvironment;
 };
 
 export async function createMercadoPagoPreference(input: {
@@ -80,7 +115,8 @@ export async function createMercadoPagoPreference(input: {
     tenantId: string;
     planId: string;
 }) {
-    return requestMercadoPago<MercadoPagoPreference>("/checkout/preferences", {
+    const runtime = await getMercadoPagoRuntimeConfiguration();
+    const preference = await requestMercadoPago<Omit<MercadoPagoPreference, "environment">>(runtime, "/checkout/preferences", {
         method: "POST",
         idempotencyKey: input.idempotencyKey,
         body: JSON.stringify({
@@ -109,6 +145,7 @@ export async function createMercadoPagoPreference(input: {
             },
         }),
     });
+    return { ...preference, environment: runtime.environment };
 }
 
 export type MercadoPagoPayment = {
@@ -124,8 +161,8 @@ export type MercadoPagoPayment = {
     payer?: { id?: number | string | null; email?: string | null };
 };
 
-export function getMercadoPagoPayment(paymentId: string) {
-    return requestMercadoPago<MercadoPagoPayment>(`/v1/payments/${encodeURIComponent(paymentId)}`);
+export function getMercadoPagoPayment(paymentId: string, runtime: MercadoPagoRuntimeConfiguration) {
+    return requestMercadoPago<MercadoPagoPayment>(runtime, `/v1/payments/${encodeURIComponent(paymentId)}`);
 }
 
 export function verifyMercadoPagoWebhookSignature(input: {
@@ -151,4 +188,3 @@ export function verifyMercadoPagoWebhookSignature(input: {
     const receivedBuffer = Buffer.from(received, "hex");
     return expectedBuffer.length === receivedBuffer.length && timingSafeEqual(expectedBuffer, receivedBuffer);
 }
-

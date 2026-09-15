@@ -128,7 +128,8 @@ El acceso del CRM clásico no se modifica y el permiso efectivo continúa resolv
 
 El proveedor activo se selecciona con `BILLING_PROVIDER=stripe` o `BILLING_PROVIDER=mercado_pago`. Mercado Pago utiliza Checkout Pro alojado: el CRM nunca recibe datos de tarjeta y cada preferencia lleva importe fijo y una referencia única del intento de cobro.
 
-- Configura en web `MERCADO_PAGO_ENABLED=true`, `MERCADO_PAGO_ENVIRONMENT=test|production`, `MERCADO_PAGO_APPLICATION_ID`, `MERCADO_PAGO_ACCESS_TOKEN` y `MERCADO_PAGO_WEBHOOK_SECRET`.
+- Configura en Portainer `MERCADO_PAGO_ENABLED=true`, `MERCADO_PAGO_APPLICATION_ID`, `MERCADO_PAGO_TEST_ACCESS_TOKEN`, `MERCADO_PAGO_TEST_WEBHOOK_SECRET`, `MERCADO_PAGO_PRODUCTION_ACCESS_TOKEN` y `MERCADO_PAGO_PRODUCTION_WEBHOOK_SECRET`.
+- `MERCADO_PAGO_ENVIRONMENT=test|production` es únicamente el valor inicial o de respaldo. El administrador puede cambiar el entorno activo desde `/control`; el selector no almacena ni expone las credenciales.
 - Registra `https://app.synapselogik.com/api/webhooks/mercado-pago` como URL de pruebas y producción en la aplicación correspondiente y suscribe el tópico `payment`.
 - Mantén el Access Token y la clave secreta exclusivamente en Portainer; no se necesitan en el navegador ni deben guardarse en Git.
 - En pruebas usa credenciales y compradores de prueba. Cambia a `production` únicamente después de configurar el webhook productivo y realizar una validación completa.

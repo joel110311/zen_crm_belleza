@@ -4,10 +4,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@/generated/control-plane";
 import {
     getMercadoPagoPayment,
-    getMercadoPagoWebhookSecret,
-    isMercadoPagoProduction,
+    getMercadoPagoWebhookRuntimeConfigurations,
     MercadoPagoBillingConfigurationError,
     verifyMercadoPagoWebhookSignature,
+    type MercadoPagoRuntimeConfiguration,
     type MercadoPagoPayment,
 } from "@/lib/billing/mercado-pago";
 import { getControlDb } from "@/lib/control-db";
@@ -44,7 +44,7 @@ function paymentStatus(value: string) {
     }
 }
 
-async function reconcilePayment(payment: MercadoPagoPayment) {
+async function reconcilePayment(payment: MercadoPagoPayment, runtime: MercadoPagoRuntimeConfiguration) {
     const paymentId = text(payment.id);
     const externalReference = text(payment.external_reference);
     if (!paymentId || !externalReference) return;
@@ -59,7 +59,7 @@ async function reconcilePayment(payment: MercadoPagoPayment) {
     });
     if (!attempt || attempt.provider !== "MERCADO_PAGO") return;
 
-    const configuredApplicationId = process.env.MERCADO_PAGO_APPLICATION_ID?.trim();
+    const configuredApplicationId = runtime.applicationId;
     const receivedApplicationId = text(payment.application_id);
     const receivedAmount = amountCents(payment.transaction_amount);
     const status = text(payment.status).toLowerCase();
@@ -68,7 +68,7 @@ async function reconcilePayment(payment: MercadoPagoPayment) {
             ? "La aplicación de Mercado Pago no coincide." : null,
         payment.currency_id !== attempt.currency ? "La moneda del pago no coincide." : null,
         receivedAmount !== attempt.amountCents ? "El importe del pago no coincide." : null,
-        isMercadoPagoProduction() !== Boolean(payment.live_mode) ? "El entorno del pago no coincide." : null,
+        (runtime.environment === "production") !== Boolean(payment.live_mode) ? "El entorno del pago no coincide." : null,
         attempt.providerPaymentId && attempt.providerPaymentId !== paymentId ? "El intento ya pertenece a otro pago." : null,
     ].find(Boolean);
     if (validationError) {
@@ -199,7 +199,7 @@ async function reconcilePayment(payment: MercadoPagoPayment) {
     });
 }
 
-async function processEvent(providerEventId: string, eventType: string, apiVersion: string | null, payload: Prisma.InputJsonValue, paymentId: string) {
+async function processEvent(providerEventId: string, eventType: string, apiVersion: string | null, payload: Prisma.InputJsonValue, paymentId: string, runtime: MercadoPagoRuntimeConfiguration) {
     const db = getControlDb();
     const stored = await db.billingEvent.upsert({
         where: { provider_providerEventId: { provider: "MERCADO_PAGO", providerEventId } },
@@ -218,7 +218,7 @@ async function processEvent(providerEventId: string, eventType: string, apiVersi
     });
     if (claimed.count === 0) return;
     try {
-        if (eventType === "payment") await reconcilePayment(await getMercadoPagoPayment(paymentId));
+        if (eventType === "payment") await reconcilePayment(await getMercadoPagoPayment(paymentId, runtime), runtime);
         await db.billingEvent.update({
             where: { id: stored.id },
             data: { processedAt: new Date(), processingStartedAt: null, processingError: null },
@@ -249,12 +249,14 @@ export async function POST(request: NextRequest) {
         if (!xSignature || !dataId || !eventType) {
             return NextResponse.json({ error: "Notificación incompleta." }, { status: 400 });
         }
-        if (!verifyMercadoPagoWebhookSignature({
-            xSignature,
-            xRequestId,
-            dataId,
-            secret: getMercadoPagoWebhookSecret(),
-        })) {
+        const runtime = getMercadoPagoWebhookRuntimeConfigurations().find((candidate) =>
+            verifyMercadoPagoWebhookSignature({
+                xSignature,
+                xRequestId,
+                dataId,
+                secret: candidate.webhookSecret,
+            }));
+        if (!runtime) {
             return NextResponse.json({ error: "Firma inválida." }, { status: 401 });
         }
 
@@ -268,6 +270,7 @@ export async function POST(request: NextRequest) {
             text(payload.api_version) || null,
             payload as Prisma.InputJsonValue,
             dataId,
+            runtime,
         );
         return NextResponse.json({ received: true });
     } catch (error) {

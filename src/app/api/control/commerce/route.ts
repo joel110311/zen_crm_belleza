@@ -5,6 +5,7 @@ import { isSameApplicationOrigin } from "@/lib/security";
 import { normalizeChatModelSelection, SUPPORTED_CHAT_MODELS } from "@/lib/ai/models";
 import { PLATFORM_AI_RUNTIME_KEY } from "@/lib/ai/platform-runtime";
 import { encryptChannelSecret } from "@/lib/tenant-channel-secrets";
+import { getMercadoPagoControlState, PLATFORM_BILLING_RUNTIME_KEY } from "@/lib/billing/platform-runtime";
 
 export const runtime = "nodejs";
 
@@ -53,6 +54,33 @@ export async function PATCH(request: NextRequest) {
                         resourceType: "PlatformRuntimeSetting",
                         resourceId: PLATFORM_AI_RUNTIME_KEY,
                         metadata: { chatModel },
+                    },
+                });
+            });
+            return NextResponse.json({ saved: true });
+        }
+
+        if (action === "billing-runtime") {
+            const environment = cleanText(body.mercadoPagoEnvironment, 20, true);
+            if (!["test", "production"].includes(environment)) throw new Error("Selecciona un entorno válido.");
+            const state = await getMercadoPagoControlState();
+            const ready = state.applicationIdConfigured && (environment === "production"
+                ? state.productionAccessTokenConfigured && state.productionWebhookSecretConfigured
+                : state.testAccessTokenConfigured && state.testWebhookSecretConfigured);
+            if (!ready) throw new Error(`Carga en Portainer las credenciales de ${environment === "production" ? "producción" : "prueba"} antes de activarlas.`);
+            await db.$transaction(async (tx) => {
+                await tx.platformRuntimeSetting.upsert({
+                    where: { key: PLATFORM_BILLING_RUNTIME_KEY },
+                    create: { key: PLATFORM_BILLING_RUNTIME_KEY, value: { mercadoPagoEnvironment: environment } },
+                    update: { value: { mercadoPagoEnvironment: environment } },
+                });
+                await tx.auditLog.create({
+                    data: {
+                        actorUserId: admin.id,
+                        action: "billing_runtime.updated",
+                        resourceType: "PlatformRuntimeSetting",
+                        resourceId: PLATFORM_BILLING_RUNTIME_KEY,
+                        metadata: { mercadoPagoEnvironment: environment },
                     },
                 });
             });

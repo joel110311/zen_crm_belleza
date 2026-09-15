@@ -3,7 +3,6 @@ import { randomUUID } from "node:crypto";
 import { BillingAccessError, requireBillingOwner } from "@/lib/billing/context";
 import {
     createMercadoPagoPreference,
-    isMercadoPagoProduction,
     MercadoPagoBillingConfigurationError,
 } from "@/lib/billing/mercado-pago";
 import { getActiveBillingProvider } from "@/lib/billing/provider";
@@ -110,7 +109,7 @@ export async function POST(request: NextRequest) {
                     tenantId: tenant.tenantId,
                     planId: plan.id,
                 });
-                const checkoutUrl = isMercadoPagoProduction()
+                const checkoutUrl = preference.environment === "production"
                     ? preference.init_point
                     : preference.sandbox_init_point || preference.init_point;
                 if (!checkoutUrl) throw new Error("Mercado Pago no devolvió una URL de Checkout.");

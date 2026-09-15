@@ -2,14 +2,23 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { BrainCircuit, CheckCircle2, CircleAlert, Loader2, Network } from "lucide-react";
+import { BrainCircuit, CheckCircle2, CircleAlert, CreditCard, Loader2, Network } from "lucide-react";
 import { SUPPORTED_CHAT_MODELS } from "@/lib/ai/models";
 
 type Policy = { trialDays: number; warningHours: number; finalWarningHours: number; graceDays: number; version: number };
 type Plan = { id: string; slug: string; name: string; monthlyAmountCents: number | null; stripePriceId: string };
 type TenantRow = { id: string; displayName: string; slug: string; accessMode: string; billingStatus: string; trialEndsAt: string | null; trialStatus: string | null; selectionStatus: string | null; lastError: string | null; qrProxyEnabled: boolean; qrProxyConfigured: boolean };
 type AiControl = { chatModel: string; geminiKeyConfigured: boolean; openaiKeyConfigured: boolean; environmentFallbackEnabled: boolean };
-type BillingControl = { provider: "STRIPE" | "MERCADO_PAGO"; mercadoPagoEnabled: boolean; applicationIdConfigured: boolean; accessTokenConfigured: boolean; webhookSecretConfigured: boolean };
+type BillingControl = {
+    provider: "STRIPE" | "MERCADO_PAGO";
+    mercadoPagoEnabled: boolean;
+    environment: "test" | "production";
+    applicationIdConfigured: boolean;
+    testAccessTokenConfigured: boolean;
+    testWebhookSecretConfigured: boolean;
+    productionAccessTokenConfigured: boolean;
+    productionWebhookSecretConfigured: boolean;
+};
 type PaymentAttempt = { id: string; tenantName: string; tenantSlug: string; planName: string; amountCents: number; currency: string; status: string; lastProviderStatus: string | null; providerPaymentId: string | null; createdAt: string; paidAt: string | null; lastError: string | null };
 
 async function mutate(body: Record<string, unknown>) {
@@ -32,6 +41,39 @@ export function CommerceControlCenter({ ai, billing, paymentAttempts, policy, pl
 
     return <div className="space-y-6">
         {notice ? <p role="status" className="rounded-xl border bg-card px-4 py-3 text-sm">{notice}</p> : null}
+        <section className="rounded-2xl border bg-card p-5 shadow-sm">
+            <div className="flex items-start gap-3">
+                <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><CreditCard className="size-5" /></div>
+                <div><p className="text-xs font-semibold uppercase tracking-wider text-primary">Configuración interna</p><h2 className="mt-1 text-xl font-semibold">Entorno de Mercado Pago</h2><p className="mt-1 text-sm text-muted-foreground">Elige qué credenciales utiliza el CRM. Los tokens permanecen en Portainer y nunca se muestran ni se guardan aquí.</p></div>
+            </div>
+            <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                <KeyStatus label="App ID" configured={billing.applicationIdConfigured} />
+                <KeyStatus label="Token de prueba" configured={billing.testAccessTokenConfigured} />
+                <KeyStatus label="Webhook de prueba" configured={billing.testWebhookSecretConfigured} />
+                <KeyStatus label="Token de producción" configured={billing.productionAccessTokenConfigured} />
+                <KeyStatus label="Webhook de producción" configured={billing.productionWebhookSecretConfigured} />
+            </div>
+            <form className="mt-5" onSubmit={(event) => {
+                event.preventDefault();
+                const data = new FormData(event.currentTarget);
+                void submit("billing-runtime", { action: "billing-runtime", mercadoPagoEnvironment: String(data.get("mercadoPagoEnvironment") || "") });
+            }}>
+                <fieldset className="grid gap-3 sm:grid-cols-2">
+                    <legend className="sr-only">Credenciales activas de Mercado Pago</legend>
+                    <label className={`flex cursor-pointer items-start gap-3 rounded-xl border p-4 ${billing.environment === "test" ? "border-primary bg-primary/5" : "bg-background"}`}>
+                        <input name="mercadoPagoEnvironment" type="radio" value="test" defaultChecked={billing.environment === "test"} className="mt-1 size-4 accent-primary" />
+                        <span><span className="block font-semibold">Usar credenciales de prueba</span><span className="mt-1 block text-sm text-muted-foreground">No genera cobros reales. Úsalo para validar Checkout y webhooks.</span></span>
+                    </label>
+                    <label className={`flex cursor-pointer items-start gap-3 rounded-xl border p-4 ${billing.environment === "production" ? "border-emerald-600 bg-emerald-500/5" : "bg-background"}`}>
+                        <input name="mercadoPagoEnvironment" type="radio" value="production" defaultChecked={billing.environment === "production"} className="mt-1 size-4 accent-emerald-600" />
+                        <span><span className="block font-semibold">Usar credenciales de producción</span><span className="mt-1 block text-sm text-muted-foreground">Activa cobros reales. Sólo selecciónalo después de completar una compra de prueba.</span></span>
+                    </label>
+                </fieldset>
+                <button disabled={pending !== null || !billing.mercadoPagoEnabled} className="mt-4 inline-flex h-10 items-center justify-center rounded-full bg-primary px-5 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50">{pending === "billing-runtime" ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}Guardar entorno</button>
+                {!billing.mercadoPagoEnabled ? <p className="mt-2 text-xs text-amber-700">Activa MERCADO_PAGO_ENABLED en Portainer para permitir el cambio.</p> : null}
+            </form>
+        </section>
+
         <section className="rounded-2xl border bg-card p-5 shadow-sm">
             <div className="flex items-start gap-3">
                 <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><BrainCircuit className="size-5" /></div>
@@ -92,9 +134,9 @@ export function CommerceControlCenter({ ai, billing, paymentAttempts, policy, pl
             <div className="flex flex-wrap items-start justify-between gap-3">
                 <div><p className="text-xs font-semibold uppercase tracking-wider text-primary">Proveedor activo · {billing.provider === "MERCADO_PAGO" ? "Mercado Pago" : "Stripe"}</p><h2 className="mt-1 text-xl font-semibold">Cobros de Mercado Pago</h2><p className="mt-1 text-sm text-muted-foreground">Cada fila corresponde a una preferencia única. Sólo APPROVED habilita o extiende el acceso.</p></div>
                 <div className="grid gap-2 sm:grid-cols-3">
-                    <KeyStatus label="Access Token" configured={billing.accessTokenConfigured && billing.mercadoPagoEnabled} />
+                    <KeyStatus label={`Token ${billing.environment === "production" ? "producción" : "prueba"}`} configured={(billing.environment === "production" ? billing.productionAccessTokenConfigured : billing.testAccessTokenConfigured) && billing.mercadoPagoEnabled} />
                     <KeyStatus label="App ID" configured={billing.applicationIdConfigured && billing.mercadoPagoEnabled} />
-                    <KeyStatus label="Firma webhook" configured={billing.webhookSecretConfigured && billing.mercadoPagoEnabled} />
+                    <KeyStatus label="Firma webhook" configured={(billing.environment === "production" ? billing.productionWebhookSecretConfigured : billing.testWebhookSecretConfigured) && billing.mercadoPagoEnabled} />
                 </div>
             </div>
             <div className="mt-5 overflow-x-auto">
