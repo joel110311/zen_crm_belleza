@@ -65,6 +65,7 @@ enum TenantDatabaseStatus {
 enum SubscriptionProvider {
   STRIPE
   PADDLE
+  MERCADO_PAGO
 }
 
 enum BillingInterval {
@@ -107,6 +108,17 @@ enum BillingSelectionStatus {
   ACTIVATED
   CANCELLED
   FAILED
+}
+
+enum BillingCheckoutStatus {
+  CREATED
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+  REFUNDED
+  CHARGED_BACK
+  EXPIRED
 }
 
 enum ProvisioningJobKind {
@@ -223,19 +235,19 @@ model User {
 }
 
 model Tenant {
-  id                      String                   @id @default(cuid())
-  slug                    String                   @unique
+  id                      String                        @id @default(cuid())
+  slug                    String                        @unique
   displayName             String
   legalName               String?
-  timeZone                String                   @default("America/Mexico_City")
-  status                  TenantStatus             @default(PROVISIONING)
-  provisioningStatus      ProvisioningStatus       @default(PENDING)
-  billingStatus           BillingStatus            @default(TRIALING)
-  accessMode              TenantAccessMode         @default(FULL)
+  timeZone                String                        @default("America/Mexico_City")
+  status                  TenantStatus                  @default(PROVISIONING)
+  provisioningStatus      ProvisioningStatus            @default(PENDING)
+  billingStatus           BillingStatus                 @default(TRIALING)
+  accessMode              TenantAccessMode              @default(FULL)
   createdByUserId         String?
-  createdAt               DateTime                 @default(now())
-  updatedAt               DateTime                 @updatedAt
-  createdBy               User?                    @relation("TenantCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  createdAt               DateTime                      @default(now())
+  updatedAt               DateTime                      @updatedAt
+  createdBy               User?                         @relation("TenantCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
   memberships             TenantMembership[]
   domains                 TenantDomain[]
   database                TenantDatabase?
@@ -250,9 +262,10 @@ model Tenant {
   workItems               TenantWorkItem[]
   deviceInstalls          DeviceInstallation[]
   auditEvents             AuditLog[]
-  signupIntent            SignupIntent?            @relation("SignupIntentTenant")
+  signupIntent            SignupIntent?                 @relation("SignupIntentTenant")
   invitations             TenantInvitation[]
   billingSelection        BillingSelection?
+  billingCheckoutAttempts BillingCheckoutAttempt[]
 
   @@index([status, provisioningStatus])
   @@index([billingStatus, accessMode])
@@ -341,24 +354,54 @@ model TenantDatabase {
 }
 
 model Plan {
-  id                   String             @id @default(cuid())
-  slug                 String             @unique
-  name                 String
-  description          String?
-  currency             String             @default("MXN")
-  monthlyAmountCents   Int?
-  annualAmountCents    Int?
-  stripeMonthlyPriceId String?            @unique
-  stripeAnnualPriceId  String?            @unique
-  limits               Json               @default("{}")
-  features             Json               @default("{}")
-  isActive             Boolean            @default(true)
-  createdAt            DateTime           @default(now())
-  updatedAt            DateTime           @updatedAt
-  subscriptions        Subscription[]
-  prices               BillingPrice[]
-  usageEntries         UsageLedger[]
-  billingSelections    BillingSelection[]
+  id                      String                   @id @default(cuid())
+  slug                    String                   @unique
+  name                    String
+  description             String?
+  currency                String                   @default("MXN")
+  monthlyAmountCents      Int?
+  annualAmountCents       Int?
+  stripeMonthlyPriceId    String?                  @unique
+  stripeAnnualPriceId     String?                  @unique
+  limits                  Json                     @default("{}")
+  features                Json                     @default("{}")
+  isActive                Boolean                  @default(true)
+  createdAt               DateTime                 @default(now())
+  updatedAt               DateTime                 @updatedAt
+  subscriptions           Subscription[]
+  prices                  BillingPrice[]
+  usageEntries            UsageLedger[]
+  billingSelections       BillingSelection[]
+  billingCheckoutAttempts BillingCheckoutAttempt[]
+}
+
+/**
+ * One immutable checkout reference per hosted payment attempt. Provider callbacks are
+ * reconciled against this record before access is changed.
+ */
+model BillingCheckoutAttempt {
+  id                 String                @id @default(cuid())
+  tenantId           String
+  planId             String
+  provider           SubscriptionProvider
+  externalReference  String                @unique
+  providerCheckoutId String?               @unique
+  providerPaymentId  String?               @unique
+  amountCents        Int
+  currency           String                @default("MXN")
+  status             BillingCheckoutStatus @default(CREATED)
+  paidAt             DateTime?
+  periodStartsAt     DateTime?
+  periodEndsAt       DateTime?
+  lastProviderStatus String?
+  lastError          String?
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+  tenant             Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  plan               Plan                  @relation(fields: [planId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, createdAt])
+  @@index([provider, status, createdAt])
 }
 
 /**
@@ -626,13 +669,13 @@ model ChannelConnection {
  * and can only be managed from the platform control center; tenant users never receive them.
  */
 model TenantQrChannelConfiguration {
-  tenantId                  String   @id
-  proxyEnabled              Boolean  @default(false)
-  proxyUrlCiphertext        Bytes?
-  proxyUrlKeyVersion        Int?
-  createdAt                 DateTime @default(now())
-  updatedAt                 DateTime @updatedAt
-  tenant                    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenantId           String   @id
+  proxyEnabled       Boolean  @default(false)
+  proxyUrlCiphertext Bytes?
+  proxyUrlKeyVersion Int?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  tenant             Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 }
 
 /**

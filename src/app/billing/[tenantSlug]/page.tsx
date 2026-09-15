@@ -1,6 +1,10 @@
 import { notFound, redirect } from "next/navigation";
+import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 import { BillingActions } from "./billing-actions";
+import { BillingStatusRefresh } from "./billing-status-refresh";
 import { BillingAccessError, requireBillingOwner } from "@/lib/billing/context";
+import { getActiveBillingProvider } from "@/lib/billing/provider";
 import { getControlDb } from "@/lib/control-db";
 
 export const dynamic = "force-dynamic";
@@ -30,6 +34,7 @@ export default async function BillingPage({
     }
 
     const db = getControlDb();
+    const billingProvider = getActiveBillingProvider();
     const [plans, trial, subscription, selection] = await Promise.all([
         db.plan.findMany({
             where: { isActive: true },
@@ -42,14 +47,14 @@ export default async function BillingPage({
                 monthlyAmountCents: true,
                 annualAmountCents: true,
                 prices: {
-                    where: { provider: "STRIPE", countryCode: null, isActive: true },
+                    where: { provider: billingProvider, countryCode: null, isActive: true },
                     select: { interval: true },
                 },
             },
         }),
         db.trial.findUnique({ where: { tenantId: context.tenant.tenantId }, select: { endsAt: true } }),
         db.subscription.findFirst({
-            where: { tenantId: context.tenant.tenantId, provider: "STRIPE" },
+            where: { tenantId: context.tenant.tenantId, provider: billingProvider },
             orderBy: { updatedAt: "desc" },
             select: { status: true, currentPeriodEndsAt: true, providerCustomerId: true, plan: { select: { name: true } } },
         }),
@@ -59,31 +64,51 @@ export default async function BillingPage({
         }),
     ]);
 
-    const hasStripeCustomer = Boolean(subscription?.providerCustomerId);
+    const hasStripeCustomer = billingProvider === "STRIPE" && Boolean(subscription?.providerCustomerId);
     const checkoutNotice = checkout === "success"
-        ? "Tu plan quedó registrado. Stripe realizará el primer cobro cuando termine la prueba y confirmaremos el acceso mediante un webhook firmado."
+        ? billingProvider === "MERCADO_PAGO"
+            ? "Regresaste de Mercado Pago. Estamos verificando el pago directamente con el proveedor; el acceso se actualizará únicamente cuando quede aprobado."
+            : "Tu plan quedó registrado. Stripe realizará el primer cobro cuando termine la prueba y confirmaremos el acceso mediante un webhook firmado."
         : checkout === "scheduled"
             ? "Tu tarjeta quedó protegida en Stripe. El plan se activará y cobrará cuando termine la prueba."
+        : checkout === "pending"
+            ? "Mercado Pago dejó el pago pendiente. Conservaremos tu estado actual hasta recibir la confirmación."
+        : checkout === "failure"
+            ? "Mercado Pago no completó el cobro. No modificamos tu acceso ni tu prueba."
         : checkout === "cancelled"
             ? "El pago fue cancelado. Tu espacio y prueba no cambiaron."
             : null;
 
     return (
         <main className="mx-auto min-h-dvh max-w-5xl px-5 py-12">
+            <BillingStatusRefresh enabled={billingProvider === "MERCADO_PAGO" && (checkout === "success" || checkout === "pending")} />
+            <Link
+                href={`/t/${encodeURIComponent(context.tenant.slug)}/dashboard`}
+                className="mb-6 inline-flex items-center gap-2 text-sm font-semibold text-primary transition-colors hover:text-primary/80"
+            >
+                <ArrowLeft className="size-4" aria-hidden="true" />
+                Volver al CRM
+            </Link>
             <header className="max-w-2xl">
                 <p className="text-sm font-semibold text-primary">Facturación · {context.tenant.displayName}</p>
                 <h1 className="mt-2 text-3xl font-semibold tracking-tight">Elige y administra tu plan</h1>
-                <p className="mt-3 text-sm leading-6 text-muted-foreground">El cobro ocurre en una página segura de Stripe; nunca almacenamos los datos de tarjeta. Si eliges durante la prueba, hoy pagas $0 y el primer cargo ocurre al finalizar.</p>
+                <p className="mt-3 text-sm leading-6 text-muted-foreground">
+                    {billingProvider === "MERCADO_PAGO"
+                        ? "El cobro se realiza hoy en una página segura de Mercado Pago; nunca almacenamos los datos de tu tarjeta. Si aún estás en prueba, tu mes pagado comenzará cuando termine para que no pierdas ningún día."
+                        : "El cobro ocurre en una página segura de Stripe; nunca almacenamos los datos de tarjeta. Si eliges durante la prueba, hoy pagas $0 y el primer cargo ocurre al finalizar."}
+                </p>
             </header>
             {checkoutNotice ? <p className="mt-6 rounded-lg border bg-muted/40 px-4 py-3 text-sm">{checkoutNotice}</p> : null}
             <section className="mt-6 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm leading-6">
-                Acceso anticipado: Stripe entrega un comprobante digital de pago. Aún no emitimos CFDI mexicano. Si necesitas factura fiscal para contratar, no realices el pago todavía.
+                Acceso anticipado: al pagar se entrega un comprobante digital de pago. Aún no emitimos comprobante fiscal.
             </section>
             <section className="mt-7 grid gap-4 md:grid-cols-3">
                 {plans.length === 0 ? <p className="rounded-lg border bg-card p-5 text-sm text-muted-foreground md:col-span-3">Todavía no hay planes de pago configurados para este entorno.</p> : null}
                 {plans.map((plan) => {
                     const intervals = new Set(plan.prices.map((price) => price.interval));
-                    const interval = intervals.has("MONTHLY") ? "monthly" : intervals.has("ANNUAL") ? "annual" : null;
+                    const interval = billingProvider === "MERCADO_PAGO" && plan.monthlyAmountCents
+                        ? "monthly"
+                        : intervals.has("MONTHLY") ? "monthly" : intervals.has("ANNUAL") ? "annual" : null;
                     const amount = interval === "annual" ? plan.annualAmountCents : plan.monthlyAmountCents;
                     return (
                         <article key={plan.slug} className="flex flex-col rounded-xl border bg-card p-5 shadow-sm">
@@ -104,11 +129,11 @@ export default async function BillingPage({
                 <p className="mt-2 text-sm text-muted-foreground">
                     {subscription
                         ? `${subscription.plan?.name || "Plan"}: ${subscription.status.toLowerCase().replaceAll("_", " ")}${subscription.currentPeriodEndsAt ? ` · próximo corte ${new Intl.DateTimeFormat("es-MX", { dateStyle: "medium" }).format(subscription.currentPeriodEndsAt)}` : ""}`
-                        : selection && ["PENDING_SETUP", "SCHEDULED", "PROCESSING"].includes(selection.status)
+                        : billingProvider === "STRIPE" && selection && ["PENDING_SETUP", "SCHEDULED", "PROCESSING"].includes(selection.status)
                             ? `${selection.plan.name}: ${selection.status === "PENDING_SETUP" ? "falta confirmar la tarjeta" : `programado para ${new Intl.DateTimeFormat("es-MX", { dateStyle: "medium", timeStyle: "short" }).format(selection.scheduledFor)}`}. Puedes cambiar de plan antes de esa fecha desde las opciones superiores.`
                         : trial ? `Prueba activa hasta ${new Intl.DateTimeFormat("es-MX", { dateStyle: "medium" }).format(trial.endsAt)}.` : "Sin suscripción activa."}
                 </p>
-                {selection?.status === "FAILED" ? <p className="mt-3 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">No fue posible activar el plan. No realizaremos intentos ocultos; soporte puede revisar y reintentar la activación. {selection.lastError ? `Referencia: ${selection.lastError}` : ""}</p> : null}
+                {billingProvider === "STRIPE" && selection?.status === "FAILED" ? <p className="mt-3 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">No fue posible activar el plan. No realizaremos intentos ocultos; soporte puede revisar y reintentar la activación. {selection.lastError ? `Referencia: ${selection.lastError}` : ""}</p> : null}
                 <div className="mt-4 max-w-xs"><BillingActions tenantSlug={context.tenant.slug} canManage={hasStripeCustomer} /></div>
             </section>
         </main>

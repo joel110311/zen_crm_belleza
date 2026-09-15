@@ -150,7 +150,8 @@ function subscriptionState(value) {
 
 async function activateScheduledSelections(pool) {
     const secretKey = process.env.STRIPE_SECRET_KEY?.trim();
-    if (!secretKey || process.env.BILLING_STRIPE_ENABLED !== "true") return 0;
+    const activeProvider = process.env.BILLING_PROVIDER?.trim().toLowerCase();
+    if (!secretKey || process.env.BILLING_STRIPE_ENABLED !== "true" || activeProvider === "mercado_pago" || activeProvider === "mercadopago") return 0;
     const stripe = new Stripe(secretKey);
     let activated = 0;
     for (let index = 0; index < maxBatch; index += 1) {
@@ -222,6 +223,59 @@ async function expirePaymentGrace(pool) {
     return rows.length;
 }
 
+async function expireMercadoPagoPeriods(pool) {
+    const client = await pool.connect();
+    let expired = 0;
+    try {
+        await client.query("BEGIN");
+        const { rows } = await client.query(
+            `SELECT s.id, s."tenantId" FROM "Subscription" s
+             WHERE s.provider='MERCADO_PAGO' AND s.status='ACTIVE' AND s."currentPeriodEndsAt"<=NOW()
+             ORDER BY s."currentPeriodEndsAt" FOR UPDATE OF s SKIP LOCKED LIMIT $1`,
+            [maxBatch],
+        );
+        for (const item of rows) {
+            await client.query(
+                `UPDATE "Subscription" SET status='CANCELED', "canceledAt"=COALESCE("canceledAt",NOW()), "updatedAt"=NOW() WHERE id=$1`,
+                [item.id],
+            );
+            const activeAccess = await client.query(
+                `SELECT 1
+                 WHERE EXISTS (SELECT 1 FROM "Subscription" WHERE "tenantId"=$1 AND status IN ('ACTIVE','TRIALING'))
+                    OR EXISTS (SELECT 1 FROM "Trial" WHERE "tenantId"=$1 AND status IN ('ACTIVE','ENDING') AND "endsAt">NOW())`,
+                [item.tenantId],
+            );
+            if (!activeAccess.rowCount) {
+                await client.query(
+                    `UPDATE "Tenant" SET "billingStatus"='CANCELED', "accessMode"='BILLING_ONLY', "updatedAt"=NOW() WHERE id=$1`,
+                    [item.tenantId],
+                );
+            }
+            await client.query(
+                `INSERT INTO "CommercialEvent" (id,"tenantId",event,source,"createdAt") VALUES ($1,$2,'mercado_pago_period_expired','billing_worker',NOW())`,
+                [createId(), item.tenantId],
+            );
+            expired += 1;
+        }
+        await client.query("COMMIT");
+    } catch (error) {
+        await client.query("ROLLBACK").catch(() => {});
+        throw error;
+    } finally {
+        client.release();
+    }
+    return expired;
+}
+
+async function expireAbandonedCheckouts(pool) {
+    const result = await pool.query(
+        `UPDATE "BillingCheckoutAttempt"
+         SET status='EXPIRED', "updatedAt"=NOW()
+         WHERE provider='MERCADO_PAGO' AND status IN ('CREATED','PENDING') AND "createdAt"<NOW()-(48*INTERVAL '1 hour')`,
+    );
+    return result.rowCount || 0;
+}
+
 const pool = new Pool({ connectionString: controlDatabaseUrl });
 try {
     const warning48 = await processWarnings(pool, "warningSentAt", 'tr."warningHours"', "trial_ending_48h", false);
@@ -229,7 +283,9 @@ try {
     const selectionsActivated = await activateScheduledSelections(pool);
     const expired = await expireTrials(pool);
     const graceExpired = await expirePaymentGrace(pool);
-    console.log(`[Billing lifecycle] warnings48=${warning48} warnings24=${warning24} selectionsActivated=${selectionsActivated} expired=${expired} graceExpired=${graceExpired}`);
+    const mercadoPagoExpired = await expireMercadoPagoPeriods(pool);
+    const abandonedCheckoutsExpired = await expireAbandonedCheckouts(pool);
+    console.log(`[Billing lifecycle] warnings48=${warning48} warnings24=${warning24} selectionsActivated=${selectionsActivated} expired=${expired} graceExpired=${graceExpired} mercadoPagoExpired=${mercadoPagoExpired} abandonedCheckoutsExpired=${abandonedCheckoutsExpired}`);
 } finally {
     await pool.end();
 }

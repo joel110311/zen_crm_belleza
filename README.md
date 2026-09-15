@@ -124,6 +124,18 @@ El acceso con Google reutiliza la identidad del control plane y nunca crea cuent
 
 El acceso del CRM clásico no se modifica y el permiso efectivo continúa resolviéndose desde la membresía del negocio seleccionado.
 
+### Facturación temporal con Mercado Pago
+
+El proveedor activo se selecciona con `BILLING_PROVIDER=stripe` o `BILLING_PROVIDER=mercado_pago`. Mercado Pago utiliza Checkout Pro alojado: el CRM nunca recibe datos de tarjeta y cada preferencia lleva importe fijo y una referencia única del intento de cobro.
+
+- Configura en web `MERCADO_PAGO_ENABLED=true`, `MERCADO_PAGO_ENVIRONMENT=test|production`, `MERCADO_PAGO_APPLICATION_ID`, `MERCADO_PAGO_ACCESS_TOKEN` y `MERCADO_PAGO_WEBHOOK_SECRET`.
+- Registra `https://app.synapselogik.com/api/webhooks/mercado-pago` como URL de pruebas y producción en la aplicación correspondiente y suscribe el tópico `payment`.
+- Mantén el Access Token y la clave secreta exclusivamente en Portainer; no se necesitan en el navegador ni deben guardarse en Git.
+- En pruebas usa credenciales y compradores de prueba. Cambia a `production` únicamente después de configurar el webhook productivo y realizar una validación completa.
+- El webhook valida la firma HMAC, vuelve a consultar `/v1/payments/{id}` y compara aplicación, entorno, moneda, importe y referencia antes de modificar acceso.
+
+Los pagos de Mercado Pago cubren un mes y no son recurrentes en esta primera etapa. Si se pagan durante una prueba, el periodo pagado comienza al terminarla. El worker de ciclo de vida cierra el acceso al vencer la mensualidad si no existe otra prueba o suscripción activa.
+
 ### Equipo y portal público multitenant
 
 Las invitaciones y el portal nuevo se activan por separado para que el stack legacy continúe intacto durante la transición:

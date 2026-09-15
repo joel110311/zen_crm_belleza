@@ -150,13 +150,15 @@ async function cancelBilling(control, tenantId) {
                 const current = await stripe.subscriptions.retrieve(subscription.providerSubscriptionId);
                 if (current.status !== "canceled") await stripe.subscriptions.cancel(current.id, { prorate: false, invoice_now: false });
             } catch (error) { if (error.code !== "resource_missing") throw error; }
-        } else if (subscription.status !== "CANCELED") {
+        } else if (subscription.provider === "PADDLE" && subscription.status !== "CANCELED") {
             if (!process.env.PADDLE_API_KEY) throw new Error("paddle_key_required");
             const base = process.env.PADDLE_ENVIRONMENT === "sandbox" ? "https://sandbox-api.paddle.com" : "https://api.paddle.com";
             const result = await request(`${base}/subscriptions/${encodeURIComponent(subscription.providerSubscriptionId)}`, { headers: { Authorization: `Bearer ${process.env.PADDLE_API_KEY}` } });
             if (result.status === 404) continue;
             const current = await result.json();
             if (current.data?.status !== "canceled") await request(`${base}/subscriptions/${encodeURIComponent(subscription.providerSubscriptionId)}/cancel`, { method: "POST", headers: { Authorization: `Bearer ${process.env.PADDLE_API_KEY}`, "Content-Type": "application/json" }, body: JSON.stringify({ effective_from: "immediately" }) });
+        } else if (subscription.provider !== "MERCADO_PAGO") {
+            throw new Error("unsupported_billing_provider");
         }
         await control.query('UPDATE "Subscription" SET status=\'CANCELED\', "canceledAt"=NOW(), "updatedAt"=NOW() WHERE id=$1', [subscription.id]);
     }

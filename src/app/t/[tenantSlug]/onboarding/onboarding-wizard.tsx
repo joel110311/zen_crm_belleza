@@ -361,7 +361,7 @@ export function TenantOnboardingWizard({
         <div className="mt-4 rounded-xl border bg-muted/25 p-4">
           <p className="font-medium">Puedes dejar preparado tu plan sin pagar hoy</p>
           <p className="mt-1 text-sm leading-6 text-muted-foreground">Stripe guardará la tarjeta de forma segura. El primer cobro ocurrirá solamente cuando termine tu prueba; también puedes decidirlo después.</p>
-          <Button asChild variant="outline" className="mt-3"><Link href={`/billing/${tenantSlug}`}>Ver planes de $300, $500 y $800</Link></Button>
+          <Button asChild variant="outline" className="mt-3"><Link href={`/billing/${tenantSlug}`}>Ver planes desde $200 al mes</Link></Button>
         </div>
         <div className="mt-7 flex flex-wrap gap-3">
           <Button asChild>

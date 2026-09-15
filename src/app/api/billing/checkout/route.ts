@@ -1,5 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
+import { randomUUID } from "node:crypto";
 import { BillingAccessError, requireBillingOwner } from "@/lib/billing/context";
+import {
+    createMercadoPagoPreference,
+    isMercadoPagoProduction,
+    MercadoPagoBillingConfigurationError,
+} from "@/lib/billing/mercado-pago";
+import { getActiveBillingProvider } from "@/lib/billing/provider";
 import { getPlatformBaseUrl, getStripeClient, StripeBillingConfigurationError } from "@/lib/billing/stripe";
 import { getControlDb } from "@/lib/control-db";
 import { isSameApplicationOrigin } from "@/lib/security";
@@ -11,6 +18,9 @@ function errorResponse(error: unknown) {
         return NextResponse.json({ error: error.message }, { status: error.status });
     }
     if (error instanceof StripeBillingConfigurationError) {
+        return NextResponse.json({ error: "La facturación no está disponible en este momento." }, { status: 503 });
+    }
+    if (error instanceof MercadoPagoBillingConfigurationError) {
         return NextResponse.json({ error: "La facturación no está disponible en este momento." }, { status: 503 });
     }
 
@@ -40,6 +50,97 @@ export async function POST(request: NextRequest) {
     try {
         const { tenant, user } = await requireBillingOwner(tenantSlug);
         const db = getControlDb();
+        if (getActiveBillingProvider() === "MERCADO_PAGO") {
+            if (interval !== "MONTHLY") {
+                return NextResponse.json({ error: "Mercado Pago está disponible únicamente para mensualidades." }, { status: 409 });
+            }
+            const [plan, conflictingSubscription] = await Promise.all([
+                db.plan.findFirst({
+                    where: { slug: planSlug, isActive: true, monthlyAmountCents: { gt: 0 } },
+                    select: { id: true, name: true, description: true, currency: true, monthlyAmountCents: true },
+                }),
+                db.subscription.findFirst({
+                    where: {
+                        tenantId: tenant.tenantId,
+                        provider: "STRIPE",
+                        status: { in: ["TRIALING", "ACTIVE", "PAST_DUE", "UNPAID", "INCOMPLETE"] },
+                    },
+                    select: { id: true },
+                }),
+            ]);
+            if (!plan?.monthlyAmountCents) {
+                return NextResponse.json({ error: "Este plan no está disponible para pago en línea." }, { status: 409 });
+            }
+            if (conflictingSubscription) {
+                return NextResponse.json(
+                    { error: "Ya existe una suscripción administrada por Stripe para este negocio.", portalAvailable: true },
+                    { status: 409 },
+                );
+            }
+
+            const attemptId = randomUUID();
+            const externalReference = `sl_${attemptId.replaceAll("-", "")}`;
+            await db.billingCheckoutAttempt.create({
+                data: {
+                    id: attemptId,
+                    tenantId: tenant.tenantId,
+                    planId: plan.id,
+                    provider: "MERCADO_PAGO",
+                    externalReference,
+                    amountCents: plan.monthlyAmountCents,
+                    currency: plan.currency,
+                },
+            });
+
+            try {
+                const baseUrl = getPlatformBaseUrl();
+                const billingUrl = `${baseUrl}/billing/${encodeURIComponent(tenant.slug)}`;
+                const preference = await createMercadoPagoPreference({
+                    idempotencyKey: attemptId,
+                    externalReference,
+                    title: `SynapseLogik ${plan.name}`,
+                    description: plan.description || "Mensualidad del CRM SynapseLogik",
+                    amountCents: plan.monthlyAmountCents,
+                    currency: plan.currency,
+                    payerEmail: user.email,
+                    successUrl: `${billingUrl}?checkout=success`,
+                    pendingUrl: `${billingUrl}?checkout=pending`,
+                    failureUrl: `${billingUrl}?checkout=failure`,
+                    notificationUrl: `${baseUrl}/api/webhooks/mercado-pago`,
+                    tenantId: tenant.tenantId,
+                    planId: plan.id,
+                });
+                const checkoutUrl = isMercadoPagoProduction()
+                    ? preference.init_point
+                    : preference.sandbox_init_point || preference.init_point;
+                if (!checkoutUrl) throw new Error("Mercado Pago no devolvió una URL de Checkout.");
+                await db.$transaction([
+                    db.billingCheckoutAttempt.update({
+                        where: { id: attemptId },
+                        data: { providerCheckoutId: preference.id },
+                    }),
+                    db.commercialEvent.create({
+                        data: {
+                            tenantId: tenant.tenantId,
+                            userId: user.id,
+                            event: "checkout_started",
+                            source: "mercado_pago",
+                            metadata: { planId: plan.id, interval, checkoutAttemptId: attemptId },
+                        },
+                    }),
+                ]);
+                return NextResponse.json({ url: checkoutUrl });
+            } catch (error) {
+                await db.billingCheckoutAttempt.update({
+                    where: { id: attemptId },
+                    data: {
+                        lastError: error instanceof Error ? error.message.slice(0, 2_000) : "No fue posible crear el Checkout.",
+                    },
+                }).catch(() => undefined);
+                throw error;
+            }
+        }
+
         const [price, trial, pendingSelection] = await Promise.all([
             db.billingPrice.findFirst({
                 where: {

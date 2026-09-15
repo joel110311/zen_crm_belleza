@@ -514,7 +514,7 @@ Consulta [`multitenant-beta-smoke-test.md`](./multitenant-beta-smoke-test.md) pa
 ### R5 — Completar Stripe y límites de producto
 
 - [ ] Crear productos, precios y precio fundador en modo test.
-- [x] Sembrar los planes Esencial ($300 MXN), Automatiza ($500 MXN, 5,000 respuestas) y Pro ($800 MXN, uso razonable) en el control plane.
+- [x] Sembrar los planes Esencial ($200 MXN), Automatiza ($500 MXN, 5,000 respuestas) y Pro ($800 MXN, uso razonable) en el control plane.
 - [x] Versionar la política de prueba y permitir elegir 7 o 14 días desde `/control`; una prueba ya iniciada conserva su versión original.
 - [x] Conservar un HMAC no reversible del correo tras eliminar la cuenta para impedir que la misma identidad vuelva a consumir la promoción.
 - [x] Mostrar el aviso discreto sólo durante las últimas 48 horas y enviar recordatorios a las 48 y 24 horas.
