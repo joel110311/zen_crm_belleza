@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import Image from "next/image";
 import {
     Copy,
     FileImage,
@@ -88,7 +89,7 @@ export function TemplateManagerPanel() {
     const [isUploading, setIsUploading] = useState(false);
     const [form, setForm] = useState<TemplateFormState>(EMPTY_TEMPLATE_FORM);
 
-    const loadTemplates = async (query?: string) => {
+    const loadTemplates = useCallback(async (query?: string) => {
         setIsLoading(true);
         try {
             const params = new URLSearchParams();
@@ -108,11 +109,11 @@ export function TemplateManagerPanel() {
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [toast]);
 
     useEffect(() => {
         void loadTemplates();
-    }, []);
+    }, [loadTemplates]);
 
     const filteredTemplates = useMemo(() => {
         const query = search.trim().toLowerCase();
@@ -458,10 +459,13 @@ export function TemplateManagerPanel() {
                             <div className="rounded-xl border bg-background/80 p-3">
                                 {form.type === "image" ? (
                                     previewMediaUrl ? (
-                                        <img
+                                        <Image
                                             src={previewMediaUrl}
                                             alt={form.mediaFileName || "Plantilla"}
-                                            className="max-h-52 rounded-xl object-contain"
+                                            width={640}
+                                            height={360}
+                                            unoptimized
+                                            className="h-auto max-h-52 w-auto max-w-full rounded-xl object-contain"
                                         />
                                     ) : (
                                         <div className="flex h-44 items-center justify-center rounded-xl bg-primary/5 text-primary/45">
@@ -566,9 +570,12 @@ export function TemplateManagerPanel() {
                                     <div className="mt-3 rounded-xl border border-border/60 bg-background/90 p-3">
                                         {form.type === "image" ? (
                                             previewMediaUrl ? (
-                                                <img
+                                                <Image
                                                     src={previewMediaUrl}
                                                     alt={form.mediaFileName || "Plantilla"}
+                                                    width={640}
+                                                    height={360}
+                                                    unoptimized
                                                     className="max-h-52 w-full rounded-lg object-cover"
                                                 />
                                             ) : (

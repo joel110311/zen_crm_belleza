@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import {
     BatteryFull,
     Camera,
@@ -111,9 +112,12 @@ export function WhatsAppTemplatePreview({
                                 {type === "image" ? (
                                     <div className="rounded-t-[1.45rem] px-3 pt-3">
                                         {safeMediaUrl ? (
-                                            <img
+                                            <Image
                                                 src={safeMediaUrl}
                                                 alt={mediaFileName || "Vista previa"}
+                                                width={360}
+                                                height={176}
+                                                unoptimized
                                                 className={cn(
                                                     "w-full rounded-[1rem] object-cover",
                                                     isCompact ? "h-32" : "h-44",

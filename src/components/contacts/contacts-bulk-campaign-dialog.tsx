@@ -363,7 +363,7 @@ export function ContactsBulkCampaignDialog({
                 });
             })
             .finally(() => setIsLoadingTemplates(false));
-    }, [contacts.length, isLoadingTemplates, open, operationContext.locale, templates.length, toast]);
+    }, [contacts.length, isLoadingTemplates, open, operationContext.locale, operationContext.timeZone, templates.length, toast]);
 
     useEffect(() => {
         if (!open || form.type !== "template" || isLoadingYCloudTemplates || ycloudTemplates.length > 0) {

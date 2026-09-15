@@ -708,46 +708,6 @@ function extractJidPhone(value: unknown): string {
     return "";
 }
 
-function pickPreferredPhoneSource(info: JsonObject) {
-    const candidates = [
-        info["Chat"],
-        info["chat"],
-        info["SenderAlt"],
-        info["senderAlt"],
-        info["RecipientAlt"],
-        info["recipientAlt"],
-        info["Sender"],
-        info["sender"],
-    ];
-
-    return (
-        candidates.find((candidate) => candidate && !isLidAddress(candidate)) ||
-        candidates.find(Boolean) ||
-        ""
-    );
-}
-
-function pickPreferredOutboundPhoneSource(info: JsonObject) {
-    const candidates = [
-        info["RecipientAlt"],
-        info["recipientAlt"],
-        info["Recipient"],
-        info["recipient"],
-        info["Chat"],
-        info["chat"],
-        info["RemoteJid"],
-        info["remoteJid"],
-        info["SenderAlt"],
-        info["senderAlt"],
-    ];
-
-    return (
-        candidates.find((candidate) => candidate && !isLidAddress(candidate)) ||
-        candidates.find(Boolean) ||
-        ""
-    );
-}
-
 function unwrapMessageNode(node: unknown): unknown {
     const record = asRecord(node);
     if (!record) return node;
@@ -1118,10 +1078,6 @@ async function applyDeleteEvent(event: ExtractedDeleteEvent, phoneCandidates: st
     });
 
     revalidatePath("/dashboard/inbox");
-}
-
-function resolvePhoneFromInfo(info: JsonObject, isFromMe: boolean) {
-    return resolvePhoneCandidatesFromInfo(info, isFromMe)[0] || "";
 }
 
 function resolvePhoneCandidatesFromInfo(info: JsonObject, isFromMe: boolean) {

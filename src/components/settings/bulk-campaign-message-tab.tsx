@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Image from "next/image";
 import { FileImage, FileText, Loader2, Plus, RefreshCw, Trash2, Upload, WandSparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -521,10 +522,13 @@ export function BulkCampaignMessageTab({
                         {form.mediaUrl ? (
                             form.type === "image" ? (
                                 previewMediaUrl ? (
-                                    <img
+                                    <Image
                                         src={previewMediaUrl}
                                         alt={form.mediaFileName || "Campana"}
-                                        className="max-h-56 rounded-2xl object-contain"
+                                        width={640}
+                                        height={360}
+                                        unoptimized
+                                        className="h-auto max-h-56 w-auto max-w-full rounded-2xl object-contain"
                                     />
                                 ) : (
                                     <div className="flex h-44 items-center justify-center rounded-2xl bg-primary/5 text-primary/45">

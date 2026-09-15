@@ -376,41 +376,6 @@ function resolveIntelligenceState(params: {
     };
 }
 
-function buildAskForNameReply() {
-    return "Veo buen interes y quiero dejar bien tus datos.\n\n¿Me compartes tu *nombre completo*?";
-}
-
-function buildAskForEmailReply(nameWasCaptured: boolean) {
-    return nameWasCaptured
-        ? "Perfecto, ya guardé tu nombre.\n\nAhora, ¿me compartes tu *correo electrónico*?"
-        : "Perfecto.\n\nPara enviarte la información y dar seguimiento, ¿me compartes tu *correo electrónico*?";
-}
-
-function buildPostCaptureReply(params: {
-    savedName: string | null;
-    savedEmail: string | null;
-    appointmentIntent: boolean;
-    declinedField: PendingCaptureField | null;
-}) {
-    const savedParts = [
-        params.savedName ? "tu nombre" : null,
-        params.savedEmail ? "tu correo" : null,
-    ].filter(Boolean);
-
-    const opening =
-        params.declinedField && savedParts.length === 0
-            ? "No hay problema."
-            : savedParts.length > 0
-                ? `Perfecto, ya guardé ${savedParts.join(" y ")}.`
-                : "Perfecto.";
-
-    if (params.appointmentIntent) {
-        return `${opening}\n\nSi quieres agendar, dime por favor *qué día y a qué hora* te funciona mejor.`;
-    }
-
-    return `${opening}\n\n¿Qué tipo de negocio tienes y qué te gustaría automatizar?`;
-}
-
 function buildLeadAutomationInstruction(params: {
     nextPendingField: PendingCaptureField | null;
     savedName: string | null;

@@ -184,6 +184,8 @@ export function LogoCropDialog({
                             className="relative aspect-square w-[min(100%,420px,48dvh)] touch-none cursor-grab select-none overflow-hidden rounded-[2rem] border border-primary/15 bg-primary/5 shadow-inner active:cursor-grabbing"
                         >
                             {sourceUrl ? (
+                                // The cropper needs direct access to natural pixels and a freely transformed image element.
+                                // eslint-disable-next-line @next/next/no-img-element
                                 <img
                                     ref={imageRef}
                                     src={sourceUrl}

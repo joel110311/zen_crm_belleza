@@ -121,8 +121,6 @@ export async function enrichContactFromMessage(
 
         // Build update payload
         const contactUpdate: Record<string, string> = {};
-        const dealUpdate: Record<string, string> = {};
-
         if (enrichment.firstName && (!contact.name || enrichment.firstName.length > (contact.name?.length || 0))) {
             contactUpdate.name = enrichment.firstName;
         }

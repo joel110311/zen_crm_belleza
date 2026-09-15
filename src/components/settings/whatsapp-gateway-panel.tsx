@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Image from "next/image";
 import { CheckCircle2, ChevronDown, Loader2, LogOut, QrCode, RefreshCw, Save, Smartphone, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -473,9 +474,12 @@ export function WhatsAppGatewayPanel(props: Props) {
 
                         {session.qrCode ? (
                             <div className="rounded-2xl border border-dashed p-4 bg-background">
-                                <img
+                                <Image
                                     src={session.qrCode}
                                     alt="QR de WhatsApp"
+                                    width={260}
+                                    height={260}
+                                    unoptimized
                                     className="mx-auto w-full max-w-[260px] rounded-xl border bg-white p-3"
                                 />
                                 <p className="text-xs text-center text-muted-foreground mt-3">

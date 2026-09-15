@@ -3,6 +3,7 @@ import { PortalSocialLinks } from "@/components/portal/portal-social-links";
 import type { PortalSocialLink } from "@/lib/portal-social-links";
 
 import { useEffect, useMemo, useState, useTransition, type ComponentType } from "react";
+import Image from "next/image";
 import {
     ArrowLeft,
     ArrowRight,
@@ -340,9 +341,12 @@ export function PortalBooking({ data, mode = "legacy" }: Props) {
                             style={{ backgroundColor: data.primaryColor }}
                         >
                             {data.logoUrl ? (
-                                <img
+                                <Image
                                     src={data.logoUrl}
                                     alt=""
+                                    width={44}
+                                    height={44}
+                                    unoptimized
                                     className="h-full w-full object-contain p-1"
                                     style={{ transform: `scale(${Math.max(0.6, Math.min(1.6, data.logoScale / 100))})` }}
                                 />
@@ -413,7 +417,7 @@ export function PortalBooking({ data, mode = "legacy" }: Props) {
                             style={{ backgroundColor: data.primaryColor }}
                         >
                             {data.logoUrl ? (
-                                <img src={data.logoUrl} alt="" className="h-full w-full object-contain p-1" />
+                                <Image src={data.logoUrl} alt="" width={44} height={44} unoptimized className="h-full w-full object-contain p-1" />
                             ) : (
                                 <Sparkles className="h-5 w-5" />
                             )}
@@ -472,7 +476,7 @@ export function PortalBooking({ data, mode = "legacy" }: Props) {
                                         style={selected ? { borderColor: data.primaryColor, backgroundColor: `${data.primaryColor}0D` } : undefined}
                                     >
                                         {service.imageUrl ? (
-                                            <img src={service.imageUrl} alt="" className="h-14 w-14 shrink-0 rounded-2xl border object-cover" />
+                                            <Image src={service.imageUrl} alt="" width={56} height={56} unoptimized className="h-14 w-14 shrink-0 rounded-2xl border object-cover" />
                                         ) : (
                                             <span
                                                 className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl text-white"
@@ -614,9 +618,12 @@ export function PortalBooking({ data, mode = "legacy" }: Props) {
 
                         <div className="mt-4">
                             {selectedService?.imageUrl ? (
-                                <img
+                                <Image
                                     src={selectedService.imageUrl}
                                     alt={selectedService.name}
+                                    width={640}
+                                    height={160}
+                                    unoptimized
                                     className="h-40 w-full rounded-2xl object-cover"
                                 />
                             ) : (

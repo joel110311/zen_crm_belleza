@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { ZenLogo } from "@/components/icons/zen-logo";
 import { cn } from "@/lib/utils";
 
@@ -11,9 +12,12 @@ type BrandLogoProps = {
 export function BrandLogo({ brandName, logoUrl, className, imageClassName }: BrandLogoProps) {
     if (logoUrl) {
         return (
-            <img
+            <Image
                 src={logoUrl}
                 alt={`Logotipo de ${brandName}`}
+                width={44}
+                height={44}
+                unoptimized
                 className={cn("object-contain", className, imageClassName)}
             />
         );

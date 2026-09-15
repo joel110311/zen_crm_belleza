@@ -21,7 +21,7 @@ async function main() {
         const userCount = await prisma.user.count();
         console.log(`Connection verified. Found ${userCount} users.`);
 
-        const contacts = await prisma.contact.findMany({ take: 1 });
+        await prisma.contact.findFirst({ select: { id: true } });
         console.log("Successfully queried contacts table.");
 
     } catch (e) {

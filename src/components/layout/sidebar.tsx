@@ -38,19 +38,49 @@ type SidebarNavItem = {
     platformOnly?: boolean;
 };
 
-const sidebarNavItems: SidebarNavItem[] = [
-    { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard, permission: "dashboard.view" },
-    { title: "Clientes", href: "/dashboard/contacts", icon: Users, permission: "contacts.manage" },
-    { title: "Servicios", href: "/dashboard/services", icon: BeautyLeafIcon, permission: "services.manage" },
-    { title: "Chats", href: "/dashboard/inbox", icon: WhatsAppIcon, permission: "chats.manage" },
-    { title: "Mi Negocio", href: "/dashboard/business", icon: Store, permission: "settings.manage" },
-    { title: "Especialistas", href: "/dashboard/specialists", icon: UserRoundCog, permission: "specialists.manage", tenantOnly: true },
-    { title: "Recepción", href: "/dashboard/reception", icon: ClipboardCheck, permission: "reception.manage" },
-    { title: "Plantillas", href: "/dashboard/templates", icon: LayoutTemplate, permission: "templates.manage" },
-    { title: "Calendario", href: "/dashboard/calendar", icon: Calendar, permission: "calendar.manage" },
-    { title: "Asistente IA", href: "/dashboard/brain", icon: Bot, permission: "ai.manage" },
-    { title: "Configuración", href: "/dashboard/settings", icon: Settings },
-    { title: "Centro de mando", href: "/control", icon: ShieldCheck, platformOnly: true },
+type SidebarNavSection = {
+    title: string;
+    items: SidebarNavItem[];
+};
+
+const sidebarNavSections: SidebarNavSection[] = [
+    {
+        title: "Operación",
+        items: [
+            { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard, permission: "dashboard.view" },
+            { title: "Calendario", href: "/dashboard/calendar", icon: Calendar, permission: "calendar.manage" },
+            { title: "Recepción", href: "/dashboard/reception", icon: ClipboardCheck, permission: "reception.manage" },
+        ],
+    },
+    {
+        title: "Clientes y comunicación",
+        items: [
+            { title: "Clientes", href: "/dashboard/contacts", icon: Users, permission: "contacts.manage" },
+            { title: "Chats", href: "/dashboard/inbox", icon: WhatsAppIcon, permission: "chats.manage" },
+            { title: "Plantillas", href: "/dashboard/templates", icon: LayoutTemplate, permission: "templates.manage" },
+        ],
+    },
+    {
+        title: "Negocio",
+        items: [
+            { title: "Mi Negocio", href: "/dashboard/business", icon: Store, permission: "settings.manage" },
+            { title: "Servicios", href: "/dashboard/services", icon: BeautyLeafIcon, permission: "services.manage" },
+            { title: "Especialistas", href: "/dashboard/specialists", icon: UserRoundCog, permission: "specialists.manage", tenantOnly: true },
+        ],
+    },
+    {
+        title: "Automatización",
+        items: [
+            { title: "Asistente IA", href: "/dashboard/brain", icon: Bot, permission: "ai.manage" },
+        ],
+    },
+    {
+        title: "Administración",
+        items: [
+            { title: "Configuración", href: "/dashboard/settings", icon: Settings },
+            { title: "Centro de mando", href: "/control", icon: ShieldCheck, platformOnly: true },
+        ],
+    },
 ];
 
 export function Sidebar({ className }: React.HTMLAttributes<HTMLDivElement>) {
@@ -92,12 +122,19 @@ export function Sidebar({ className }: React.HTMLAttributes<HTMLDivElement>) {
         };
     }, []);
 
-    const filteredNavItems = sidebarNavItems.filter((item) => {
+    const canShowNavItem = (item: SidebarNavItem) => {
         if (item.tenantOnly && !tenantSlug) return false;
         if (item.platformOnly && (tenantSlug || !sessionUser?.isPlatformAdmin)) return false;
         if (sessionLoading) return !item.permission;
         return !item.permission || hasPermission(sessionUser, item.permission);
-    });
+    };
+
+    const filteredNavSections = sidebarNavSections
+        .map((section) => ({
+            ...section,
+            items: section.items.filter(canShowNavItem),
+        }))
+        .filter((section) => section.items.length > 0);
 
     const isItemActive = (item: SidebarNavItem) => {
         const href = resolveHref(item.href);
@@ -158,27 +195,44 @@ export function Sidebar({ className }: React.HTMLAttributes<HTMLDivElement>) {
                     </button>
                 </div>
 
-                <nav className="mt-3 flex-1 space-y-1 overflow-y-auto">
-                    {filteredNavItems.map((item) => {
-                        const Icon = item.icon;
-                        const active = isItemActive(item);
-                        return (
-                            <Link
-                                key={item.href}
-                                href={resolveHref(item.href)}
-                                onClick={() => setOpen(false)}
-                                className={cn(
-                                    "flex h-11 items-center gap-3 rounded-full px-3 text-sm font-medium transition-[background-color,color,transform] duration-200 active:scale-[.98]",
-                                    active
-                                        ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                                        : "text-sidebar-foreground/75 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-                                )}
+                <nav className="mt-2 min-h-0 flex-1 overflow-y-auto px-1 pb-2" aria-label="Módulos del CRM">
+                    {filteredNavSections.map((section, sectionIndex) => (
+                        <section
+                            key={section.title}
+                            aria-labelledby={`mobile-nav-${sectionIndex}`}
+                            className={cn(sectionIndex > 0 && "mt-4")}
+                        >
+                            <h2
+                                id={`mobile-nav-${sectionIndex}`}
+                                className="px-3 pb-1.5 pt-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-gold"
                             >
-                                <Icon className="h-[18px] w-[18px]" />
-                                {item.title}
-                            </Link>
-                        );
-                    })}
+                                {section.title}
+                            </h2>
+                            <div className="space-y-1">
+                                {section.items.map((item) => {
+                                    const Icon = item.icon;
+                                    const active = isItemActive(item);
+                                    return (
+                                        <Link
+                                            key={item.href}
+                                            href={resolveHref(item.href)}
+                                            onClick={() => setOpen(false)}
+                                            aria-current={active ? "page" : undefined}
+                                            className={cn(
+                                                "flex h-11 items-center gap-3 rounded-full px-3 text-sm font-medium transition-[background-color,color,transform] duration-200 active:scale-[.98]",
+                                                active
+                                                    ? "bg-sidebar-primary text-sidebar-primary-foreground"
+                                                    : "text-sidebar-foreground/75 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                                            )}
+                                        >
+                                            <Icon className="h-[18px] w-[18px]" aria-hidden="true" />
+                                            {item.title}
+                                        </Link>
+                                    );
+                                })}
+                            </div>
+                        </section>
+                    ))}
                 </nav>
 
                 <div className="border-t border-sidebar-border pt-3">
@@ -239,43 +293,59 @@ export function Sidebar({ className }: React.HTMLAttributes<HTMLDivElement>) {
                     </button>
                 </div>
 
-                <p className={cn(
-                    "overflow-hidden px-6 text-[10px] font-semibold uppercase tracking-[0.18em] text-gold transition-[max-height,padding,opacity] duration-200",
-                    desktopCollapsed ? "max-h-0 py-0 opacity-0" : "max-h-10 pb-1 pt-4 opacity-100",
-                )}>
-                    Operación
-                </p>
-
                 <nav className={cn(
-                    "flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto py-2",
+                    "min-h-0 flex-1 overflow-y-auto py-2",
                     desktopCollapsed ? "items-center px-2" : "px-3",
-                )}>
-                    {filteredNavItems.map((item) => {
-                        const Icon = item.icon;
-                        const active = isItemActive(item);
-                        return (
-                            <Link
-                                key={item.href}
-                                href={resolveHref(item.href)}
-                                title={item.title}
-                                aria-label={item.title}
+                )} aria-label="Módulos del CRM">
+                    {filteredNavSections.map((section, sectionIndex) => (
+                        <section
+                            key={section.title}
+                            aria-labelledby={`desktop-nav-${sectionIndex}`}
+                            className={cn(sectionIndex > 0 && (desktopCollapsed ? "mt-2" : "mt-3"))}
+                        >
+                            {desktopCollapsed && sectionIndex > 0 ? (
+                                <div className="mx-auto mb-2 w-7 border-t border-sidebar-border" aria-hidden="true" />
+                            ) : null}
+                            <h2
+                                id={`desktop-nav-${sectionIndex}`}
                                 className={cn(
-                                    "relative flex shrink-0 items-center rounded-full text-sm font-medium transition-[background-color,color,transform] duration-200 active:scale-[.97]",
-                                    desktopCollapsed ? "h-10 w-10 justify-center" : "h-11 w-full gap-3 px-3",
-                                    active
-                                        ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                                        : "text-sidebar-foreground/75 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                                    "overflow-hidden text-[10px] font-semibold uppercase tracking-[0.18em] text-gold transition-[max-height,padding,opacity] duration-200",
+                                    desktopCollapsed ? "sr-only" : "max-h-10 px-3 pb-1.5 pt-2 opacity-100",
                                 )}
                             >
-                                {active && desktopCollapsed && <span className="absolute -left-[1.15rem] h-5 w-1 rounded-r-full bg-gold" />}
-                                <Icon className="h-[18px] w-[18px]" />
-                                <span className={cn(
-                                    "overflow-hidden whitespace-nowrap transition-[max-width,opacity,transform] duration-[220ms]",
-                                    desktopCollapsed ? "max-w-0 -translate-x-1 opacity-0" : "max-w-[11rem] translate-x-0 opacity-100",
-                                )}>{item.title}</span>
-                            </Link>
-                        );
-                    })}
+                                {section.title}
+                            </h2>
+                            <div className={cn("flex flex-col gap-1", desktopCollapsed && "items-center")}>
+                                {section.items.map((item) => {
+                                    const Icon = item.icon;
+                                    const active = isItemActive(item);
+                                    return (
+                                        <Link
+                                            key={item.href}
+                                            href={resolveHref(item.href)}
+                                            title={item.title}
+                                            aria-label={item.title}
+                                            aria-current={active ? "page" : undefined}
+                                            className={cn(
+                                                "relative flex shrink-0 items-center rounded-full text-sm font-medium transition-[background-color,color,transform] duration-200 active:scale-[.97]",
+                                                desktopCollapsed ? "h-10 w-10 justify-center" : "h-11 w-full gap-3 px-3",
+                                                active
+                                                    ? "bg-sidebar-primary text-sidebar-primary-foreground"
+                                                    : "text-sidebar-foreground/75 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                                            )}
+                                        >
+                                            {active && desktopCollapsed && <span className="absolute -left-[1.15rem] h-5 w-1 rounded-r-full bg-gold" />}
+                                            <Icon className="h-[18px] w-[18px]" aria-hidden="true" />
+                                            <span className={cn(
+                                                "overflow-hidden whitespace-nowrap transition-[max-width,opacity,transform] duration-[220ms]",
+                                                desktopCollapsed ? "max-w-0 -translate-x-1 opacity-0" : "max-w-[11rem] translate-x-0 opacity-100",
+                                            )}>{item.title}</span>
+                                        </Link>
+                                    );
+                                })}
+                            </div>
+                        </section>
+                    ))}
                 </nav>
 
                 <div className={cn("mt-2 border-t border-sidebar-border p-3", desktopCollapsed && "flex flex-col items-center gap-2")}>

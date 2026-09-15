@@ -4,7 +4,7 @@ import React, { useState, useTransition, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { X, Phone, Mail, Building2, Calendar, Pencil, Trash2, Save, Plus, Tag as TagIcon } from "lucide-react";
+import { X, Phone, Mail, Building2, Calendar, Trash2, Save, Plus } from "lucide-react";
 import { updateDeal, deleteDeal, getAllTags, createTag, addTagToDeal, removeTagFromDeal, deleteTag } from "@/app/actions/pipeline";
 import { useOperationContext } from "@/components/shared/use-operation-context";
 import { WhatsAppIcon } from "@/components/icons/whatsapp-icon";
@@ -70,7 +70,7 @@ export function DealDetailPanel({ deal, onClose, onUpdate, onDelete }: DealDetai
         });
     }, []);
 
-    // Only reset the form when the user opens a different lead.
+    // Keep the form synchronized when the selected lead is refreshed externally.
     useEffect(() => {
         const timer = window.setTimeout(() => {
             setEditTitle(deal.title);
@@ -80,7 +80,7 @@ export function DealDetailPanel({ deal, onClose, onUpdate, onDelete }: DealDetai
             setDealTagIds(deal.dealTags?.map((dt) => dt.tag.id) || []);
         }, 0);
         return () => window.clearTimeout(timer);
-    }, [deal.id]);
+    }, [deal.dealTags, deal.id, deal.notes, deal.priority, deal.title, deal.value]);
 
     const handleSave = () => {
         startTransition(async () => {

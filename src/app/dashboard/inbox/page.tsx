@@ -1,12 +1,13 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import {
-    Search, MoreVertical, Phone, Video, Paperclip, Send, Mic, X,
-    FileText, Download, Square, Star, BellOff, Bell, Archive, Trash2,
-    Info, Users, MessageSquare, ChevronRight, ChevronDown, Mail, Tag, Clock,
+    Search, MoreVertical, Phone, Paperclip, Send, Mic, X,
+    FileText, Download, Star, BellOff, Bell, Archive, Trash2,
+    Info, Users, MessageSquare, ChevronDown, Mail, Tag, Clock,
     Eraser, Image as ImageIcon, Play, Pause, Bot, User as UserIcon, AlertTriangle, LayoutTemplate,
     Reply, Copy, SmilePlus, Forward, CheckCircle2
 } from "lucide-react";
@@ -498,43 +499,6 @@ function getOldestConversationCursor(items: Conversation[]) {
     return oldest ? toIsoTimestamp(oldest.serverUpdatedAt || oldest.updatedAt) : null;
 }
 
-// ──────────── WhatsApp Text Formatter ────────────
-function formatWhatsAppText(text: string): React.ReactNode {
-    if (!text) return null;
-    // Split by newlines first to preserve line breaks
-    const lines = text.split('\n');
-    return lines.map((line, lineIdx) => {
-        // Parse inline formatting: *bold*, _italic_, ~strikethrough~
-        const parts: React.ReactNode[] = [];
-        const remaining = line;
-        let partKey = 0;
-        const regex = /(\*([^*]+)\*)|(_([^_]+)_)|(~([^~]+)~)/g;
-        let lastIndex = 0;
-        let match;
-        while ((match = regex.exec(remaining)) !== null) {
-            if (match.index > lastIndex) {
-                parts.push(<React.Fragment key={partKey++}>{remaining.slice(lastIndex, match.index)}</React.Fragment>);
-            }
-            if (match[1]) {
-                parts.push(<strong key={partKey++}>{match[2]}</strong>);
-            } else if (match[3]) {
-                parts.push(<em key={partKey++}>{match[4]}</em>);
-            } else if (match[5]) {
-                parts.push(<s key={partKey++}>{match[6]}</s>);
-            }
-            lastIndex = match.index + match[0].length;
-        }
-        if (lastIndex < remaining.length) {
-            parts.push(<React.Fragment key={partKey++}>{remaining.slice(lastIndex)}</React.Fragment>);
-        }
-        return (
-            <React.Fragment key={lineIdx}>
-                {parts.length > 0 ? parts : line}
-                {lineIdx < lines.length - 1 && <br />}
-            </React.Fragment>
-        );
-    });
-}
 // ──────────── Helpers ────────────
 function formatPhone(phone: string | null | undefined, defaultCountryCode?: string | null): string {
     return formatPhoneForDisplay(phone, defaultCountryCode);
@@ -883,10 +847,13 @@ function MediaContent({ msg, onImageClick }: { msg: Message, onImageClick?: (msg
     if (msg.type === "image" && cleanUrl) {
         return (
             <div className="space-y-1">
-                <img
+                <Image
                     src={cleanUrl}
                     alt={msg.content || "Image"}
-                    className="max-w-[280px] rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                    width={280}
+                    height={280}
+                    unoptimized
+                    className="h-auto max-w-[280px] rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
                     onClick={() => onImageClick ? onImageClick(msg.id) : window.open(cleanUrl, "_blank")}
                 />
                 {msg.content && !["[Imagen]", "[Sticker]", "[image]"].includes(msg.content) && (
@@ -1891,6 +1858,17 @@ export default function InboxPage() {
         }
     }, [loadOlderConversations]);
 
+    // ──── Smart scroll logic ────
+    const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
+        // Use scrollIntoView on the sentinel div — much more reliable on mobile
+        if (messagesEndRef.current) {
+            messagesEndRef.current.scrollIntoView({ behavior, block: "end" });
+        } else if (messagesContainerRef.current) {
+            messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+        }
+        setNewMessageCount(0);
+    }, []);
+
     // ──── Fetch messages ────
     useEffect(() => {
         if (!selectedChat) return;
@@ -1992,18 +1970,7 @@ export default function InboxPage() {
         fetchMessages(true);
         const interval = setInterval(() => fetchMessages(false), 2000);
         return () => clearInterval(interval);
-    }, [selectedChat?.id, setHasMoreMessagesState]);
-
-    // ──── Smart scroll logic ────
-    const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
-        // Use scrollIntoView on the sentinel div — much more reliable on mobile
-        if (messagesEndRef.current) {
-            messagesEndRef.current.scrollIntoView({ behavior, block: "end" });
-        } else if (messagesContainerRef.current) {
-            messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
-        }
-        setNewMessageCount(0);
-    }, []);
+    }, [scrollToBottom, selectedChat, setHasMoreMessagesState]);
 
     const loadOlderMessages = useCallback(async () => {
         if (!selectedChat?.id || isLoadingOlderMessagesRef.current || !hasMoreMessagesRef.current) return;
@@ -3186,16 +3153,22 @@ export default function InboxPage() {
                                                                     {previewImageUrl ? (
                                                                         previewTargetUrl ? (
                                                                             <a href={previewTargetUrl} target="_blank" rel="noreferrer">
-                                                                                <img
+                                                                                <Image
                                                                                     src={previewImageUrl}
                                                                                     alt={previewTitle}
+                                                                                    width={416}
+                                                                                    height={160}
+                                                                                    unoptimized
                                                                                     className="h-40 w-full object-cover"
                                                                                 />
                                                                             </a>
                                                                         ) : (
-                                                                            <img
+                                                                            <Image
                                                                                 src={previewImageUrl}
                                                                                 alt={previewTitle}
+                                                                                width={416}
+                                                                                height={160}
+                                                                                unoptimized
                                                                                 className="h-40 w-full object-cover"
                                                                             />
                                                                         )
@@ -3428,9 +3401,12 @@ export default function InboxPage() {
                                 <div className="border-t border-border/50 bg-card/72 px-4 pt-3 backdrop-blur-2xl">
                                     <div className="mx-auto flex max-w-[54rem] items-center gap-3 rounded-[1.3rem] border border-border/50 bg-background/75 p-3 shadow-[0_18px_34px_-30px_rgba(15,23,42,0.45)]">
                                         {pendingFile.mediaCategory === "image" ? (
-                                            <img
-                                                src={pendingFile.previewUrl || getSafeMediaUrl(pendingFile.url)}
+                                            <Image
+                                                src={pendingFile.previewUrl || getSafeMediaUrl(pendingFile.url) || pendingFile.url}
                                                 alt="Preview"
+                                                width={64}
+                                                height={64}
+                                                unoptimized
                                                 className="h-16 w-16 rounded-xl object-cover"
                                             />
                                         ) : pendingFile.mediaCategory === "video" ? (

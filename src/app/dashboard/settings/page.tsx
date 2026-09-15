@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type ChangeEvent, type ComponentType } from "react";
 import { useSession } from "next-auth/react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
@@ -670,9 +671,12 @@ export function SettingsWorkspace({
                                         </div>
                                         <div className="mt-4 flex min-h-28 items-center justify-center rounded-2xl border bg-muted/25 p-4">
                                             <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl border bg-background p-2 shadow-sm">
-                                                <img
+                                                <Image
                                                     src={brandFaviconUrl || DEFAULT_BRAND_FAVICON_URL}
                                                     alt="Favicon del CRM"
+                                                    width={64}
+                                                    height={64}
+                                                    unoptimized
                                                     className="h-full w-full object-contain"
                                                 />
                                             </div>
@@ -725,9 +729,12 @@ export function SettingsWorkspace({
                                 <div className="rounded-2xl border bg-muted/15 p-4">
                                     <p className="text-sm font-semibold">Pestaña del navegador</p>
                                     <div className="mt-3 flex items-center gap-3 rounded-full border bg-background px-4 py-3 shadow-sm">
-                                        <img
+                                        <Image
                                             src={brandFaviconUrl || DEFAULT_BRAND_FAVICON_URL}
                                             alt=""
+                                            width={20}
+                                            height={20}
+                                            unoptimized
                                             className="h-5 w-5 object-contain"
                                         />
                                         <span className="truncate text-sm font-medium">
@@ -827,9 +834,12 @@ export function SettingsWorkspace({
                                     <div className="mt-3 flex flex-col items-center gap-3">
                                         <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-2xl border bg-muted/35">
                                             {clinicLogoUrl ? (
-                                                <img
+                                                <Image
                                                     src={clinicLogoUrl}
                                                     alt="Logotipo del negocio"
+                                                    width={96}
+                                                    height={96}
+                                                    unoptimized
                                                     className="object-contain"
                                                     style={{
                                                         width: `${Math.max(50, Math.min(180, clinicLogoScale))}%`,

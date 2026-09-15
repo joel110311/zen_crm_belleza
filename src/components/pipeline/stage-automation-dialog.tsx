@@ -5,7 +5,7 @@ import {
     Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Plus, Trash2, Zap, Tag as TagIcon, Loader2 } from "lucide-react";
+import { Plus, Trash2, Zap, Loader2 } from "lucide-react";
 import {
     getAllAutomations, createStageAutomation, deleteStageAutomation, getAllTags, createTag
 } from "@/app/actions/pipeline";

@@ -354,7 +354,7 @@ export async function addTagToDeal(dealId: string, tagId: string) {
         });
         revalidatePath("/dashboard/pipeline");
         return { success: true };
-    } catch (error) {
+    } catch {
         // Might be duplicate — ignore
         return { success: true };
     }

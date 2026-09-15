@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import Image from "next/image";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { X, ChevronLeft, ChevronRight, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -140,9 +141,12 @@ export function ImageViewer({ conversation, messages, initialMessageId, onClose 
                     </Button>
                 )}
 
-                <img
+                <Image
                     src={currentUrl}
                     alt="Viewer"
+                    width={1600}
+                    height={1200}
+                    unoptimized
                     className="max-h-full max-w-full object-contain cursor-default"
                     onClick={(e) => e.stopPropagation()}
                     draggable={false}
@@ -185,7 +189,7 @@ export function ImageViewer({ conversation, messages, initialMessageId, onClose 
                                 )}
                                 onClick={() => setCurrentIndex(index)}
                             >
-                                <img src={url} alt="Thumbnail" className="h-full w-full object-cover" />
+                                <Image src={url} alt="Thumbnail" width={64} height={64} unoptimized className="h-full w-full object-cover" />
                             </div>
                         );
                     })}
