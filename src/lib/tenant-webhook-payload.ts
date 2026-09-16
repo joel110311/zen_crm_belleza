@@ -185,6 +185,67 @@ function wuzapiMessageType(message: JsonRecord): QueuedWebhookPayload["messageTy
     return "text";
 }
 
+function normalizeJidValue(value: string) {
+    return value.replace(/:\d+@/, "@").trim();
+}
+
+function isLidAddress(value: unknown): boolean {
+    if (!value) return false;
+    if (typeof value === "string") {
+        return normalizeJidValue(value).toLowerCase().includes("@lid");
+    }
+    if (typeof value === "object") {
+        const candidate = record(value);
+        const server = field(candidate, "Server") ?? field(candidate, "RawServer");
+        if (typeof server === "string" && server.toLowerCase().includes("lid")) return true;
+        const jidString = field(candidate, "String");
+        return typeof jidString === "string" && isLidAddress(jidString);
+    }
+    return false;
+}
+
+function extractJidPhone(value: unknown): string {
+    if (!value || isLidAddress(value)) return "";
+    if (typeof value === "string") {
+        const normalized = normalizeJidValue(value);
+        return (normalized.includes("@") ? normalized.split("@")[0] : normalized).replace(/\D/g, "");
+    }
+    if (typeof value === "object") {
+        const candidate = record(value);
+        const user = field(candidate, "User");
+        if (typeof user === "string") return user.replace(/\D/g, "");
+        const jidString = field(candidate, "String");
+        if (typeof jidString === "string") return extractJidPhone(jidString);
+    }
+    return "";
+}
+
+/** Mirrors the proven WuzAPI sender resolution used by the legacy CRM. */
+function resolveWuzapiPhone(info: JsonRecord, fromMe: boolean) {
+    const candidates = fromMe
+        ? [
+            field(info, "RecipientAlt"),
+            field(info, "Recipient"),
+            field(info, "Chat"),
+            field(info, "RemoteJid"),
+        ]
+        : [
+            field(info, "Chat"),
+            field(info, "SenderAlt"),
+            field(info, "RecipientAlt"),
+            field(info, "Sender"),
+        ];
+    const seen = new Set<string>();
+    return candidates
+        .map(extractJidPhone)
+        .filter((candidate) => candidate.length >= 8 && candidate.length <= 15)
+        .find((candidate) => {
+            if (seen.has(candidate)) return false;
+            seen.add(candidate);
+            return true;
+        }) || "";
+}
+
 /** Normalizes the supported WuzAPI webhook variants without importing the legacy webhook route. */
 export function normalizeWuzapiWebhook(payload: unknown, externalAccountId: string, fallbackHash: string): { providerEventId: string; payload: QueuedWebhookPayload } {
     const root = record(payload);
@@ -194,8 +255,7 @@ export function normalizeWuzapiWebhook(payload: unknown, externalAccountId: stri
     const rawId = string(info.ID || info.Id || info.id || root.id, 300);
     const providerEventId = `wuzapi:message:${externalAccountId}:${rawId || fallbackHash}`;
     const fromMe = boolean(info.IsFromMe ?? info.isFromMe);
-    const phone = string(fromMe ? (info.RecipientAlt || info.recipientAlt || info.Chat || info.chat) : (info.SenderAlt || info.senderAlt || info.Chat || info.chat), 160)
-        .replace(/@.+$/, "").replace(/\D/g, "");
+    const phone = resolveWuzapiPhone(info, fromMe);
     const contactName = string(event.PushName || event.pushName || root.PushName || root.pushName, 160) || undefined;
     const messageType = wuzapiMessageType(message);
     const content = wuzapiText(message)
