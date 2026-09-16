@@ -41,6 +41,7 @@ export async function ingestTenantWebhook(input: {
     providerEventId: string;
     payload: QueuedWebhookPayload;
     ignored?: boolean;
+    enqueue?: boolean;
     controlDb?: PrismaClient;
 }): Promise<WebhookIngestResult> {
     const db = input.controlDb || getControlDb();
@@ -60,7 +61,7 @@ export async function ingestTenantWebhook(input: {
                 select: { id: true },
             });
 
-            if (!input.ignored && input.tenantId) {
+            if (!input.ignored && input.tenantId && input.enqueue !== false) {
                 await tx.tenantWorkItem.create({
                     data: {
                         tenantId: input.tenantId,
@@ -78,6 +79,31 @@ export async function ingestTenantWebhook(input: {
         if (!isUniqueViolation(error)) throw error;
         return { duplicate: true, ignored: !input.tenantId || Boolean(input.ignored), eventId: null };
     }
+}
+
+/**
+ * Enqueues a persisted webhook only when synchronous delivery could not finish.
+ * Keeping this separate lets the HTTP webhook write the tenant message immediately while the
+ * durable worker remains the retry path for transient database or application failures.
+ */
+export async function enqueueTenantWebhookRetry(input: {
+    tenantId: string;
+    eventId: string;
+    controlDb?: PrismaClient;
+}) {
+    const db = input.controlDb || getControlDb();
+    return db.tenantWorkItem.upsert({
+        where: { idempotencyKey: `webhook:retry:${input.eventId}` },
+        create: {
+            tenantId: input.tenantId,
+            kind: "WEBHOOK_EVENT",
+            recordId: input.eventId,
+            idempotencyKey: `webhook:retry:${input.eventId}`,
+            payload: { webhookEventId: input.eventId },
+        },
+        update: {},
+        select: { id: true, status: true },
+    });
 }
 
 /** Future producers use this instead of an in-memory timer. */

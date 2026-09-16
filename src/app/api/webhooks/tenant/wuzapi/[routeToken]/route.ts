@@ -3,7 +3,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { isMultitenantChannelsEnabled } from "@/lib/multitenant-features";
 import { getChannelForRoute, touchChannelWebhook } from "@/lib/tenant-channels";
 import { safeSecretEqual } from "@/lib/security";
-import { ingestTenantWebhook } from "@/lib/tenant-work-queue";
+import { processTenantInboundWebhookEvent } from "@/lib/tenant-inbound-processing";
+import { enqueueTenantWebhookRetry, ingestTenantWebhook } from "@/lib/tenant-work-queue";
 import { normalizeWuzapiWebhook, webhookBodyHash } from "@/lib/tenant-webhook-payload";
 
 export const runtime = "nodejs";
@@ -38,13 +39,34 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
     const connection = await getChannelForRoute("WUZAPI", routeToken);
     const normalized = normalizeWuzapiWebhook(payload, connection?.externalAccountId || "unknown", webhookBodyHash(rawBody));
-    await ingestTenantWebhook({
+    const processImmediately = Boolean(
+        connection
+        && normalized.payload.kind === "message"
+        && normalized.payload.direction !== "outbound",
+    );
+    const ingested = await ingestTenantWebhook({
         tenantId: connection?.tenantId || null,
         provider: "WUZAPI",
         providerEventId: normalized.providerEventId,
         payload: normalized.payload,
         ignored: !connection || normalized.payload.kind === "ignored",
+        enqueue: !processImmediately,
     });
+    if (processImmediately && connection && ingested.eventId) {
+        try {
+            await processTenantInboundWebhookEvent(connection.tenantId, ingested.eventId);
+        } catch (error) {
+            console.error("[Tenant WuzAPI] Immediate inbox persistence failed; queued for retry", {
+                tenantId: connection.tenantId,
+                eventId: ingested.eventId,
+                error: error instanceof Error ? error.message : String(error),
+            });
+            await enqueueTenantWebhookRetry({
+                tenantId: connection.tenantId,
+                eventId: ingested.eventId,
+            });
+        }
+    }
     if (connection) await touchChannelWebhook(connection.id);
     return NextResponse.json({ ok: true });
 }
