@@ -1201,6 +1201,7 @@ export default function InboxPage() {
     const canAssignAnyUser = hasPermission(sessionUser, "users.manage");
     const currentUserName = session?.user?.name || "";
     const [conversations, setConversations] = useState<Conversation[]>([]);
+    const [conversationLoadError, setConversationLoadError] = useState<string | null>(null);
     const [selectedChat, setSelectedChat] = useState<Conversation | null>(null);
     const [teamUsers, setTeamUsers] = useState<TeamUser[]>([]);
     const [messages, setMessages] = useState<Message[]>([]);
@@ -1690,8 +1691,19 @@ export default function InboxPage() {
                 }
 
                 const response = await fetch(url.toString(), { cache: "no-store" });
-                const data = await response.json();
-                if (!Array.isArray(data) || disposed) return;
+                const data = await response.json().catch(() => null);
+                if (!response.ok) {
+                    throw new Error(
+                        data && typeof data.error === "string"
+                            ? data.error
+                            : "No se pudieron cargar los chats.",
+                    );
+                }
+                if (!Array.isArray(data) || disposed) {
+                    throw new Error("El servidor devolvió una respuesta inválida al cargar los chats.");
+                }
+
+                setConversationLoadError(null);
 
                 const transformed: Conversation[] = data.map(transformConversation);
                 updateConversationCursor(transformed);
@@ -1803,6 +1815,13 @@ export default function InboxPage() {
                 }
             } catch (error) {
                 console.error("Failed to fetch conversations:", error);
+                if (!disposed) {
+                    setConversationLoadError(
+                        error instanceof Error
+                            ? error.message
+                            : "No se pudieron cargar los chats.",
+                    );
+                }
             } finally {
                 conversationsPollInFlightRef.current = false;
             }
@@ -2875,7 +2894,19 @@ export default function InboxPage() {
                         onViewportScroll={handleConversationsScroll}
                     >
                         <div className="flex flex-col gap-1">
-                            {filteredConversations.length === 0 && (
+                            {conversationLoadError && (
+                                <div
+                                    role="alert"
+                                    className="flex items-start gap-2 rounded-[1rem] border border-amber-300/70 bg-amber-50 p-3 text-left text-xs text-amber-900 dark:border-amber-700/60 dark:bg-amber-950/35 dark:text-amber-100"
+                                >
+                                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                                    <div>
+                                        <p className="font-semibold">No se pudo cargar la bandeja</p>
+                                        <p className="mt-0.5 opacity-90">{conversationLoadError} Reintentando automáticamente.</p>
+                                    </div>
+                                </div>
+                            )}
+                            {!conversationLoadError && filteredConversations.length === 0 && (
                                 <div className="rounded-[1.6rem] border border-dashed border-border/60 bg-background/50 p-10 text-center text-sm text-muted-foreground">
                                     {searchQuery ? "No se encontraron chats" : "Sin conversaciones"}
                                 </div>

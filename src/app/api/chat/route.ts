@@ -227,6 +227,9 @@ export async function GET(request: NextRequest) {
         }
     } catch (error) {
         console.error("[API] Chat error:", error);
-        return NextResponse.json([]);
+        return NextResponse.json(
+            { error: "No se pudo cargar el historial de chats." },
+            { status: 500 },
+        );
     }
 }
