@@ -65,6 +65,9 @@ export async function updateSystemSettings(data: {
     autoReplyDelayMs?: number;
     botReplyDelayMinMs?: number;
     botReplyDelayMaxMs?: number;
+    messageBatchingEnabled?: boolean;
+    messageBatchWindowMs?: number;
+    messageBatchMaxWaitMs?: number;
     businessHoursStart?: string;
     businessHoursEnd?: string;
     businessTimeZone?: string;

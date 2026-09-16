@@ -24,6 +24,34 @@ function boolean(value: unknown) {
     return false;
 }
 
+function field(value: JsonRecord, key: string) {
+    const direct = value[key];
+    if (direct !== undefined) return direct;
+    const normalized = key.toLowerCase();
+    const entry = Object.entries(value).find(([name]) => name.toLowerCase() === normalized);
+    return entry?.[1];
+}
+
+function nested(value: JsonRecord, key: string) {
+    return record(field(value, key));
+}
+
+function unwrapWuzapiMessage(value: unknown): JsonRecord {
+    const message = record(value);
+    for (const wrapper of [
+        "deviceSentMessage",
+        "editedMessage",
+        "ephemeralMessage",
+        "viewOnceMessage",
+        "viewOnceMessageV2",
+    ]) {
+        const wrapped = nested(message, wrapper);
+        const inner = field(wrapped, "message");
+        if (inner) return unwrapWuzapiMessage(inner);
+    }
+    return message;
+}
+
 function metaMessageText(message: JsonRecord, type: string) {
     if (type === "text") return string(record(message.text).body);
     if (type === "button") return string(record(message.button).text) || "[Botón]";
@@ -112,21 +140,22 @@ export function normalizeMetaWebhook(payload: unknown, fallbackHash: string): Ar
 
 function wuzapiText(message: JsonRecord) {
     const candidates = [
-        message.conversation,
-        message.text,
-        record(message.extendedTextMessage).text,
-        record(message.imageMessage).caption,
-        record(message.videoMessage).caption,
-        record(message.documentMessage).caption,
+        field(message, "conversation"),
+        field(message, "text"),
+        field(nested(message, "extendedTextMessage"), "text"),
+        field(nested(message, "imageMessage"), "caption"),
+        field(nested(message, "videoMessage"), "caption"),
+        field(nested(message, "documentMessage"), "caption"),
+        field(nested(message, "documentMessage"), "fileName"),
     ];
-    return candidates.map((value) => string(value)).find(Boolean) || "[Mensaje de WhatsApp]";
+    return candidates.map((value) => string(value)).find(Boolean) || "";
 }
 
 function wuzapiMessageType(message: JsonRecord): QueuedWebhookPayload["messageType"] {
-    if (message.imageMessage) return "image";
-    if (message.videoMessage) return "video";
-    if (message.audioMessage) return "audio";
-    if (message.documentMessage) return "document";
+    if (field(message, "imageMessage")) return "image";
+    if (field(message, "videoMessage")) return "video";
+    if (field(message, "audioMessage")) return "audio";
+    if (field(message, "documentMessage")) return "document";
     return "text";
 }
 
@@ -135,19 +164,27 @@ export function normalizeWuzapiWebhook(payload: unknown, externalAccountId: stri
     const root = record(payload);
     const event = record(root.event);
     const info = record(event.Info || event.info || root.Info || root.info);
-    const message = record(event.Message || event.message || root.Message || root.message);
+    const message = unwrapWuzapiMessage(event.Message || event.message || root.Message || root.message);
     const rawId = string(info.ID || info.Id || info.id || root.id, 300);
     const providerEventId = `wuzapi:message:${externalAccountId}:${rawId || fallbackHash}`;
     const fromMe = boolean(info.IsFromMe ?? info.isFromMe);
     const phone = string(fromMe ? (info.RecipientAlt || info.recipientAlt || info.Chat || info.chat) : (info.SenderAlt || info.senderAlt || info.Chat || info.chat), 160)
         .replace(/@.+$/, "").replace(/\D/g, "");
     const contactName = string(event.PushName || event.pushName || root.PushName || root.pushName, 160) || undefined;
+    const messageType = wuzapiMessageType(message);
+    const content = wuzapiText(message)
+        || (messageType === "image" ? "[Imagen]"
+            : messageType === "video" ? "[Video]"
+                : messageType === "audio" ? "[Audio]"
+                    : messageType === "document" ? "[Documento]"
+                        : "");
+    const isProtocolEvent = Boolean(field(message, "protocolMessage"));
     return {
         providerEventId,
-        payload: phone && Object.keys(info).length > 0
+        payload: phone && Object.keys(info).length > 0 && content && !isProtocolEvent
             ? {
                 kind: "message", sourceType: "wuzapi", sourceId: externalAccountId, providerMessageId: rawId || undefined,
-                phone, contactName, content: wuzapiText(message), messageType: wuzapiMessageType(message),
+                phone, contactName, content, messageType,
                 direction: fromMe ? "outbound" : "inbound", occurredAt: asTimestamp(info.Timestamp || info.timestamp || event.Timestamp || event.timestamp),
             }
             : { kind: "ignored", sourceType: "wuzapi", sourceId: externalAccountId },

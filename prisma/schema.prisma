@@ -100,12 +100,18 @@ model Message {
   mediaFileName     String? // Original filename for documents
   providerMessageId String? // Native WhatsApp/WuzAPI message id
   reaction          String? // Emoji reaction (e.g., '👍', '❤️')
+  botInputText       String?
+  botAttribution     Json?
+  botBatchId         String?
+  botProcessedAt     DateTime?
   createdAt         DateTime     @default(now())
 
   @@index([conversationId, createdAt(sort: Desc)])
   @@index([providerMessageId])
   @@index([sourceType, sourceId])
   @@index([sourceType, providerMessageId])
+  @@index([conversationId, direction, botProcessedAt, createdAt])
+  @@index([botBatchId])
 }
 
 enum PrivateFileStatus {
@@ -979,6 +985,9 @@ model SystemSettings {
   autoReplyDelayMs                     Int                    @default(4000)
   botReplyDelayMinMs                   Int                    @default(4000)
   botReplyDelayMaxMs                   Int                    @default(8000)
+  messageBatchingEnabled               Boolean                @default(true)
+  messageBatchWindowMs                 Int                    @default(8000)
+  messageBatchMaxWaitMs                Int                    @default(30000)
   operationCountry                     String                 @default("MX")
   phoneDefaultCountry                  String                 @default("MX")
   businessHoursStart                   String                 @default("09:00")

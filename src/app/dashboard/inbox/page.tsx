@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import Image from "next/image";
-import { useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import {
     Search, MoreVertical, Phone, Paperclip, Send, Mic, X,
@@ -47,6 +47,7 @@ import {
     getOperationTodayKey,
 } from "@/lib/operation-dates";
 import { INBOX_DRAFT_STORAGE_KEY, type InboxDraftPayload } from "@/lib/inbox-drafts";
+import { tenantSlugFromPath } from "@/lib/tenant-request-routing";
 import {
     Dialog,
     DialogContent,
@@ -1190,6 +1191,8 @@ function WindowTimer({ expiresAt, onWindowChange }: { expiresAt: string | null |
 
 // ──────────── Main Inbox Page ────────────
 export default function InboxPage() {
+    const pathname = usePathname();
+    const tenantSlug = tenantSlugFromPath(pathname);
     const operationContext = useOperationContext();
     const searchParams = useSearchParams();
     const { data: session } = useSession();
@@ -1233,6 +1236,7 @@ export default function InboxPage() {
         [messages, emojiPickerMsgId],
     );
     const outboundSourceType = selectedChat?.sourceType || "wuzapi";
+    const selectedChatId = selectedChat?.id ?? null;
     const formatDisplayPhone = useCallback(
         (phone: string | null | undefined) => formatPhone(phone, operationContext.phoneDefaultCountry),
         [operationContext.phoneDefaultCountry],
@@ -1487,6 +1491,7 @@ export default function InboxPage() {
     // Ref to keep the selected chat ID accessible inside polling closures
     const selectedChatIdRef = useRef<string | null>(null);
     const selectedChatUpdatedAtRef = useRef<string | null>(null);
+    const selectedChatMutedRef = useRef(false);
     const forceFullMessagesSyncRef = useRef(false);
     const appliedInboxDraftRef = useRef<string | null>(null);
 
@@ -1504,6 +1509,7 @@ export default function InboxPage() {
         const activeChat = selectedChat;
         selectedChatIdRef.current = activeChat?.id ?? null;
         selectedChatUpdatedAtRef.current = activeChat ? toIsoTimestamp(activeChat.updatedAt) : null;
+        selectedChatMutedRef.current = Boolean(activeChat?.isMuted);
         if (!activeChat?.sessionExpiresAt) {
             setIsWindowOpen(true);
         }
@@ -1589,6 +1595,39 @@ export default function InboxPage() {
     useEffect(() => {
         const fetchWhatsAppSession = async () => {
             try {
+                if (tenantSlug) {
+                    const endpoint = `/api/t/${encodeURIComponent(tenantSlug)}/v1/channels`;
+                    const [channelsResponse, qrResponse] = await Promise.all([
+                        fetch(endpoint, { cache: "no-store" }),
+                        fetch(`${endpoint}/wuzapi`, { cache: "no-store" }),
+                    ]);
+                    const channelsBody = await channelsResponse.json().catch(() => ({}));
+                    const qrBody = await qrResponse.json().catch(() => ({}));
+                    if (!channelsResponse.ok || !qrResponse.ok) {
+                        throw new Error(
+                            channelsBody?.error?.message
+                            || qrBody?.error?.message
+                            || "No se pudo consultar el canal de WhatsApp.",
+                        );
+                    }
+                    const channels = Array.isArray(channelsBody?.data?.channels)
+                        ? channelsBody.data.channels
+                        : [];
+                    const metaChannel = channels.find((channel: { provider?: string }) => channel.provider === "META_CLOUD");
+                    const qrSession = qrBody?.data || {};
+                    setWhatsAppSession({
+                        configured: Boolean(qrSession.configured),
+                        connected: Boolean(qrSession.connected),
+                        loggedIn: Boolean(qrSession.active),
+                        jid: typeof qrSession.phone === "string" ? qrSession.phone : null,
+                        qrCode: null,
+                        metaConfigured: Boolean(metaChannel),
+                        metaConnected: metaChannel?.status === "CONNECTED",
+                        phoneNumberId: null,
+                    });
+                    return;
+                }
+
                 const response = await fetch("/api/whatsapp/session", { cache: "no-store" });
                 const payload = await response.json();
 
@@ -1616,7 +1655,7 @@ export default function InboxPage() {
         void fetchWhatsAppSession();
         const interval = setInterval(fetchWhatsAppSession, 5000);
         return () => clearInterval(interval);
-    }, []);
+    }, [tenantSlug]);
 
     useEffect(() => {
         setHighlightedSlashIndex(0);
@@ -1871,11 +1910,12 @@ export default function InboxPage() {
 
     // ──── Fetch messages ────
     useEffect(() => {
-        if (!selectedChat) return;
+        const activeSelectedChatId = selectedChatIdRef.current;
+        if (!activeSelectedChatId) return;
+        const selectedChatMuted = selectedChatMutedRef.current;
 
         // Reset messages state when chat changes to avoid showing old data
         setMessages([]);
-        selectedChatUpdatedAtRef.current = toIsoTimestamp(selectedChat.updatedAt);
         forceFullMessagesSyncRef.current = false;
         oldestMessageCursorRef.current = null;
         isLoadingOlderMessagesRef.current = false;
@@ -1894,7 +1934,7 @@ export default function InboxPage() {
                 }
 
                 const url = new URL("/api/chat", window.location.origin);
-                url.searchParams.append("conversationId", selectedChat.id);
+                url.searchParams.append("conversationId", activeSelectedChatId);
                 if (!shouldFullSync && lastMessageDate) {
                     url.searchParams.append("since", lastMessageDate);
                 } else {
@@ -1943,7 +1983,7 @@ export default function InboxPage() {
                         // If there are genuinely new messages, show notifications or auto-scroll
                         if (prev.length > 0 && uniqueNew.some((m) => m.direction === "inbound")) {
                             // Play sound for incoming message in the active chat
-                            maybePlayNotification(selectedChat.isMuted);
+                            maybePlayNotification(selectedChatMuted);
 
                             const el = messagesContainerRef.current;
                             if (el) {
@@ -1970,7 +2010,7 @@ export default function InboxPage() {
         fetchMessages(true);
         const interval = setInterval(() => fetchMessages(false), 2000);
         return () => clearInterval(interval);
-    }, [scrollToBottom, selectedChat, setHasMoreMessagesState]);
+    }, [scrollToBottom, selectedChatId, setHasMoreMessagesState]);
 
     const loadOlderMessages = useCallback(async () => {
         if (!selectedChat?.id || isLoadingOlderMessagesRef.current || !hasMoreMessagesRef.current) return;

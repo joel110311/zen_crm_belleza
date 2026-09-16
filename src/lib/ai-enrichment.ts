@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/db";
 import { resolveAiProviderKey } from "@/lib/ai/provider-keys";
 import { callGeminiGenerateContent } from "@/lib/ai/openai";
+import { hasExplicitCompanyDisclosure } from "@/lib/contact-enrichment-guards";
 
 /**
  * AI Contact Enrichment Service
@@ -141,7 +142,11 @@ export async function enrichContactFromMessage(
             contactUpdate.lastName = enrichment.lastName;
         }
 
-        if (enrichment.company && !contact.company) {
+        if (
+            enrichment.company &&
+            !contact.company &&
+            hasExplicitCompanyDisclosure(messageText)
+        ) {
             contactUpdate.company = enrichment.company;
         }
 

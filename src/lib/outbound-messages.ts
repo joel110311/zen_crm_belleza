@@ -8,8 +8,7 @@ import {
 } from "@/lib/message-source";
 import { getSystemSettingsOrDefaults } from "@/lib/system-settings";
 import { findOrCreateActiveConversationForContactSource } from "@/lib/source-conversations";
-import { sendWuzapiMediaMessage, sendWuzapiTextMessage } from "@/lib/wuzapi";
-import { sendMetaMediaMessage, sendMetaTextMessage } from "@/lib/meta-whatsapp";
+import { sendChannelMedia, sendChannelText } from "@/lib/channel-delivery";
 import { assertChatbotUsageAvailable, recordChatbotReply } from "@/lib/billing/chatbot-usage";
 
 export type OutboundMessageType = "text" | "image" | "document" | "audio" | "video";
@@ -143,9 +142,11 @@ export async function sendOutboundConversationMessage(
             let providerMessageId: string | null = null;
 
             if (type === "text") {
-                const result = selectedSourceType === "meta"
-                    ? await sendMetaTextMessage(conversation.contact.phone, content)
-                    : await sendWuzapiTextMessage(conversation.contact.phone, content);
+                const result = await sendChannelText({
+                    sourceType: selectedSourceType,
+                    to: conversation.contact.phone,
+                    body: content,
+                });
                 providerMessageId = result?.Id || null;
             } else if (params.mediaUrl) {
                 let result: { Id?: string | null } | null = null;
@@ -154,7 +155,8 @@ export async function sendOutboundConversationMessage(
                     const appBaseUrl = (process.env.APP_BASE_URL || process.env.AUTH_URL || "").trim();
                     const publicMediaUrl = getPublicMediaUrl(params.mediaUrl, appBaseUrl);
 
-                    result = await sendMetaMediaMessage({
+                    result = await sendChannelMedia({
+                        sourceType: "meta",
                         to: conversation.contact.phone,
                         mediaType: type,
                         link: publicMediaUrl,
@@ -163,9 +165,10 @@ export async function sendOutboundConversationMessage(
                     });
                 } else {
                     const resolvedMedia = await resolveMediaToDataUrl(params.mediaUrl, params.mediaType);
-                    result = await sendWuzapiMediaMessage({
-                        phone: conversation.contact.phone,
-                        mediaCategory: type,
+                    result = await sendChannelMedia({
+                        sourceType: "wuzapi",
+                        to: conversation.contact.phone,
+                        mediaType: type,
                         dataUrl: resolvedMedia.dataUrl,
                         caption: content && content !== `[${type}]` ? content : undefined,
                         fileName: params.mediaFileName || resolvedMedia.fileName,

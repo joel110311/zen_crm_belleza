@@ -403,6 +403,112 @@ function connectionToken(connection: { secretCiphertext: Uint8Array | null; secr
     return decryptChannelSecret(connection.secretCiphertext, connection.secretKeyVersion);
 }
 
+async function connectedTenantChannel(tenantId: string, provider: ChannelProvider) {
+    const connection = await getControlDb().channelConnection.findFirst({
+        where: { tenantId, provider, status: "CONNECTED" },
+        orderBy: { createdAt: "asc" },
+    });
+    if (!connection) {
+        throw new Error(provider === "META_CLOUD"
+            ? "WhatsApp oficial no está conectado para este negocio."
+            : "La conexión mediante QR no está activa para este negocio.");
+    }
+    return connection;
+}
+
+export async function sendTenantChannelText(params: {
+    tenantId: string;
+    sourceType: "meta" | "wuzapi";
+    to: string;
+    body: string;
+}) {
+    const phone = params.to.replace(/\D/g, "");
+    if (params.sourceType === "meta") {
+        const connection = await connectedTenantChannel(params.tenantId, "META_CLOUD");
+        const accessToken = connectionToken(connection);
+        const payload = await graphRequest<{ messages?: Array<{ id?: string }> }>(metaConfig(), {
+            resource: `${connection.externalAccountId}/messages`,
+            accessToken,
+            method: "POST",
+            body: {
+                messaging_product: "whatsapp",
+                recipient_type: "individual",
+                to: phone,
+                type: "text",
+                text: { preview_url: false, body: params.body },
+            },
+        });
+        return { Id: payload.messages?.[0]?.id || null };
+    }
+
+    const connection = await connectedTenantChannel(params.tenantId, "WUZAPI");
+    return qrGatewayRequest<{ Id?: string }>({
+        path: "/chat/send/text",
+        token: connectionToken(connection),
+        method: "POST",
+        body: { Phone: phone, Body: params.body },
+    });
+}
+
+export async function sendTenantChannelMedia(params: {
+    tenantId: string;
+    sourceType: "meta" | "wuzapi";
+    to: string;
+    mediaType: "image" | "document" | "audio" | "video";
+    dataUrl?: string;
+    link?: string;
+    caption?: string;
+    fileName?: string;
+    mimeType?: string;
+}) {
+    const phone = params.to.replace(/\D/g, "");
+    if (params.sourceType === "meta") {
+        if (!params.link) throw new Error("La URL pública del archivo es obligatoria para WhatsApp oficial.");
+        const connection = await connectedTenantChannel(params.tenantId, "META_CLOUD");
+        const accessToken = connectionToken(connection);
+        const media: Record<string, unknown> = { link: params.link };
+        if (params.caption && params.mediaType !== "audio") media.caption = params.caption;
+        if (params.fileName && params.mediaType === "document") media.filename = params.fileName;
+        const payload = await graphRequest<{ messages?: Array<{ id?: string }> }>(metaConfig(), {
+            resource: `${connection.externalAccountId}/messages`,
+            accessToken,
+            method: "POST",
+            body: {
+                messaging_product: "whatsapp",
+                recipient_type: "individual",
+                to: phone,
+                type: params.mediaType,
+                [params.mediaType]: media,
+            },
+        });
+        return { Id: payload.messages?.[0]?.id || null };
+    }
+
+    if (!params.dataUrl) throw new Error("El archivo no está disponible para la conexión mediante QR.");
+    const connection = await connectedTenantChannel(params.tenantId, "WUZAPI");
+    const field = params.mediaType === "image" ? "Image"
+        : params.mediaType === "audio" ? "Audio"
+            : params.mediaType === "video" ? "Video"
+                : "Document";
+    const endpoint = params.mediaType === "image" ? "/chat/send/image"
+        : params.mediaType === "audio" ? "/chat/send/audio"
+            : params.mediaType === "video" ? "/chat/send/video"
+                : "/chat/send/document";
+    return qrGatewayRequest<{ Id?: string }>({
+        path: endpoint,
+        token: connectionToken(connection),
+        method: "POST",
+        body: {
+            Phone: phone,
+            Caption: params.caption || "",
+            [field]: params.dataUrl,
+            MimeType: params.mimeType,
+            ...(params.mediaType === "document" ? { FileName: params.fileName || "archivo" } : {}),
+            ...(params.mediaType === "audio" ? { PTT: true } : {}),
+        },
+    });
+}
+
 async function synchronizeQrStatus(connection: { id: string }, status: QrGatewayStatus) {
     const active = Boolean(status.loggedIn);
     await getControlDb().channelConnection.update({

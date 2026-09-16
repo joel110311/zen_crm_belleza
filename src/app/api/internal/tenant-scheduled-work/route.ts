@@ -6,6 +6,7 @@ import { getControlDb } from "@/lib/control-db";
 import { isMultitenantRuntimeEnabled } from "@/lib/multitenant-features";
 import { runWithTenantPrisma } from "@/lib/routed-prisma";
 import { getTenantPrismaManager } from "@/lib/tenant-prisma-manager";
+import { recoverPendingInboundBatches } from "@/app/actions/chat";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -50,11 +51,14 @@ export async function POST(request: NextRequest) {
     const tenantDb = await getTenantPrismaManager().getForTenant(tenant.id);
     const result = await runWithTenantPrisma(tenantDb, async () => {
         await processDueBulkCampaigns();
-        return processDueAppointmentReminders();
-    });
+        const reminders = await processDueAppointmentReminders();
+        const recoveredBotBatches = await recoverPendingInboundBatches(tenant.id);
+        return { reminders, recoveredBotBatches };
+    }, tenant.id);
 
     return NextResponse.json({
         success: true,
-        remindersProcessed: result.processed,
+        remindersProcessed: result.reminders.processed,
+        recoveredBotBatches: result.recoveredBotBatches,
     });
 }

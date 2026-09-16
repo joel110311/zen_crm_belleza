@@ -22,12 +22,12 @@ const MODEL_DELEGATES = new Set(
 );
 
 type RoutedPrismaGlobals = {
-    tenantPrismaScope?: AsyncLocalStorage<PrismaClient>;
+    tenantPrismaScope?: AsyncLocalStorage<{ client: PrismaClient; tenantId?: string }>;
 };
 
 const globalForRoutedPrisma = globalThis as typeof globalThis & RoutedPrismaGlobals;
 const tenantPrismaScope = globalForRoutedPrisma.tenantPrismaScope
-    || new AsyncLocalStorage<PrismaClient>();
+    || new AsyncLocalStorage<{ client: PrismaClient; tenantId?: string }>();
 
 globalForRoutedPrisma.tenantPrismaScope = tenantPrismaScope;
 
@@ -39,8 +39,8 @@ function isNoRequestContextError(error: unknown) {
 }
 
 async function selectPrisma(legacy: PrismaClient, operation: TenantOperation): Promise<PrismaClient> {
-    const explicitTenantClient = tenantPrismaScope.getStore();
-    if (explicitTenantClient) return explicitTenantClient;
+    const explicitTenantScope = tenantPrismaScope.getStore();
+    if (explicitTenantScope) return explicitTenantScope.client;
 
     try {
         return await getActiveTenantPrisma(operation) || legacy;
@@ -57,8 +57,12 @@ async function selectPrisma(legacy: PrismaClient, operation: TenantOperation): P
  * cookies or request headers. The async scope is isolated even when multiple tenants run in
  * the same server process.
  */
-export function runWithTenantPrisma<T>(client: PrismaClient, operation: () => T): T {
-    return tenantPrismaScope.run(client, operation);
+export function runWithTenantPrisma<T>(client: PrismaClient, operation: () => T, tenantId?: string): T {
+    return tenantPrismaScope.run({ client, tenantId }, operation);
+}
+
+export function getScopedTenantId() {
+    return tenantPrismaScope.getStore()?.tenantId || null;
 }
 
 class RoutedPrismaPromise<T> implements PromiseLike<T> {

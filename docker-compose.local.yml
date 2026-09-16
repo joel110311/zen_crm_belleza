@@ -7,6 +7,7 @@ services:
       dockerfile: Dockerfile
     environment:
       - DATABASE_URL=postgresql://zencrm:${LOCAL_POSTGRES_PASSWORD:?Define LOCAL_POSTGRES_PASSWORD}@zen-crm-db:5432/zencrm
+      - REDIS_URL=${REDIS_URL:-redis://zen-crm-redis:6379}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - ALLOW_ENV_AI_FALLBACK=${ALLOW_ENV_AI_FALLBACK:-true}
@@ -299,10 +300,20 @@ services:
       - zen-crm-local
     restart: unless-stopped
 
+  zen-crm-redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - zen_crm_redis_data:/data
+    networks:
+      - zen-crm-local
+    restart: unless-stopped
+
 volumes:
   zen_crm_db_data:
   zen_crm_uploads:
   wuzapi_db_data:
+  zen_crm_redis_data:
 
 networks:
   zen-crm-local:

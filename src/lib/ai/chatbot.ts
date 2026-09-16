@@ -295,6 +295,7 @@ export async function generateConversationReply(
     conversationId: string,
     latestUserMessage: string,
     automationInstruction?: string | null,
+    options?: { excludeInboundMessageIds?: string[] },
 ) {
     await assertChatbotUsageAvailable();
     const [settings, conversation] = await Promise.all([
@@ -314,6 +315,9 @@ export async function generateConversationReply(
                         type: {
                             not: "system",
                         },
+                        ...(options?.excludeInboundMessageIds?.length
+                            ? { id: { notIn: options.excludeInboundMessageIds } }
+                            : {}),
                     },
                     orderBy: { createdAt: "desc" },
                     take: 16,

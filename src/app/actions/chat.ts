@@ -16,14 +16,18 @@ import {
     parseCatalogAssetIntent,
     splitCatalogAssets,
 } from "@/lib/catalog/catalog";
-import { sendWuzapiMediaMessage, sendWuzapiTextMessage } from "@/lib/wuzapi";
 import { generateConversationReply } from "@/lib/ai/chatbot";
 import { getSystemSettingsOrDefaults, type AppSystemSettings } from "@/lib/system-settings";
 import { buildInboundMediaContext, shouldSkipAutoReplyText } from "@/lib/ai/media-understanding";
 import { maybeHandleAppointmentBooking } from "@/lib/ai/appointment-booking";
 import { processLeadAutomationTurn } from "@/lib/ai/lead-intelligence";
+import {
+    hasNewSentCustomerBotText,
+    resolveBotBatchCompletion,
+    type BotReplyMessageEvidence,
+} from "@/lib/bot-reply-outcome";
 import { buildPhoneMatchClauses, normalizePhoneDigits } from "@/lib/phone";
-import { sendMetaMediaMessage, sendMetaTextMessage } from "@/lib/meta-whatsapp";
+import { sendChannelMedia, sendChannelText } from "@/lib/channel-delivery";
 import {
     normalizeMessageSourceType,
     resolveMessageSourceId,
@@ -143,6 +147,7 @@ export type InboundMessageSource = {
     sourceType?: MessageSourceType | null;
     sourceId?: string | null;
     occurredAt?: Date | null;
+    tenantId?: string | null;
 };
 
 const FALLBACK_EXTENSION_BY_MIME: Record<string, string> = {
@@ -1066,15 +1071,17 @@ async function triggerHumanEscalation(params: {
     }
 
     try {
-        await sendWuzapiTextMessage(
-            escalationPhone,
-            buildEscalationAlertMessage({
+        const source = await getAutomatedConversationSource(params.conversationId);
+        await sendChannelText({
+            sourceType: source.sourceType,
+            to: escalationPhone,
+            body: buildEscalationAlertMessage({
                 brandName: params.brandName,
                 contact: params.contact,
                 latestUserMessage: params.latestUserMessage,
                 conversationId: params.conversationId,
             }),
-        );
+        });
     } catch (error) {
         console.error("[Escalation] Failed to notify escalation phone:", error);
     }
@@ -1085,9 +1092,6 @@ async function touchAutomatedConversation(conversationId: string) {
         where: { id: conversationId },
         data: { updatedAt: new Date() },
     });
-
-    revalidatePath("/dashboard/inbox");
-    revalidatePath("/dashboard/pipeline");
 }
 
 async function getAutomatedConversationSource(conversationId: string): Promise<{
@@ -1220,9 +1224,11 @@ async function sendAutomatedBotText(params: {
     const source = await getAutomatedConversationSource(params.conversationId);
 
     try {
-        const transportResult = source.sourceType === "meta"
-            ? await sendMetaTextMessage(params.phone, content)
-            : await sendWuzapiTextMessage(params.phone, content);
+        const transportResult = await sendChannelText({
+            sourceType: source.sourceType,
+            to: params.phone,
+            body: content,
+        });
 
         const message = await prisma.message.create({
             data: {
@@ -1283,16 +1289,18 @@ async function sendAutomatedBotMedia(params: {
         }
 
         const result = source.sourceType === "meta"
-            ? await sendMetaMediaMessage({
+            ? await sendChannelMedia({
+                sourceType: "meta",
                 to: params.phone,
                 mediaType: params.mediaCategory,
                 link: buildPublicMediaUrl(storedMediaUrl),
                 caption: params.mediaCategory === "document" ? `Catalogo PDF de ${params.development}` : undefined,
                 fileName: resolvedMedia.fileName,
             })
-            : await sendWuzapiMediaMessage({
-                phone: params.phone,
-                mediaCategory: params.mediaCategory,
+            : await sendChannelMedia({
+                sourceType: "wuzapi",
+                to: params.phone,
+                mediaType: params.mediaCategory,
                 dataUrl: resolvedMedia.dataUrl,
                 fileName: resolvedMedia.fileName,
                 mimeType: resolvedMedia.mimeType,
@@ -1552,7 +1560,6 @@ async function maybeHandleCatalogAssetReply(params: {
             settings: params.settings,
             conversationId: params.conversationId,
             inboundMessageId: params.inboundMessageId,
-            cancelIfNewerInbound: false,
         });
 
     if (intent.negative && isOfferActive) {
@@ -1652,6 +1659,7 @@ async function maybeSendAutomatedReply(
     inboundMessageId: string,
     latestUserMessage: string,
     inboundAttribution?: InboundAttribution,
+    options?: { skipInitialDelay?: boolean; batchMessageIds?: string[] },
 ) {
     try {
         const settings = await getSystemSettingsOrDefaults();
@@ -1668,7 +1676,7 @@ async function maybeSendAutomatedReply(
             return;
         }
 
-        if (settings.autoReplyDelayMs > 0) {
+        if (!options?.skipInitialDelay && settings.autoReplyDelayMs > 0) {
             await sleep(settings.autoReplyDelayMs);
         }
 
@@ -1755,7 +1763,6 @@ async function maybeSendAutomatedReply(
                     settings,
                     conversationId,
                     inboundMessageId,
-                    cancelIfNewerInbound: false,
                 });
                 if (!canSendAfterPacing) return;
 
@@ -1974,6 +1981,7 @@ async function maybeSendAutomatedReply(
                     conversationId,
                     modelUserMessage,
                     automationInstruction,
+                    { excludeInboundMessageIds: options?.batchMessageIds },
                 );
                 replyFromModel = true;
             }
@@ -2032,7 +2040,6 @@ async function maybeSendAutomatedReply(
             settings,
             conversationId,
             inboundMessageId,
-            cancelIfNewerInbound: false,
         });
         if (!canSendAfterPacing) return;
 
@@ -2142,7 +2149,30 @@ async function maybeSendAutomatedReply(
         await touchAutomatedConversation(conversationId);
     } catch (error) {
         console.error("[Bot] Failed to send automated reply:", error);
+        throw error;
     }
+}
+
+async function getLatestSentCustomerBotText(
+    conversationId: string,
+): Promise<BotReplyMessageEvidence | null> {
+    return prisma.message.findFirst({
+        where: {
+            conversationId,
+            direction: "outbound",
+            type: "text",
+            senderType: "bot",
+            status: { in: ["sent", "delivered", "read"] },
+        },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        select: {
+            id: true,
+            direction: true,
+            type: true,
+            senderType: true,
+            status: true,
+        },
+    });
 }
 
 async function waitForBotReplyPacing(params: {
@@ -2160,20 +2190,264 @@ async function waitForBotReplyPacing(params: {
         return true;
     }
 
-    const latestInbound = await prisma.message.findFirst({
-        where: {
-            conversationId: params.conversationId,
-            direction: "inbound",
-            type: { not: "system" },
-        },
-        orderBy: [
-            { createdAt: "desc" },
-            { id: "desc" },
-        ],
-        select: { id: true },
+    const [latestInbound, conversation] = await Promise.all([
+        prisma.message.findFirst({
+            where: {
+                conversationId: params.conversationId,
+                direction: "inbound",
+                type: { not: "system" },
+            },
+            orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+            select: { id: true },
+        }),
+        prisma.conversation.findUnique({
+            where: { id: params.conversationId },
+            select: { botActive: true },
+        }),
+    ]);
+
+    return conversation?.botActive === true && latestInbound?.id === params.inboundMessageId;
+}
+
+export async function processQueuedInboundBatch(
+    conversationId: string,
+    queueJobId: string,
+    tenantId = "legacy",
+) {
+    const settings = await getSystemSettingsOrDefaults();
+    const conversation = await prisma.conversation.findUnique({
+        where: { id: conversationId },
+        select: { botActive: true, contactId: true },
     });
 
-    return latestInbound?.id === params.inboundMessageId;
+    if (!conversation) {
+        await prisma.message.updateMany({
+            where: {
+                conversationId,
+                direction: "inbound",
+                botProcessedAt: null,
+            },
+            data: { botProcessedAt: new Date(), botBatchId: null },
+        });
+        return;
+    }
+    const automatedReplyActive = settings.isBotEnabled && conversation.botActive;
+
+    const batchId = queueJobId;
+    let batchMessages = await prisma.message.findMany({
+        where: { conversationId, botBatchId: queueJobId, botProcessedAt: null },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    });
+
+    if (batchMessages.length === 0) {
+        const pendingMessages = await prisma.message.findMany({
+            where: {
+                conversationId,
+                direction: "inbound",
+                botProcessedAt: null,
+                botInputText: { not: null },
+            },
+            orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        });
+        if (pendingMessages.length === 0) return;
+
+        await prisma.message.updateMany({
+            where: {
+                id: { in: pendingMessages.map((message) => message.id) },
+                botProcessedAt: null,
+            },
+            data: { botBatchId: batchId },
+        });
+        batchMessages = await prisma.message.findMany({
+            where: { conversationId, botBatchId: batchId, botProcessedAt: null },
+            orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        });
+    }
+
+    if (batchMessages.length === 0) return;
+
+    const claimedBatchId = batchMessages[0].botBatchId;
+    const batchText = batchMessages
+        .map((message) => message.botInputText?.trim() || message.content.trim())
+        .filter(Boolean)
+        .join(", ");
+    const latestMessage = batchMessages[batchMessages.length - 1];
+    const storedAttribution = [...batchMessages]
+        .reverse()
+        .map((message) => message.botAttribution)
+        .find((value) => value && typeof value === "object" && !Array.isArray(value));
+    const latestBotReplyBefore = await getLatestSentCustomerBotText(conversationId);
+
+    if (!batchText || shouldSkipAutoReplyText(batchText)) {
+        await prisma.message.updateMany({
+            where: { conversationId, botBatchId: claimedBatchId },
+            data: { botProcessedAt: new Date(), botBatchId: null },
+        });
+        return;
+    }
+
+    // Contact enrichment belongs to the same debounce window as the reply.
+    // This prevents one AI request per fragment when a client sends several
+    // messages in quick succession, and it lets enrichment use the AI router.
+    if (conversation.contactId) {
+        void enrichContactFromMessage(conversation.contactId, batchText).catch((error) => {
+            console.error("[AI Enrichment] Batched enrichment failed:", error);
+        });
+    }
+
+    if (!automatedReplyActive) {
+        await prisma.message.updateMany({
+            where: { conversationId, botBatchId: claimedBatchId },
+            data: { botProcessedAt: new Date(), botBatchId: null },
+        });
+        return;
+    }
+
+    let replyError: unknown = null;
+    try {
+        await maybeSendAutomatedReply(
+            conversationId,
+            latestMessage.id,
+            batchText,
+            storedAttribution as InboundAttribution | undefined,
+            {
+                skipInitialDelay: true,
+                batchMessageIds: batchMessages.map((message) => message.id),
+            },
+        );
+    } catch (error) {
+        replyError = error;
+    }
+
+    const [latestBotReplyAfter, newerPendingMessage, latestConversation] = await Promise.all([
+        getLatestSentCustomerBotText(conversationId),
+        prisma.message.findFirst({
+            where: {
+                conversationId,
+                direction: "inbound",
+                botProcessedAt: null,
+                botInputText: { not: null },
+                id: { notIn: batchMessages.map((message) => message.id) },
+            },
+            orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+            select: { id: true, createdAt: true },
+        }),
+        prisma.conversation.findUnique({
+            where: { id: conversationId },
+            select: { botActive: true },
+        }),
+    ]);
+    const completion = resolveBotBatchCompletion({
+        sentCustomerReply: hasNewSentCustomerBotText(latestBotReplyBefore, latestBotReplyAfter),
+        botActive: latestConversation?.botActive === true,
+        hasNewerPendingInbound: Boolean(newerPendingMessage),
+    });
+    console.info("[Bot Batch] Batch completion evaluated", {
+        conversationId,
+        queueJobId,
+        messageCount: batchMessages.length,
+        completion,
+        replyError: replyError instanceof Error ? replyError.message : null,
+    });
+
+    if (completion === "superseded") {
+        await prisma.message.updateMany({
+            where: { conversationId, botBatchId: claimedBatchId, botProcessedAt: null },
+            data: { botBatchId: null },
+        });
+        const firstPendingMessage = await prisma.message.findFirst({
+            where: {
+                conversationId,
+                direction: "inbound",
+                botProcessedAt: null,
+                botBatchId: null,
+                botInputText: { not: null },
+            },
+            orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+            select: { createdAt: true },
+        });
+        if (firstPendingMessage) {
+            const { enqueueBotReplyBatch } = await import("@/lib/bot-reply-queue");
+            await enqueueBotReplyBatch({
+                tenantId,
+                conversationId,
+                windowMs: settings.messageBatchWindowMs,
+                maxWaitMs: settings.messageBatchMaxWaitMs,
+                firstPendingAt: firstPendingMessage.createdAt,
+                deduplicationId: `${conversationId}-${Date.now()}`,
+            });
+        }
+        return;
+    }
+
+    if (completion === "retry") {
+        await prisma.message.updateMany({
+            where: { conversationId, botBatchId: claimedBatchId, botProcessedAt: null },
+            data: { botBatchId: null },
+        });
+        if (replyError) throw replyError;
+        throw new Error("The bot batch completed without sending a customer-facing response.");
+    }
+
+    await prisma.message.updateMany({
+        where: { conversationId, botBatchId: claimedBatchId },
+        data: { botProcessedAt: new Date(), botBatchId: null },
+    });
+
+    if (completion === "sent" && replyError) {
+        console.warn("[Bot Batch] Reply was sent but post-send processing failed", {
+            conversationId,
+            queueJobId,
+            error: replyError instanceof Error ? replyError.message : String(replyError),
+        });
+    }
+
+    if (completion === "sent" && newerPendingMessage) {
+        const { enqueueBotReplyBatch } = await import("@/lib/bot-reply-queue");
+        await enqueueBotReplyBatch({
+            tenantId,
+            conversationId,
+            windowMs: settings.messageBatchWindowMs,
+            maxWaitMs: settings.messageBatchMaxWaitMs,
+            firstPendingAt: newerPendingMessage.createdAt,
+        });
+    }
+}
+
+export async function recoverPendingInboundBatches(tenantId = "legacy") {
+    const settings = await getSystemSettingsOrDefaults();
+    if (!settings.messageBatchingEnabled) return 0;
+
+    const pendingMessages = await prisma.message.findMany({
+        where: {
+            direction: "inbound",
+            botProcessedAt: null,
+            botInputText: { not: null },
+        },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        select: { conversationId: true, createdAt: true },
+    });
+    const firstPendingByConversation = new Map<string, Date>();
+    for (const message of pendingMessages) {
+        if (!firstPendingByConversation.has(message.conversationId)) {
+            firstPendingByConversation.set(message.conversationId, message.createdAt);
+        }
+    }
+
+    if (firstPendingByConversation.size === 0) return 0;
+    const { enqueueBotReplyBatch } = await import("@/lib/bot-reply-queue");
+    await Promise.all(
+        [...firstPendingByConversation.entries()].map(([conversationId, firstPendingAt]) => (
+            enqueueBotReplyBatch({
+                tenantId,
+                conversationId,
+                windowMs: settings.messageBatchWindowMs,
+                maxWaitMs: settings.messageBatchMaxWaitMs,
+                firstPendingAt,
+            })
+        )),
+    );
+    return firstPendingByConversation.size;
 }
 
 export async function getConversations() {
@@ -2260,9 +2534,11 @@ export async function sendMessage(conversationId: string, content: string, direc
         if (direction === "outbound" && conversation.contact?.phone) {
             console.log("[SendMessage] Attempting to send via WhatsApp...", sourceType);
             try {
-                const result = sourceType === "meta"
-                    ? await sendMetaTextMessage(conversation.contact.phone, content)
-                    : await sendWuzapiTextMessage(conversation.contact.phone, content);
+                const result = await sendChannelText({
+                    sourceType,
+                    to: conversation.contact.phone,
+                    body: content,
+                });
 
                 // Update message status to sent
                 await prisma.message.update({
@@ -2565,6 +2841,18 @@ export async function processInboundMessage(
             mediaType: media?.mediaType,
             mediaFileName: media?.mediaFileName,
         });
+        const storedAttribution = attribution
+            ? Object.fromEntries(
+                Object.entries(attribution).filter(([, value]) => typeof value === "string" && value.trim()),
+            )
+            : undefined;
+        await prisma.message.update({
+            where: { id: message.id },
+            data: {
+                botInputText: botInputText || text,
+                botAttribution: storedAttribution,
+            },
+        });
 
         const bulkReplyResult = await markBulkCampaignReplyForContact(
             contact.id,
@@ -2601,16 +2889,59 @@ export async function processInboundMessage(
         // ── CHATBOT / N8N FORWARDING ──
         try {
             if (bulkReplyResult.intent !== "stop" && shouldScheduleAutomatedReply) {
-                void maybeSendAutomatedReply(conversation.id, message.id, botInputText, attribution);
+                if (sourceSettings.messageBatchingEnabled) {
+                    const firstPendingMessage = await prisma.message.findFirst({
+                        where: {
+                            conversationId: conversation.id,
+                            direction: "inbound",
+                            botProcessedAt: null,
+                            botBatchId: null,
+                            botInputText: { not: null },
+                        },
+                        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+                        select: { createdAt: true },
+                    });
+                    const { enqueueBotReplyBatch } = await import("@/lib/bot-reply-queue");
+                    await enqueueBotReplyBatch({
+                        tenantId: source?.tenantId || undefined,
+                        conversationId: conversation.id,
+                        windowMs: sourceSettings.messageBatchWindowMs,
+                        maxWaitMs: sourceSettings.messageBatchMaxWaitMs,
+                        firstPendingAt: firstPendingMessage?.createdAt || message.createdAt,
+                    });
+                } else {
+                    await prisma.message.update({
+                        where: { id: message.id },
+                        data: { botProcessedAt: new Date() },
+                    });
+                    void maybeSendAutomatedReply(conversation.id, message.id, botInputText, attribution);
+                }
+            } else {
+                await prisma.message.update({
+                    where: { id: message.id },
+                    data: { botProcessedAt: new Date() },
+                });
             }
         } catch (botError) {
             console.error("[Chatbot] Error scheduling automated reply:", botError);
+            void maybeSendAutomatedReply(conversation.id, message.id, botInputText, attribution)
+                .catch((error) => {
+                    console.error("[Chatbot] Fallback automated reply failed:", error);
+                })
+                .finally(() => prisma.message.update({
+                    where: { id: message.id },
+                    data: { botProcessedAt: new Date(), botBatchId: null },
+                }).catch(() => undefined),
+            );
         }
 
-        // ── AI Contact Enrichment (fire-and-forget) ──
-        enrichContactFromMessage(contact.id, botInputText || text).catch((err) => {
-            console.error("[AI Enrichment] Background enrichment failed:", err);
-        });
+        // When batching is active, enrichment runs once with the same combined text
+        // inside processQueuedInboundBatch instead of making one AI call per fragment.
+        if (!sourceSettings.messageBatchingEnabled) {
+            enrichContactFromMessage(contact.id, botInputText || text).catch((err) => {
+                console.error("[AI Enrichment] Background enrichment failed:", err);
+            });
+        }
 
         revalidatePath("/dashboard/inbox");
         return { contact, conversation, message };

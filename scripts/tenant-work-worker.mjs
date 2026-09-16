@@ -242,13 +242,29 @@ async function processWebhookEvent(work) {
     if (!event || !event.tenantId || event.status === "IGNORED" || event.status === "PROCESSED") return;
     if (event.tenantId !== work.tenantId) throw new Error("Webhook work item tenant mismatch.");
     await control.query(`UPDATE "WebhookEvent" SET "status" = 'PROCESSING', "processingError" = NULL WHERE "id" = $1`, [event.id]);
-    const db = await tenantPool(event.tenantId);
-    try {
-        if (event.payload?.kind === "message") await applyMessage(db, event);
+    if (event.payload?.kind === "message" && event.payload?.direction !== "outbound") {
+        const internalUrl = process.env.TENANT_WEB_INTERNAL_URL?.trim()?.replace(/\/+$/, "") || "";
+        const secret = process.env.SECURITY_HASH_SALT?.trim() || "";
+        if (!internalUrl || !secret) throw new Error("Tenant inbound processing endpoint is not configured.");
+        const response = await fetch(`${internalUrl}/api/internal/tenant-inbound-message`, {
+            method: "POST",
+            headers: {
+                "content-type": "application/json",
+                "x-tenant-worker-secret": secret,
+            },
+            body: JSON.stringify({ tenantId: event.tenantId, webhookEventId: event.id }),
+            signal: AbortSignal.timeout(90_000),
+        });
+        if (!response.ok) throw new Error(`Tenant inbound processing returned HTTP ${response.status}.`);
+    } else {
+        const db = await tenantPool(event.tenantId);
+        try {
+            if (event.payload?.kind === "message") await applyMessage(db, event);
         else if (event.payload?.kind === "status") await applyStatus(db, event);
         else if (event.payload?.kind === "reaction") await applyReaction(db, event);
-    } finally {
-        await db.end();
+        } finally {
+            await db.end();
+        }
     }
     await control.query(
         `UPDATE "WebhookEvent" SET "status" = 'PROCESSED', "processedAt" = NOW(), "processingError" = NULL WHERE "id" = $1`,
