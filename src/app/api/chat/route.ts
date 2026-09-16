@@ -116,7 +116,10 @@ export async function GET(request: NextRequest) {
             // Reverse so they are chronological for UI
             return NextResponse.json(messages.reverse());
         } else {
-            const conversationWhere: Prisma.ConversationWhereInput = {};
+            // The CRM inbox is intentionally limited to one-to-one conversations.
+            // Group, broadcast and newsletter events are rejected at ingestion too,
+            // but this remains a defense-in-depth filter for historical records.
+            const conversationWhere: Prisma.ConversationWhereInput = { isGroup: false };
             if (updatedSince) {
                 // Apply a small overlap window to avoid missing updates due clock skew.
                 conversationWhere.updatedAt = { gt: new Date(updatedSince.getTime() - 1000) };

@@ -41,3 +41,20 @@ test("ignora eventos de protocolo en vez de mostrarlos como mensajes", () => {
 
     assert.equal(normalized.payload.kind, "ignored");
 });
+
+test("ignora mensajes de grupos aunque SenderAlt sea un telefono directo", () => {
+    const normalized = normalizeWuzapiWebhook({
+        event: {
+            Info: {
+                ID: "wamid-group-1",
+                IsFromMe: false,
+                Chat: "120363000000000000@g.us",
+                SenderAlt: "5214794559238@s.whatsapp.net",
+            },
+            PushName: "Participante",
+            Message: { Conversation: "Mensaje del grupo" },
+        },
+    }, "tenant-instance", "fallback");
+
+    assert.equal(normalized.payload.kind, "ignored");
+});

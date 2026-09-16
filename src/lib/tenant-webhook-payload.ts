@@ -24,6 +24,32 @@ function boolean(value: unknown) {
     return false;
 }
 
+function containsNonDirectJid(value: unknown): boolean {
+    if (!value) return false;
+    if (typeof value === "string") {
+        const normalized = value.trim().toLowerCase();
+        return normalized.includes("@g.us")
+            || normalized.includes("@broadcast")
+            || normalized.includes("@newsletter");
+    }
+    if (typeof value === "object") {
+        return Object.values(record(value)).some((entry) => containsNonDirectJid(entry));
+    }
+    return false;
+}
+
+function isNonDirectWuzapiChat(info: JsonRecord) {
+    if (boolean(field(info, "IsGroup"))) return true;
+
+    return [
+        field(info, "Chat"),
+        field(info, "RemoteJid"),
+        field(info, "Sender"),
+        field(info, "Recipient"),
+        field(info, "MessageSource"),
+    ].some((value) => containsNonDirectJid(value));
+}
+
 function field(value: JsonRecord, key: string) {
     const direct = value[key];
     if (direct !== undefined) return direct;
@@ -179,9 +205,10 @@ export function normalizeWuzapiWebhook(payload: unknown, externalAccountId: stri
                     : messageType === "document" ? "[Documento]"
                         : "");
     const isProtocolEvent = Boolean(field(message, "protocolMessage"));
+    const isNonDirectChat = isNonDirectWuzapiChat(info);
     return {
         providerEventId,
-        payload: phone && Object.keys(info).length > 0 && content && !isProtocolEvent
+        payload: phone && Object.keys(info).length > 0 && content && !isProtocolEvent && !isNonDirectChat
             ? {
                 kind: "message", sourceType: "wuzapi", sourceId: externalAccountId, providerMessageId: rawId || undefined,
                 phone, contactName, content, messageType,
