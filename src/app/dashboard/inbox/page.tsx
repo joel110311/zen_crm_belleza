@@ -1487,7 +1487,6 @@ export default function InboxPage() {
     const oldestConversationCursorRef = useRef<string | null>(null);
     const hasMoreConversationsRef = useRef(true);
     const isLoadingMoreConversationsRef = useRef(false);
-    const conversationsPollInFlightRef = useRef(false);
 
     // Ref to keep the selected chat ID accessible inside polling closures
     const selectedChatIdRef = useRef<string | null>(null);
@@ -1665,6 +1664,10 @@ export default function InboxPage() {
     // ──── Fetch conversations ────
     useEffect(() => {
         let disposed = false;
+        // Keep the request lock inside this effect instance. The tenant shell can
+        // replace the search params during hydration; a shared ref left the new
+        // effect unable to perform its first request until the 60 s full resync.
+        let conversationRequestInFlight = false;
 
         const updateConversationCursor = (items: Conversation[]) => {
             for (const conversation of items) {
@@ -1679,9 +1682,9 @@ export default function InboxPage() {
         const fetchConversations = async (mode: "full" | "delta") => {
             if (disposed) return;
             if (mode === "delta" && !conversationsCursorRef.current) return;
-            if (conversationsPollInFlightRef.current) return;
+            if (conversationRequestInFlight) return;
 
-            conversationsPollInFlightRef.current = true;
+            conversationRequestInFlight = true;
 
             try {
                 const url = new URL("/api/chat", window.location.origin);
@@ -1823,14 +1826,16 @@ export default function InboxPage() {
                     );
                 }
             } finally {
-                conversationsPollInFlightRef.current = false;
+                conversationRequestInFlight = false;
             }
         };
 
         void fetchConversations("full");
 
         const deltaInterval = setInterval(() => {
-            void fetchConversations("delta");
+            // If the first request was interrupted by a tenant-navigation
+            // hydration, retry a full snapshot instead of waiting one minute.
+            void fetchConversations(conversationsCursorRef.current ? "delta" : "full");
         }, INBOX_DELTA_POLL_INTERVAL_MS);
 
         const fullResyncInterval = setInterval(() => {
