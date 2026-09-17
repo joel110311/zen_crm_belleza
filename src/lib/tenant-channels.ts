@@ -5,6 +5,7 @@ import { getControlDb } from "@/lib/control-db";
 import { hashSecurityIdentifier, safeSecretEqual } from "@/lib/security";
 import { decryptChannelSecret, encryptChannelSecret } from "@/lib/tenant-channel-secrets";
 import { TenantServiceError } from "@/lib/tenant-services/context";
+import { normalizeMetaRecipient, normalizeWuzapiRecipient } from "@/lib/phone";
 
 type ChannelStatePayload = {
     v: 1;
@@ -422,8 +423,8 @@ export async function sendTenantChannelText(params: {
     to: string;
     body: string;
 }) {
-    const phone = params.to.replace(/\D/g, "");
     if (params.sourceType === "meta") {
+        const phone = normalizeMetaRecipient(params.to);
         const connection = await connectedTenantChannel(params.tenantId, "META_CLOUD");
         const accessToken = connectionToken(connection);
         const payload = await graphRequest<{ messages?: Array<{ id?: string }> }>(metaConfig(), {
@@ -441,6 +442,7 @@ export async function sendTenantChannelText(params: {
         return { Id: payload.messages?.[0]?.id || null };
     }
 
+    const phone = normalizeWuzapiRecipient(params.to);
     const connection = await connectedTenantChannel(params.tenantId, "WUZAPI");
     return qrGatewayRequest<{ Id?: string }>({
         path: "/chat/send/text",
@@ -461,8 +463,8 @@ export async function sendTenantChannelMedia(params: {
     fileName?: string;
     mimeType?: string;
 }) {
-    const phone = params.to.replace(/\D/g, "");
     if (params.sourceType === "meta") {
+        const phone = normalizeMetaRecipient(params.to);
         if (!params.link) throw new Error("La URL pública del archivo es obligatoria para WhatsApp oficial.");
         const connection = await connectedTenantChannel(params.tenantId, "META_CLOUD");
         const accessToken = connectionToken(connection);
@@ -485,6 +487,7 @@ export async function sendTenantChannelMedia(params: {
     }
 
     if (!params.dataUrl) throw new Error("El archivo no está disponible para la conexión mediante QR.");
+    const phone = normalizeWuzapiRecipient(params.to);
     const connection = await connectedTenantChannel(params.tenantId, "WUZAPI");
     const field = params.mediaType === "image" ? "Image"
         : params.mediaType === "audio" ? "Audio"

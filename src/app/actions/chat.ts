@@ -26,7 +26,8 @@ import {
     resolveBotBatchCompletion,
     type BotReplyMessageEvidence,
 } from "@/lib/bot-reply-outcome";
-import { buildPhoneMatchClauses, normalizePhoneDigits } from "@/lib/phone";
+import { normalizePhoneDigits } from "@/lib/phone";
+import { findAndConsolidateContact } from "@/lib/contact-deduplication";
 import { sendChannelMedia, sendChannelText } from "@/lib/channel-delivery";
 import {
     normalizeMessageSourceType,
@@ -2653,12 +2654,9 @@ export async function processInboundMessage(
         }
 
         const normalizedCustomerName = normalizeContactName(customerName);
-        const phoneClauses = buildPhoneMatchClauses([normalizedFrom]);
 
         // Find or create contact by phone number
-        let contact = phoneClauses.length > 0 ? await prisma.contact.findFirst({
-            where: { OR: phoneClauses },
-        }) : null;
+        let contact = await findAndConsolidateContact([normalizedFrom]);
 
         if (!contact) {
             contact = await prisma.contact.create({

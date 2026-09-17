@@ -6,6 +6,7 @@ import { formatPhoneForDisplay } from "@/lib/operation-context";
 import type { Prisma } from "@prisma/client";
 import { auth } from "@/lib/auth";
 import { ensurePermissionResponse } from "@/lib/authz";
+import { consolidateConversationsList } from "@/lib/contact-deduplication";
 
 let lastAvatarRefreshKickAt = 0;
 const CHAT_AVATAR_REFRESH_KICK_INTERVAL_MS = 30 * 60 * 1000;
@@ -127,46 +128,59 @@ export async function GET(request: NextRequest) {
                 conversationWhere.updatedAt = { lt: beforeUpdatedAt };
             }
 
-            // Get all conversations with last message
-            const conversations = await prisma.conversation.findMany({
-                where: conversationWhere,
-                include: {
-                    contact: {
-                        include: {
-                            deals: {
-                                orderBy: { updatedAt: "desc" },
-                                take: 1,
-                                include: {
-                                    stage: true,
-                                    intelligence: true,
-                                },
+            const conversationInclude = {
+                contact: {
+                    include: {
+                        deals: {
+                            orderBy: { updatedAt: "desc" as const },
+                            take: 1,
+                            include: {
+                                stage: true,
+                                intelligence: true,
                             },
                         },
-                    },
-                    assignedUser: {
-                        select: {
-                            id: true,
-                            name: true,
-                            email: true,
-                            role: true,
-                        },
-                    },
-                    messages: {
-                        where: {
-                            type: {
-                                not: "system",
-                            },
-                        },
-                        orderBy: [
-                            { createdAt: "desc" },
-                            { id: "desc" },
-                        ],
-                        take: 1,
                     },
                 },
+                assignedUser: {
+                    select: {
+                        id: true,
+                        name: true,
+                        email: true,
+                        role: true,
+                    },
+                },
+                messages: {
+                    where: {
+                        type: {
+                            not: "system",
+                        },
+                    },
+                    orderBy: [
+                        { createdAt: "desc" as const },
+                        { id: "desc" as const },
+                    ],
+                    take: 1,
+                },
+            };
+
+            // Get all conversations with last message
+            let conversations = await prisma.conversation.findMany({
+                where: conversationWhere,
+                include: conversationInclude,
                 orderBy: { updatedAt: "desc" },
                 take: conversationLimit,
             });
+
+            // Check if any loaded conversations belong to duplicate contacts sharing the same Mexican national number
+            const anyMerged = await consolidateConversationsList(conversations, prisma);
+            if (anyMerged) {
+                conversations = await prisma.conversation.findMany({
+                    where: conversationWhere,
+                    include: conversationInclude,
+                    orderBy: { updatedAt: "desc" },
+                    take: conversationLimit,
+                });
+            }
 
             // Transform for frontend
             const result = conversations.map((conv) => ({

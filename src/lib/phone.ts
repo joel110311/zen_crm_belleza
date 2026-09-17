@@ -68,6 +68,56 @@ export function resolvePhoneLadaContext(value: string | null | undefined): Phone
     };
 }
 
+export function normalizeWuzapiRecipient(phone: string | null | undefined): string {
+    const trimmed = (phone || "").trim();
+    if (!trimmed) return "";
+
+    if (trimmed.startsWith("me:") || trimmed.includes("@")) {
+        return trimmed.replace(/\s+/g, "");
+    }
+
+    const digits = trimmed.replace(/\D/g, "");
+    if (!digits) return "";
+
+    // WhatsApp linked-device JIDs for Mexico commonly require the legacy mobile
+    // marker `1` after country code 52.
+    if (digits.length === 10) {
+        return `521${digits}`;
+    }
+
+    if (digits.length === 12 && digits.startsWith("52") && !digits.startsWith("521")) {
+        return `521${digits.slice(2)}`;
+    }
+
+    return digits;
+}
+
+export function normalizeMetaRecipient(phone: string | null | undefined): string {
+    const digits = (phone || "").replace(/\D/g, "");
+    if (!digits) return "";
+
+    // Meta WhatsApp Cloud API for Mexico requires E.164 WITHOUT the legacy mobile `1`:
+    // 52 + 10 digits (12 digits total).
+    if (digits.length === 13 && digits.startsWith("521")) {
+        return `52${digits.slice(3)}`;
+    }
+
+    if (digits.length === 10) {
+        return `52${digits}`;
+    }
+
+    return digits;
+}
+
+export function extractNational10(value: string | null | undefined): string {
+    const digits = normalizePhoneDigits(value);
+    if (!digits) return "";
+    if (digits.length === 13 && digits.startsWith("521")) return digits.slice(3);
+    if (digits.length === 12 && digits.startsWith("52")) return digits.slice(2);
+    if (digits.length === 10) return digits;
+    return digits.length > 10 ? digits.slice(-10) : digits;
+}
+
 export function uniquePhoneCandidates(values: Array<string | null | undefined>) {
     const seen = new Set<string>();
 
@@ -83,22 +133,60 @@ export function uniquePhoneCandidates(values: Array<string | null | undefined>) 
 
 export function buildPhoneMatchClauses(values: Array<string | null | undefined>) {
     const candidates = uniquePhoneCandidates(values);
-    const clauses: Array<{ phone: string } | { phone: { endsWith: string } }> = [];
+    const clauses: Array<{ phone: string } | { phone: { endsWith: string } } | { phone: { contains: string } }> = [];
     const seen = new Set<string>();
 
-    for (const candidate of candidates) {
-        const exactKey = `eq:${candidate}`;
-        if (!seen.has(exactKey)) {
-            clauses.push({ phone: candidate });
-            seen.add(exactKey);
+    const addClause = (clause: { phone: string } | { phone: { endsWith: string } } | { phone: { contains: string } }, key: string) => {
+        if (!seen.has(key)) {
+            clauses.push(clause);
+            seen.add(key);
         }
+    };
 
-        const suffix = getPhoneSuffix(candidate);
-        if (suffix && suffix !== candidate) {
-            const suffixKey = `suffix:${suffix}`;
-            if (!seen.has(suffixKey)) {
-                clauses.push({ phone: { endsWith: suffix } });
-                seen.add(suffixKey);
+    for (const rawCandidate of candidates) {
+        const candidate = normalizePhoneDigits(rawCandidate);
+        if (!candidate) continue;
+
+        addClause({ phone: candidate }, `eq:${candidate}`);
+        addClause({ phone: `+${candidate}` }, `eq:+${candidate}`);
+
+        const national10 = extractNational10(candidate);
+        if (national10 && national10.length === 10) {
+            // Equivalent digit representations
+            const eqCandidates = [
+                national10,
+                `52${national10}`,
+                `521${national10}`,
+                `+${national10}`,
+                `+52${national10}`,
+                `+521${national10}`,
+                // Formatted representations often stored from UI inputs or contacts forms
+                `+52 ${national10.slice(0, 3)} ${national10.slice(3, 6)} ${national10.slice(6)}`,
+                `+52 1${national10.slice(0, 2)} ${national10.slice(2, 5)} ${national10.slice(5)}`,
+                `+52 1 ${national10.slice(0, 3)} ${national10.slice(3, 6)} ${national10.slice(6)}`,
+                `${national10.slice(0, 3)} ${national10.slice(3, 6)} ${national10.slice(6)}`,
+                `${national10.slice(0, 3)}-${national10.slice(3, 6)}-${national10.slice(6)}`,
+                `(${national10.slice(0, 3)}) ${national10.slice(3, 6)}-${national10.slice(6)}`,
+                `+52 (${national10.slice(0, 3)}) ${national10.slice(3, 6)}-${national10.slice(6)}`,
+            ];
+
+            for (const eq of eqCandidates) {
+                addClause({ phone: eq }, `eq:${eq}`);
+            }
+
+            // Suffix and contains clauses
+            addClause({ phone: { endsWith: national10 } }, `endsWith:${national10}`);
+            addClause({ phone: { contains: national10 } }, `contains:${national10}`);
+
+            // Formatted suffixes e.g. " 268 3928" or "268 3928"
+            const last7Formatted = `${national10.slice(3, 6)} ${national10.slice(6)}`;
+            addClause({ phone: { endsWith: last7Formatted } }, `endsWith:${last7Formatted}`);
+            const last7Hyphen = `${national10.slice(3, 6)}-${national10.slice(6)}`;
+            addClause({ phone: { endsWith: last7Hyphen } }, `endsWith:${last7Hyphen}`);
+        } else {
+            const suffix = getPhoneSuffix(candidate);
+            if (suffix && suffix !== candidate) {
+                addClause({ phone: { endsWith: suffix } }, `endsWith:${suffix}`);
             }
         }
     }

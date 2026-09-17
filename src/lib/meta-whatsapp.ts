@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import { prisma } from "@/lib/db";
 import { getSystemSettingsOrDefaults } from "@/lib/system-settings";
+import { normalizeMetaRecipient } from "@/lib/phone";
 
 const DEFAULT_GRAPH_API_VERSION = "v26.0";
 
@@ -211,7 +212,7 @@ export async function sendMetaTextMessage(to: string, body: string) {
         path: `${credentials.phoneNumberId}/messages`,
         accessToken: credentials.accessToken,
         method: "POST",
-        body: { messaging_product: "whatsapp", recipient_type: "individual", to: to.replace(/\D/g, ""), type: "text", text: { preview_url: false, body } },
+        body: { messaging_product: "whatsapp", recipient_type: "individual", to: normalizeMetaRecipient(to), type: "text", text: { preview_url: false, body } },
     });
     return { Id: payload.messages?.[0]?.id || null };
 }
@@ -232,7 +233,7 @@ export async function sendMetaMediaMessage(params: {
         path: `${credentials.phoneNumberId}/messages`,
         accessToken: credentials.accessToken,
         method: "POST",
-        body: { messaging_product: "whatsapp", recipient_type: "individual", to: params.to.replace(/\D/g, ""), type: params.mediaType, [params.mediaType]: media },
+        body: { messaging_product: "whatsapp", recipient_type: "individual", to: normalizeMetaRecipient(params.to), type: params.mediaType, [params.mediaType]: media },
     });
     return { Id: payload.messages?.[0]?.id || null };
 }
@@ -252,7 +253,7 @@ export async function sendMetaTemplateMessage(params: {
         body: {
             messaging_product: "whatsapp",
             recipient_type: "individual",
-            to: params.to.replace(/\D/g, ""),
+            to: normalizeMetaRecipient(params.to),
             type: "template",
             template: {
                 name: params.templateName,

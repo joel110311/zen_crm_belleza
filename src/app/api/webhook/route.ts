@@ -12,6 +12,7 @@ import { getBearerToken, safeSecretEqual } from "@/lib/security";
 import { downloadWuzapiMedia } from "@/lib/wuzapi";
 import { refreshWhatsAppAvatarForContact } from "@/lib/whatsapp-avatar";
 import { findOrCreateActiveConversationForContactSource } from "@/lib/source-conversations";
+import { findAndConsolidateContact } from "@/lib/contact-deduplication";
 
 type JsonObject = Record<string, unknown>;
 
@@ -1107,14 +1108,7 @@ function resolvePhoneCandidatesFromInfo(info: JsonObject, isFromMe: boolean) {
 }
 
 async function findContactByPhoneCandidates(phoneCandidates: string[]) {
-    const phoneClauses = buildPhoneMatchClauses(phoneCandidates);
-    if (phoneClauses.length === 0) return null;
-
-    return prisma.contact.findFirst({
-        where: {
-            OR: phoneClauses,
-        },
-    });
+    return findAndConsolidateContact(phoneCandidates);
 }
 
 function resolveProviderMessageId(info: JsonObject) {

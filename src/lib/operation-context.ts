@@ -157,9 +157,16 @@ export function parsePhoneByCountry(value?: string | null, defaultCountryCode?: 
     }
 
     const prefix = matched.callingCode.replace(/\D/g, "");
+    let nationalNumber = digits.slice(prefix.length);
+
+    // Special case for Mexico: mobile numbers frequently arrive with legacy mobile marker `1` (521 + 10 digits = 13 digits)
+    if (matched.code === "MX" && nationalNumber.length === 11 && nationalNumber.startsWith("1")) {
+        nationalNumber = nationalNumber.slice(1);
+    }
+
     return {
         country: matched,
-        nationalNumber: digits.slice(prefix.length),
+        nationalNumber,
         fullNumber: digits,
     };
 }
