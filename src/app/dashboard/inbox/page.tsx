@@ -2735,7 +2735,10 @@ export default function InboxPage() {
                     sourceId: outboundSourceType === selectedChat.sourceType ? selectedChat.sourceId || null : null,
                 }),
             });
-            if (!res.ok) throw new Error("Failed");
+            if (!res.ok) {
+                const errData = await res.json().catch(() => ({}));
+                throw new Error(errData.error || "No se pudo enviar el mensaje.");
+            }
             const result = await res.json();
             if (result?.message) {
                 const persistedMessage = normalizeMessageRecord(result.message);
@@ -2748,6 +2751,8 @@ export default function InboxPage() {
             }
         } catch (error) {
             console.error("sendMessage error:", error);
+            const message = error instanceof Error ? error.message : "Error inesperado";
+            alert(`Error al enviar mensaje: ${message}`);
             setMessages((prev) => prev.filter((message) => message.id !== optimistic.id));
         }
     };

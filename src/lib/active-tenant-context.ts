@@ -21,8 +21,22 @@ type ActiveTenantIdentity = {
     userId: string;
 };
 
+function isNoRequestContextError(error: unknown) {
+    return error instanceof Error && (
+        error.message.includes("outside a request scope")
+        || error.message.includes("was called outside a request")
+        || error.message.includes("Dynamic server usage")
+    );
+}
+
 const readActiveTenantIdentity = cache(async (): Promise<ActiveTenantIdentity | null> => {
-    const requestHeaders = await headers();
+    let requestHeaders: Headers;
+    try {
+        requestHeaders = await headers();
+    } catch (error) {
+        if (isNoRequestContextError(error)) return null;
+        throw error;
+    }
     if (requestHeaders.get(TENANT_SCOPE_HEADER) !== "control") return null;
 
     const slug = normalizeRequestTenantSlug(requestHeaders.get(TENANT_SLUG_HEADER));

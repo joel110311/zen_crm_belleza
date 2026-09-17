@@ -2,6 +2,7 @@ import "server-only";
 
 import { getActiveTenantRuntimeContext } from "@/lib/active-tenant-context";
 import { getControlDb } from "@/lib/control-db";
+import { getScopedTenantId } from "@/lib/routed-prisma";
 
 type UsageAllowance = { tenantId: string; planId: string | null; periodStart: Date; periodEnd: Date; limit: number | null };
 
@@ -12,18 +13,38 @@ function calendarMonth(now: Date) {
     };
 }
 
+function isNoRequestContextError(error: unknown) {
+    return error instanceof Error && (
+        error.message.includes("outside a request scope")
+        || error.message.includes("was called outside a request")
+    );
+}
+
+async function usageTenantId() {
+    const scopedTenantId = getScopedTenantId();
+    if (scopedTenantId && scopedTenantId !== "legacy") return scopedTenantId;
+    try {
+        return (await getActiveTenantRuntimeContext("read"))?.tenantId || null;
+    } catch (error) {
+        // Redis and scheduled workers have no Next.js request store. They must use the explicit
+        // tenant scope installed by runWithTenantPrisma instead of reading request headers.
+        if (isNoRequestContextError(error)) return null;
+        throw error;
+    }
+}
+
 async function allowance(): Promise<UsageAllowance | null> {
-    const context = await getActiveTenantRuntimeContext("read");
-    if (!context) return null;
+    const tenantId = await usageTenantId();
+    if (!tenantId) return null;
     const now = new Date();
     const db = getControlDb();
     const [subscription, trial] = await Promise.all([
         db.subscription.findFirst({
-            where: { tenantId: context.tenantId, status: { in: ["ACTIVE", "TRIALING"] } },
+            where: { tenantId, status: { in: ["ACTIVE", "TRIALING"] } },
             orderBy: { updatedAt: "desc" },
             select: { planId: true, currentPeriodStartsAt: true, currentPeriodEndsAt: true, plan: { select: { limits: true, features: true } } },
         }),
-        db.trial.findUnique({ where: { tenantId: context.tenantId }, select: { status: true, startsAt: true, endsAt: true } }),
+        db.trial.findUnique({ where: { tenantId }, select: { status: true, startsAt: true, endsAt: true } }),
     ]);
     if (subscription?.plan) {
         const limits = subscription.plan.limits && typeof subscription.plan.limits === "object" && !Array.isArray(subscription.plan.limits)
@@ -33,7 +54,7 @@ async function allowance(): Promise<UsageAllowance | null> {
         if (features.chatbot !== true) throw new Error("Tu plan actual no incluye respuestas del chatbot.");
         const fallback = calendarMonth(now);
         return {
-            tenantId: context.tenantId,
+            tenantId,
             planId: subscription.planId,
             periodStart: subscription.currentPeriodStartsAt || fallback.periodStart,
             periodEnd: subscription.currentPeriodEndsAt || fallback.periodEnd,
@@ -41,7 +62,7 @@ async function allowance(): Promise<UsageAllowance | null> {
         };
     }
     if (trial && ["ACTIVE", "ENDING"].includes(trial.status) && trial.endsAt > now) {
-        return { tenantId: context.tenantId, planId: null, periodStart: trial.startsAt, periodEnd: trial.endsAt, limit: 500 };
+        return { tenantId, planId: null, periodStart: trial.startsAt, periodEnd: trial.endsAt, limit: 500 };
     }
     throw new Error("El chatbot requiere una prueba activa o un plan que lo incluya.");
 }
