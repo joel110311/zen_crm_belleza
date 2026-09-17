@@ -2876,7 +2876,7 @@ export default function InboxPage() {
                             />
                             <NewContactDialog
                                 triggerLabel="Nuevo"
-                                triggerClassName="absolute right-1 top-1/2 h-10 -translate-y-1/2 rounded-xl px-3 shadow-sm"
+                                triggerClassName="absolute right-1 top-1/2 h-10 -translate-y-1/2 rounded-xl px-3 shadow-sm hover:-translate-y-1/2 hover:shadow-md"
                                 title="Nuevo chat"
                                 description="Captura el nombre y el teléfono para iniciar una conversación."
                                 submitLabel="Crear y abrir chat"
