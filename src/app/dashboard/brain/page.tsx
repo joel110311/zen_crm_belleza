@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
-import { Bot, BrainCircuit, Loader2, MessagesSquare, Save, SearchCheck, Sparkles } from "lucide-react";
+import { Bot, BrainCircuit, Loader2, MessagesSquare, RotateCcw, Save, SearchCheck, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -28,6 +28,29 @@ import {
     type BusinessDayKey,
     type BusinessWeeklySchedule,
 } from "@/lib/calendar/business-hours";
+
+type BrainFormState = {
+    isBotEnabled: boolean;
+    botReplyDelayMaxSeconds: number;
+    messageBatchingEnabled: boolean;
+    messageBatchWindowMs: string;
+    messageBatchMaxWaitMs: string;
+    agentName: string;
+    agentPrompt: string;
+    welcomeMessage: string;
+    welcomeRepeatHours: string;
+    openaiModel: string;
+    knowledgeTopK: string;
+    temperature: number;
+    businessTimeZone: string;
+    businessWeeklySchedule: BusinessWeeklySchedule;
+    leadScoringEnabled: boolean;
+    captureLeadName: boolean;
+    captureLeadEmail: boolean;
+    leadInterestThreshold: number;
+    escalationEnabled: boolean;
+    escalationPhone: string;
+};
 
 export default function BrainConfigPage() {
     const pathname = usePathname();
@@ -56,7 +79,55 @@ export default function BrainConfigPage() {
     const [leadInterestThreshold, setLeadInterestThreshold] = useState([45]);
     const [escalationEnabled, setEscalationEnabled] = useState(false);
     const [escalationPhone, setEscalationPhone] = useState("");
+    const [savedFormState, setSavedFormState] = useState<BrainFormState | null>(null);
     const { toast } = useToast();
+
+    const currentFormState = useMemo<BrainFormState>(() => ({
+        isBotEnabled,
+        botReplyDelayMaxSeconds,
+        messageBatchingEnabled,
+        messageBatchWindowMs,
+        messageBatchMaxWaitMs,
+        agentName,
+        agentPrompt,
+        welcomeMessage,
+        welcomeRepeatHours,
+        openaiModel,
+        knowledgeTopK,
+        temperature: temperature[0] ?? 0.3,
+        businessTimeZone,
+        businessWeeklySchedule,
+        leadScoringEnabled,
+        captureLeadName,
+        captureLeadEmail,
+        leadInterestThreshold: leadInterestThreshold[0] ?? 45,
+        escalationEnabled,
+        escalationPhone,
+    }), [
+        agentName,
+        agentPrompt,
+        botReplyDelayMaxSeconds,
+        businessTimeZone,
+        businessWeeklySchedule,
+        captureLeadEmail,
+        captureLeadName,
+        escalationEnabled,
+        escalationPhone,
+        isBotEnabled,
+        knowledgeTopK,
+        leadInterestThreshold,
+        leadScoringEnabled,
+        messageBatchMaxWaitMs,
+        messageBatchWindowMs,
+        messageBatchingEnabled,
+        openaiModel,
+        temperature,
+        welcomeMessage,
+        welcomeRepeatHours,
+    ]);
+
+    const isDirty = savedFormState !== null
+        && JSON.stringify(currentFormState) !== JSON.stringify(savedFormState);
 
     useEffect(() => {
         const loadSettings = async () => {
@@ -102,6 +173,24 @@ export default function BrainConfigPage() {
         loadSettings();
     }, []);
 
+    useEffect(() => {
+        if (!isLoading && savedFormState === null) {
+            setSavedFormState(currentFormState);
+        }
+    }, [currentFormState, isLoading, savedFormState]);
+
+    useEffect(() => {
+        if (!isDirty) return;
+
+        const warnBeforeLeaving = (event: BeforeUnloadEvent) => {
+            event.preventDefault();
+            event.returnValue = "";
+        };
+
+        window.addEventListener("beforeunload", warnBeforeLeaving);
+        return () => window.removeEventListener("beforeunload", warnBeforeLeaving);
+    }, [isDirty]);
+
     const updateBusinessDay = (
         dayKey: BusinessDayKey,
         patch: Partial<BusinessWeeklySchedule[BusinessDayKey]>,
@@ -116,6 +205,7 @@ export default function BrainConfigPage() {
     };
 
     const handleSave = async () => {
+        const formStateBeingSaved = currentFormState;
         setIsSaving(true);
         try {
             const normalizedBusinessHours = normalizeBusinessHours({
@@ -161,6 +251,8 @@ export default function BrainConfigPage() {
                 throw new Error(result.error);
             }
 
+            setSavedFormState(formStateBeingSaved);
+
             toast({
                 title: "Cerebro actualizado",
                 description: "El agente ya usara esta configuracion en WhatsApp.",
@@ -174,6 +266,34 @@ export default function BrainConfigPage() {
         } finally {
             setIsSaving(false);
         }
+    };
+
+    const handleCancelChanges = () => {
+        if (!savedFormState || isSaving) return;
+
+        setIsBotEnabled(savedFormState.isBotEnabled);
+        setBotReplyDelayMaxSeconds(savedFormState.botReplyDelayMaxSeconds);
+        setMessageBatchingEnabled(savedFormState.messageBatchingEnabled);
+        setMessageBatchWindowMs(savedFormState.messageBatchWindowMs);
+        setMessageBatchMaxWaitMs(savedFormState.messageBatchMaxWaitMs);
+        setAgentName(savedFormState.agentName);
+        setAgentPrompt(savedFormState.agentPrompt);
+        setWelcomeMessage(savedFormState.welcomeMessage);
+        setWelcomeRepeatHours(savedFormState.welcomeRepeatHours);
+        setOpenaiModel(savedFormState.openaiModel);
+        setKnowledgeTopK(savedFormState.knowledgeTopK);
+        setTemperature([savedFormState.temperature]);
+        setBusinessTimeZone(savedFormState.businessTimeZone);
+        setBusinessWeeklySchedule(normalizeBusinessHours({
+            businessTimeZone: savedFormState.businessTimeZone,
+            businessWeeklySchedule: savedFormState.businessWeeklySchedule,
+        }).weeklySchedule);
+        setLeadScoringEnabled(savedFormState.leadScoringEnabled);
+        setCaptureLeadName(savedFormState.captureLeadName);
+        setCaptureLeadEmail(savedFormState.captureLeadEmail);
+        setLeadInterestThreshold([savedFormState.leadInterestThreshold]);
+        setEscalationEnabled(savedFormState.escalationEnabled);
+        setEscalationPhone(savedFormState.escalationPhone);
     };
 
     if (isLoading) {
@@ -190,7 +310,7 @@ export default function BrainConfigPage() {
         businessWeeklySchedule,
     });
     return (
-        <div className="mx-auto flex h-full max-w-[1280px] flex-col gap-4">
+        <div className={`mx-auto flex h-full max-w-[1280px] flex-col gap-4 ${isDirty ? "pb-28" : ""}`}>
             <div className="flex flex-col gap-4 rounded-xl border bg-card px-5 py-4 shadow-[0_12px_28px_-22px_rgba(15,23,42,0.25)] lg:flex-row lg:items-center lg:justify-between">
                 <div className="flex items-center gap-3">
                     <div className="h-11 w-11 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
@@ -204,10 +324,6 @@ export default function BrainConfigPage() {
                     </div>
                 </div>
 
-                <Button onClick={handleSave} disabled={isSaving} className="h-10 rounded-xl px-4">
-                    {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                    Guardar cambios
-                </Button>
             </div>
 
             <Tabs defaultValue="config" className="flex-1">
@@ -702,6 +818,40 @@ export default function BrainConfigPage() {
                     <AssistantPlayground />
                 </TabsContent>
             </Tabs>
+
+            {isDirty && (
+                <div
+                    role="region"
+                    aria-label="Cambios pendientes"
+                    className="fixed inset-x-4 bottom-4 z-50 mx-auto flex max-w-xl animate-in items-center justify-between gap-3 rounded-2xl border border-primary/25 bg-card/95 p-3 shadow-[0_24px_70px_-24px_rgba(15,23,42,0.65)] backdrop-blur-xl fade-in slide-in-from-bottom-4 sm:p-4"
+                >
+                    <div className="hidden min-w-0 sm:block">
+                        <p className="font-semibold text-foreground">Tienes cambios sin guardar</p>
+                        <p className="text-xs text-muted-foreground">Guárdalos o vuelve a la última configuración.</p>
+                    </div>
+                    <div className="flex w-full items-center gap-2 sm:w-auto">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            onClick={handleCancelChanges}
+                            disabled={isSaving}
+                            className="flex-1 sm:flex-none"
+                        >
+                            <RotateCcw className="h-4 w-4" />
+                            Cancelar
+                        </Button>
+                        <Button
+                            type="button"
+                            onClick={handleSave}
+                            disabled={isSaving}
+                            className="flex-1 sm:flex-none"
+                        >
+                            {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                            Guardar cambios
+                        </Button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
