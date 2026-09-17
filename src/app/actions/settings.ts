@@ -116,6 +116,7 @@ export async function updateSystemSettings(data: {
 
         revalidatePath("/dashboard/settings");
         revalidatePath("/dashboard/brain");
+        revalidatePath("/dashboard");
         revalidatePath("/dashboard/calendar");
         return { success: true };
     } catch (error) {

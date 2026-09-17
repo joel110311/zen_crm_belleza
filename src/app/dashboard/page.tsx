@@ -21,6 +21,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { DirectChatUnreadBadge } from "@/components/dashboard/direct-chat-unread-badge";
 import { AppointmentQuickActions } from "@/components/dashboard/appointment-quick-actions";
+import { AgentAutopilotControl } from "@/components/dashboard/agent-autopilot-control";
 import { WhatsAppIcon } from "@/components/icons/whatsapp-icon";
 import { prisma } from "@/lib/db";
 import { auth } from "@/lib/auth";
@@ -28,7 +29,7 @@ import { getContactFullName } from "@/lib/contact-name";
 import { getSystemSettingsOrDefaults } from "@/lib/system-settings";
 import { buildOperationContext } from "@/lib/operation-context";
 import { businessBoundsForDate, businessDayBounds, formatTimeLabel, normalizeBusinessHours, zonedDateTimeToUtc } from "@/lib/calendar/business-hours";
-import { normalizeRole } from "@/lib/permissions";
+import { hasPermission, normalizeRole } from "@/lib/permissions";
 
 export const dynamic = "force-dynamic";
 
@@ -369,10 +370,17 @@ export default async function DashboardPage({
     const rawTab = pickParam(resolvedSearchParams?.tab);
     const monthParam = pickParam(resolvedSearchParams?.month);
     const appointmentTab: AppointmentTab = rawTab === "today" ? "today" : "upcoming";
-    const sessionUser = session?.user as { id?: string; email?: string | null; name?: string | null; role?: string | null } | undefined;
+    const sessionUser = session?.user as {
+        id?: string;
+        email?: string | null;
+        name?: string | null;
+        role?: string | null;
+        permissions?: unknown;
+    } | undefined;
     const userName = sessionUser?.name || "Joel Venegas";
     const linkedSpecialist = await getLinkedSpecialist(sessionUser?.id, sessionUser?.email);
     const personalMode = normalizeRole(sessionUser?.role) === "PROFESIONAL" && Boolean(linkedSpecialist);
+    const canManageAi = hasPermission(sessionUser, "ai.manage");
     const businessHours = normalizeBusinessHours(settings);
     const todayBusinessBounds = businessBoundsForDate(new Date(), businessHours);
     const isBusinessOpen = todayBusinessBounds.isOpen
@@ -418,6 +426,8 @@ export default async function DashboardPage({
                 monthParam={monthParam}
                 personalMode={personalMode}
                 businessProfile={businessProfile}
+                agentAutopilotEnabled={settings.isBotEnabled}
+                canManageAi={canManageAi}
             />
         </>
     );
@@ -432,6 +442,8 @@ function DesktopDashboard({
     monthParam,
     personalMode,
     businessProfile,
+    agentAutopilotEnabled,
+    canManageAi,
 }: {
     data: Awaited<ReturnType<typeof getDashboardData>>;
     operationContext: DashboardOperationContext;
@@ -441,6 +453,8 @@ function DesktopDashboard({
     monthParam: string;
     personalMode: boolean;
     businessProfile: BusinessProfile;
+    agentAutopilotEnabled: boolean;
+    canManageAi: boolean;
 }) {
     return (
         <div className="dashboard-desktop hidden space-y-4 pb-8 lg:block">
@@ -449,7 +463,13 @@ function DesktopDashboard({
                     {personalMode && data.specialist ? (
                         <SpecialistProfileCard specialist={data.specialist} fallbackName={userName} />
                     ) : (
-                        <BusinessProfileCard business={businessProfile} team={data.team} appointmentsToday={data.stats.appointmentsToday} />
+                        <BusinessProfileCard
+                            business={businessProfile}
+                            team={data.team}
+                            appointmentsToday={data.stats.appointmentsToday}
+                            agentAutopilotEnabled={agentAutopilotEnabled}
+                            canManageAi={canManageAi}
+                        />
                     )}
                 </div>
                 <div className="dashboard-summary-focus">
@@ -829,10 +849,14 @@ function BusinessProfileCard({
     business,
     team,
     appointmentsToday,
+    agentAutopilotEnabled,
+    canManageAi,
 }: {
     business: BusinessProfile;
     team: Awaited<ReturnType<typeof getDashboardData>>["team"];
     appointmentsToday: number;
+    agentAutopilotEnabled: boolean;
+    canManageAi: boolean;
 }) {
     return (
         <Card className="h-full overflow-hidden rounded-3xl border border-border bg-card">
@@ -841,9 +865,12 @@ function BusinessProfileCard({
                     <span className="rounded-full border border-primary/20 bg-card/75 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.15em] text-primary">
                         Negocio
                     </span>
-                    <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-                        <Building2 className="h-4 w-4" />
-                    </span>
+                    <div className="ml-auto flex items-center gap-2">
+                        {canManageAi ? <AgentAutopilotControl initialEnabled={agentAutopilotEnabled} /> : null}
+                        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+                            <Building2 className="h-4 w-4" />
+                        </span>
+                    </div>
                 </div>
 
                 <div className="mt-5 flex items-center gap-4">
