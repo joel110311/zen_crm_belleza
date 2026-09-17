@@ -19,16 +19,30 @@ import { useFormStatus } from "react-dom";
 import { useToast } from "@/components/ui/use-toast";
 import { PhonePrefixInput } from "@/components/shared/phone-prefix-input";
 
-function SubmitButton() {
+function SubmitButton({ label }: { label: string }) {
     const { pending } = useFormStatus();
     return (
         <Button type="submit" disabled={pending}>
-            {pending ? "Guardando..." : "Guardar cliente"}
+            {pending ? "Guardando..." : label}
         </Button>
     );
 }
 
-export function NewContactDialog() {
+type NewContactDialogProps = {
+    triggerLabel?: string;
+    title?: string;
+    description?: string;
+    submitLabel?: string;
+    onCreated?: (result: { contactId: string; conversationId: string }) => void | Promise<void>;
+};
+
+export function NewContactDialog({
+    triggerLabel = "Nuevo cliente",
+    title = "Nuevo cliente",
+    description = "Captura únicamente los datos necesarios para atenderlo.",
+    submitLabel = "Guardar cliente",
+    onCreated,
+}: NewContactDialogProps = {}) {
     const [open, setOpen] = useState(false);
     const [phone, setPhone] = useState("");
 
@@ -36,10 +50,19 @@ export function NewContactDialog() {
 
     async function handleSubmit(formData: FormData) {
         const result = await createContact(formData);
-        if (result && result.success) {
-            toast({ title: "Cliente creado", description: "Ya puedes usarlo en chats, campañas y agenda." });
+        if (result?.success && result.contact && result.conversationId) {
+            toast({
+                title: triggerLabel === "Nuevo chat" ? "Chat creado" : "Cliente creado",
+                description: triggerLabel === "Nuevo chat"
+                    ? "La conversación ya está disponible en tu bandeja."
+                    : "Ya puedes usarlo en chats, campañas y agenda.",
+            });
             setOpen(false);
             setPhone("");
+            await onCreated?.({
+                contactId: result.contact.id,
+                conversationId: result.conversationId,
+            });
         } else {
             const message = result && "error" in result && typeof result.error === "string"
                 ? result.error
@@ -52,14 +75,14 @@ export function NewContactDialog() {
         <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
                 <Button>
-                    <Plus className="mr-2 h-4 w-4" /> Nuevo cliente
+                    <Plus className="mr-2 h-4 w-4" /> {triggerLabel}
                 </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-[425px]">
                 <DialogHeader>
-                    <DialogTitle>Nuevo cliente</DialogTitle>
+                    <DialogTitle>{title}</DialogTitle>
                     <DialogDescription>
-                        Captura únicamente los datos necesarios para atenderlo.
+                        {description}
                     </DialogDescription>
                 </DialogHeader>
                 <form action={handleSubmit}>
@@ -81,7 +104,7 @@ export function NewContactDialog() {
                         </div>
                     </div>
                     <DialogFooter>
-                        <SubmitButton />
+                        <SubmitButton label={submitLabel} />
                     </DialogFooter>
                 </form>
             </DialogContent>

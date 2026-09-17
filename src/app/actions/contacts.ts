@@ -404,7 +404,7 @@ export async function createContact(formData: FormData) {
     try {
         const settings = await getSystemSettingsOrDefaults();
         const wuzapiSourceId = resolveMessageSourceId("wuzapi", settings);
-        const contact = await prisma.$transaction(async (tx) => {
+        const result = await prisma.$transaction(async (tx) => {
             const createdContact = await tx.contact.create({
                 data: {
                     name,
@@ -424,7 +424,7 @@ export async function createContact(formData: FormData) {
                 },
             });
 
-            await tx.conversation.create({
+            const conversation = await tx.conversation.create({
                 data: {
                     contactId: createdContact.id,
                     status: "active",
@@ -434,11 +434,11 @@ export async function createContact(formData: FormData) {
                 },
             });
 
-            return createdContact;
+            return { contact: createdContact, conversationId: conversation.id };
         });
 
-        revalidateContactSurfaces([contact.id]);
-        return { success: true, contact };
+        revalidateContactSurfaces([result.contact.id]);
+        return { success: true, contact: result.contact, conversationId: result.conversationId };
     } catch (error) {
         console.error("Failed to create contact:", error);
         if (isPhoneUniqueConstraintError(error)) {

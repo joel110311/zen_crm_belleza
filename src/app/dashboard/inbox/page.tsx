@@ -48,6 +48,7 @@ import {
 } from "@/lib/operation-dates";
 import { INBOX_DRAFT_STORAGE_KEY, type InboxDraftPayload } from "@/lib/inbox-drafts";
 import { tenantSlugFromPath } from "@/lib/tenant-request-routing";
+import { NewContactDialog } from "@/components/contacts/new-contact-dialog";
 import {
     Dialog,
     DialogContent,
@@ -2861,9 +2862,20 @@ export default function InboxPage() {
                                 </p>
                                 <h2 className="mt-1 text-xl font-semibold tracking-tight">Bandeja</h2>
                             </div>
-                            <span className="mt-1 rounded-full bg-secondary px-2.5 py-1 text-[10px] font-semibold text-muted-foreground">
-                                {filteredConversations.length} chats
-                            </span>
+                            <div className="flex items-center gap-2">
+                                <span className="rounded-full bg-secondary px-2.5 py-1 text-[10px] font-semibold text-muted-foreground">
+                                    {filteredConversations.length} chats
+                                </span>
+                                <NewContactDialog
+                                    triggerLabel="Nuevo chat"
+                                    title="Nuevo chat"
+                                    description="Captura el nombre y el teléfono para iniciar una conversación."
+                                    submitLabel="Crear y abrir chat"
+                                    onCreated={async ({ conversationId }) => {
+                                        await refreshConversationsAndSelect(conversationId);
+                                    }}
+                                />
+                            </div>
                         </div>
                         <div className="relative">
                             <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
