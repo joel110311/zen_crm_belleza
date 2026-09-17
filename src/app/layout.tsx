@@ -43,7 +43,7 @@ const colorThemeInitScript = `
 (() => {
   try {
     const stored = window.localStorage.getItem("${COLOR_THEME_STORAGE_KEY}");
-    const nextTheme = stored === "clinic" || stored === "green" || stored === "apple" || stored === "vital" || stored === "barber" ? stored : "${DEFAULT_COLOR_THEME}";
+    const nextTheme = stored === "clinic" || stored === "green" || stored === "apple" ? stored : "${DEFAULT_COLOR_THEME}";
     document.documentElement.setAttribute("data-color-theme", nextTheme);
   } catch {
     document.documentElement.setAttribute("data-color-theme", "${DEFAULT_COLOR_THEME}");
