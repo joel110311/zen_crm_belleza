@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { MESSAGE_SOURCE_WUZAPI, type MessageSourceType } from "@/lib/message-source";
 import { Prisma } from "@prisma/client";
+import { resolveAssignableTenantUserId } from "@/lib/user-assignment";
 
 export async function findOrCreateActiveConversationForContactSource(params: {
     contactId: string;
@@ -60,6 +61,10 @@ export async function findOrCreateActiveConversationForContactSource(params: {
         return existingConversation;
     }
 
+    const safeAssignedUserId = params.defaults?.assignedUserId
+        ? await resolveAssignableTenantUserId(params.defaults.assignedUserId)
+        : undefined;
+
     try {
         return await prisma.conversation.create({
             data: {
@@ -67,7 +72,7 @@ export async function findOrCreateActiveConversationForContactSource(params: {
                 status: "active",
                 sourceType: params.sourceType,
                 sourceId: params.sourceType === MESSAGE_SOURCE_WUZAPI ? null : sourceId,
-                assignedUserId: params.defaults?.assignedUserId || undefined,
+                assignedUserId: safeAssignedUserId,
                 botActive: params.defaults?.botActive ?? true,
                 sessionExpiresAt: params.defaults?.sessionExpiresAt || undefined,
             },

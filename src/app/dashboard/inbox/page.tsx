@@ -1196,7 +1196,7 @@ export default function InboxPage() {
     const operationContext = useOperationContext();
     const searchParams = useSearchParams();
     const { data: session } = useSession();
-    const sessionUser = session?.user as { id?: string; role?: string; permissions?: unknown } | undefined;
+    const sessionUser = session?.user as { id?: string; email?: string | null; role?: string; permissions?: unknown } | undefined;
     const currentUserId = sessionUser?.id || null;
     const canAssignAnyUser = hasPermission(sessionUser, "users.manage");
     const currentUserName = session?.user?.name || "";
@@ -2290,8 +2290,13 @@ export default function InboxPage() {
     };
 
     // ──── Filter conversations by search ────
+    const currentTenantUser = teamUsers.find(
+        (user) => user.id === currentUserId || (Boolean(sessionUser?.email) && user.email?.toLowerCase() === sessionUser?.email?.toLowerCase()),
+    );
+    const effectiveCurrentUserId = currentTenantUser?.id || currentUserId;
+
     const filteredConversations = conversations.filter(conv => {
-        if (viewFilter === "mine" && conv.assignedUserId !== currentUserId) return false;
+        if (viewFilter === "mine" && conv.assignedUserId !== effectiveCurrentUserId && conv.assignedUserId !== currentUserId) return false;
         if (viewFilter === "unassigned" && conv.assignedUserId) return false;
         if (!searchQuery.trim()) return true;
         const q = searchQuery.toLowerCase();
@@ -2304,7 +2309,7 @@ export default function InboxPage() {
     // ──── Voice Recording ────
     const assignableUsers = canAssignAnyUser
         ? teamUsers
-        : teamUsers.filter((user) => user.id === currentUserId || user.id === selectedChat?.assignedUserId);
+        : teamUsers.filter((user) => user.id === effectiveCurrentUserId || user.id === currentUserId || user.id === selectedChat?.assignedUserId);
 
     const requestMicPermission = async () => {
         try {

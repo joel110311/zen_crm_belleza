@@ -7,6 +7,7 @@ import { MESSAGE_SOURCE_META, resolveMessageSourceId } from "@/lib/message-sourc
 import { buildPhoneMatchClauses, normalizePhoneDigits } from "@/lib/phone";
 import { findOrCreateActiveConversationForContactSource } from "@/lib/source-conversations";
 import { getSystemSettingsOrDefaults } from "@/lib/system-settings";
+import { resolveAssignableTenantUserId } from "@/lib/user-assignment";
 
 async function conversationForPhone(phone: string, assignedUserId?: string | null) {
     const normalized = normalizePhoneDigits(phone);
@@ -28,6 +29,7 @@ export async function POST(request: NextRequest) {
     const session = await auth();
     const userId = (session as { user?: { id?: string } } | null)?.user?.id;
     if (!userId) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+    const assignedTenantUserId = await resolveAssignableTenantUserId(userId);
     try {
         const body = await request.json();
         const templateName = typeof body.templateName === "string" ? body.templateName.trim() : "";
@@ -49,7 +51,7 @@ export async function POST(request: NextRequest) {
         const errors: Array<{ to: string; error: string }> = [];
         for (const phone of phones) {
             try {
-                const target = await conversationForPhone(phone, userId);
+                const target = await conversationForPhone(phone, assignedTenantUserId);
                 const result = await sendMetaTemplateMessage({ to: target.contact.phone, templateName, languageCode, components });
                 await prisma.message.create({
                     data: {
@@ -64,7 +66,15 @@ export async function POST(request: NextRequest) {
                         providerMessageId: result.Id,
                     },
                 });
-                await prisma.conversation.update({ where: { id: target.conversation.id }, data: { updatedAt: new Date(), sessionExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), botActive: false, assignedUserId: userId } });
+                await prisma.conversation.update({
+                    where: { id: target.conversation.id },
+                    data: {
+                        updatedAt: new Date(),
+                        sessionExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+                        botActive: false,
+                        assignedUserId: assignedTenantUserId ?? target.conversation.assignedUserId,
+                    },
+                });
                 sent += 1;
             } catch (error) {
                 errors.push({ to: phone, error: error instanceof Error ? error.message : "Error desconocido" });

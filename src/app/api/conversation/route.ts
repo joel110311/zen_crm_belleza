@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { hasPermission } from "@/lib/permissions";
+import { resolveAssignableTenantUserId } from "@/lib/user-assignment";
 
 export async function POST(request: NextRequest) {
     try {
@@ -88,15 +89,22 @@ export async function POST(request: NextRequest) {
             }
 
             case "assign": {
-                const nextAssignedUserId =
+                const rawAssignedUserId =
                     typeof assignedUserId === "string" && assignedUserId.trim().length > 0
                         ? assignedUserId.trim()
                         : null;
 
+                const nextAssignedUserId = rawAssignedUserId
+                    ? await resolveAssignableTenantUserId(rawAssignedUserId)
+                    : null;
+
+                const resolvedCurrentUserId = await resolveAssignableTenantUserId(currentUser?.id);
+
                 if (
                     !hasPermission(currentUser, "users.manage") &&
                     nextAssignedUserId &&
-                    nextAssignedUserId !== currentUser?.id
+                    nextAssignedUserId !== currentUser?.id &&
+                    nextAssignedUserId !== resolvedCurrentUserId
                 ) {
                     return NextResponse.json({ error: "No tienes permiso para asignar a otro usuario." }, { status: 403 });
                 }

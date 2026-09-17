@@ -10,6 +10,9 @@ import { getSystemSettingsOrDefaults } from "@/lib/system-settings";
 import { findOrCreateActiveConversationForContactSource } from "@/lib/source-conversations";
 import { sendChannelMedia, sendChannelText } from "@/lib/channel-delivery";
 import { assertChatbotUsageAvailable, recordChatbotReply } from "@/lib/billing/chatbot-usage";
+import { resolveAssignableTenantUserId } from "@/lib/user-assignment";
+
+export { resolveAssignableTenantUserId } from "@/lib/user-assignment";
 
 export type OutboundMessageType = "text" | "image" | "document" | "audio" | "video";
 
@@ -89,13 +92,16 @@ export async function sendOutboundConversationMessage(
         throw new Error("Conversation not found");
     }
 
+    const resolvedCurrentUserId = await resolveAssignableTenantUserId(params.currentUserId);
+    const targetAssignedUserId = resolvedCurrentUserId ?? (await resolveAssignableTenantUserId(conversation.assignedUserId));
+
     if (conversation.sourceType !== selectedSourceType) {
         const ensuredConversation = await findOrCreateActiveConversationForContactSource({
             contactId: conversation.contactId,
             sourceType: selectedSourceType,
             sourceId: selectedSourceId,
             defaults: {
-                assignedUserId: params.currentUserId || conversation.assignedUserId,
+                assignedUserId: targetAssignedUserId,
                 botActive: conversation.botActive,
             },
         });
@@ -133,7 +139,7 @@ export async function sendOutboundConversationMessage(
                 : params.preserveBotActive
                     ? conversation.botActive
                     : false,
-            assignedUserId: params.currentUserId || conversation.assignedUserId,
+            assignedUserId: targetAssignedUserId,
         },
     });
 
