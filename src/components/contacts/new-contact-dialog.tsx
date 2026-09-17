@@ -30,6 +30,7 @@ function SubmitButton({ label }: { label: string }) {
 
 type NewContactDialogProps = {
     triggerLabel?: string;
+    triggerClassName?: string;
     title?: string;
     description?: string;
     submitLabel?: string;
@@ -38,6 +39,7 @@ type NewContactDialogProps = {
 
 export function NewContactDialog({
     triggerLabel = "Nuevo cliente",
+    triggerClassName,
     title = "Nuevo cliente",
     description = "Captura únicamente los datos necesarios para atenderlo.",
     submitLabel = "Guardar cliente",
@@ -52,8 +54,8 @@ export function NewContactDialog({
         const result = await createContact(formData);
         if (result?.success && result.contact && result.conversationId) {
             toast({
-                title: triggerLabel === "Nuevo chat" ? "Chat creado" : "Cliente creado",
-                description: triggerLabel === "Nuevo chat"
+                title: title === "Nuevo chat" ? "Chat creado" : "Cliente creado",
+                description: title === "Nuevo chat"
                     ? "La conversación ya está disponible en tu bandeja."
                     : "Ya puedes usarlo en chats, campañas y agenda.",
             });
@@ -74,7 +76,7 @@ export function NewContactDialog({
     return (
         <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
-                <Button>
+                <Button className={triggerClassName}>
                     <Plus className="mr-2 h-4 w-4" /> {triggerLabel}
                 </Button>
             </DialogTrigger>

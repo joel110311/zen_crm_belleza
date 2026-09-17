@@ -2862,28 +2862,27 @@ export default function InboxPage() {
                                 </p>
                                 <h2 className="mt-1 text-xl font-semibold tracking-tight">Bandeja</h2>
                             </div>
-                            <div className="flex items-center gap-2">
-                                <span className="rounded-full bg-secondary px-2.5 py-1 text-[10px] font-semibold text-muted-foreground">
-                                    {filteredConversations.length} chats
-                                </span>
-                                <NewContactDialog
-                                    triggerLabel="Nuevo chat"
-                                    title="Nuevo chat"
-                                    description="Captura el nombre y el teléfono para iniciar una conversación."
-                                    submitLabel="Crear y abrir chat"
-                                    onCreated={async ({ conversationId }) => {
-                                        await refreshConversationsAndSelect(conversationId);
-                                    }}
-                                />
-                            </div>
+                            <span className="mt-1 rounded-full bg-secondary px-2.5 py-1 text-[10px] font-semibold text-muted-foreground">
+                                {filteredConversations.length} chats
+                            </span>
                         </div>
                         <div className="relative">
                             <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                             <Input
                                 placeholder="Buscar chats..."
-                                className="h-10 rounded-xl border-border bg-background/70 pl-10 shadow-none placeholder:text-muted-foreground/75 focus-visible:border-primary/35"
+                                className="h-12 rounded-xl border-border bg-background/70 pl-10 pr-28 shadow-none placeholder:text-muted-foreground/75 focus-visible:border-primary/35"
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
+                            />
+                            <NewContactDialog
+                                triggerLabel="Nuevo"
+                                triggerClassName="absolute right-1 top-1/2 h-10 -translate-y-1/2 rounded-xl px-3 shadow-sm"
+                                title="Nuevo chat"
+                                description="Captura el nombre y el teléfono para iniciar una conversación."
+                                submitLabel="Crear y abrir chat"
+                                onCreated={async ({ conversationId }) => {
+                                    await refreshConversationsAndSelect(conversationId);
+                                }}
                             />
                         </div>
                         <div className="inline-flex w-full flex-wrap gap-1 rounded-xl bg-secondary/60 p-1">
