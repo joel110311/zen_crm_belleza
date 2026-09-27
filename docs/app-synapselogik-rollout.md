@@ -62,16 +62,11 @@ TURNSTILE_EXPECTED_HOSTNAME=app.synapselogik.com
 RESEND_API_KEY=<resend-api-key>
 EMAIL_FROM=SynapseLogik CRM <soporte@synapselogik.com>
 EMAIL_REPLY_TO=contacto@synapselogik.com
-LEGAL_TERMS_VERSION=2026-09-26.2
-LEGAL_PRIVACY_VERSION=2026-09-26.2
-PUBLIC_LEGAL_NAME=<opcional-sobrescribe-el-valor-configurado-en-la-aplicacion>
-PUBLIC_LEGAL_ADDRESS=<opcional-sobrescribe-el-valor-configurado-en-la-aplicacion>
-PUBLIC_SUPPORT_PHONE=<opcional-sobrescribe-el-valor-configurado-en-la-aplicacion>
+LEGAL_TERMS_VERSION=2026-09-03
+LEGAL_PRIVACY_VERSION=2026-09-03
 ```
 
 El backend valida Turnstile, usa límite atómico compartido por IP anonimizada/correo/fingerprint y persiste el historial de correo, aceptación legal y recuperación de contraseña. Si falta una de esas variables, la ruta pública se mantiene cerrada aun cuando alguien cambie la bandera por error.
-
-La aplicación muestra los datos públicos del proveedor configurados por el titular y permite sobrescribirlos con esas variables en cada despliegue. Confirma que el domicilio publicado esté completo y actualizado antes de cobrar. El formulario muestra el aviso simplificado; `/privacy` y `/terms` muestran la información integral.
 
 ### Activar por invitación y portal interno
 

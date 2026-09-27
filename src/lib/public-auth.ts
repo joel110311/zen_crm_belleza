@@ -232,9 +232,9 @@ export async function createSignupIntent(input: SignupIntentInput) {
     where: { idempotencyKey },
     select: { id: true },
   });
-  const termsVersion = process.env.LEGAL_TERMS_VERSION?.trim() || "2026-09-26.2";
+  const termsVersion = process.env.LEGAL_TERMS_VERSION?.trim() || "2026-09-03";
   const privacyVersion =
-    process.env.LEGAL_PRIVACY_VERSION?.trim() || "2026-09-26.2";
+    process.env.LEGAL_PRIVACY_VERSION?.trim() || "2026-09-03";
   const intent = existingIntent
     ? await db.signupIntent.update({
         where: { id: existingIntent.id },

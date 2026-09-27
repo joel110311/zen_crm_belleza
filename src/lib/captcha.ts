@@ -14,8 +14,7 @@ export async function verifySignupCaptcha(
 ): Promise<boolean> {
     const secret = process.env.TURNSTILE_SECRET_KEY?.trim();
     const responseToken = typeof token === "string" ? token.trim() : "";
-    const expectedHostname = process.env.TURNSTILE_EXPECTED_HOSTNAME?.trim().toLowerCase();
-    if (!secret || !expectedHostname || !responseToken || responseToken.length > 2048) return false;
+    if (!secret || !responseToken) return false;
 
     try {
         const body = new URLSearchParams({ secret, response: responseToken });
@@ -28,9 +27,10 @@ export async function verifySignupCaptcha(
         });
         if (!response.ok) return false;
         const result = await response.json() as TurnstileResponse;
+        const expectedHostname = process.env.TURNSTILE_EXPECTED_HOSTNAME?.trim().toLowerCase();
         return result.success === true
             && result.action === expectedAction
-            && result.hostname?.toLowerCase() === expectedHostname;
+            && (!expectedHostname || result.hostname?.toLowerCase() === expectedHostname);
     } catch {
         return false;
     }

@@ -20,7 +20,6 @@ export function isPublicTenantSignupEnabled(): boolean {
     return isMultitenantAuthEnabled()
         && process.env.MULTITENANT_PUBLIC_SIGNUP_ENABLED === "true"
         && Boolean(process.env.TURNSTILE_SECRET_KEY?.trim())
-        && Boolean(process.env.TURNSTILE_EXPECTED_HOSTNAME?.trim())
         && Boolean(getTurnstileSiteKey())
         && Boolean(process.env.RESEND_API_KEY?.trim())
         && Boolean(process.env.EMAIL_FROM?.trim())
