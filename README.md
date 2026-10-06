@@ -126,7 +126,7 @@ El acceso del CRM clásico no se modifica y el permiso efectivo continúa resolv
 
 ### Facturación temporal con Mercado Pago
 
-El proveedor activo se selecciona con `BILLING_PROVIDER=stripe` o `BILLING_PROVIDER=mercado_pago`. Mercado Pago utiliza Checkout Pro alojado: el CRM nunca recibe datos de tarjeta y cada preferencia lleva importe fijo y una referencia única del intento de cobro.
+El proveedor de esta etapa es `BILLING_PROVIDER=mercado_pago`, con `BILLING_STRIPE_ENABLED=false`. Mercado Pago utiliza Checkout Pro alojado: el CRM nunca recibe datos de tarjeta y cada preferencia lleva importe fijo y una referencia única del intento de cobro. El pago se realiza al confirmar el Checkout, no al consultar planes ni automáticamente al vencer la prueba. Cada pago renueva un mes; no hay renovación automática. El adaptador de Stripe y sus registros históricos se reservan para una segunda etapa y requieren activación explícita.
 
 - Configura en Portainer `MERCADO_PAGO_ENABLED=true`, `MERCADO_PAGO_APPLICATION_ID`, `MERCADO_PAGO_TEST_ACCESS_TOKEN`, `MERCADO_PAGO_TEST_WEBHOOK_SECRET`, `MERCADO_PAGO_PRODUCTION_ACCESS_TOKEN` y `MERCADO_PAGO_PRODUCTION_WEBHOOK_SECRET`.
 - `MERCADO_PAGO_ENVIRONMENT=test|production` es únicamente el valor inicial o de respaldo. El administrador puede cambiar el entorno activo desde `/control`; el selector no almacena ni expone las credenciales.

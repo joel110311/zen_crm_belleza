@@ -126,6 +126,7 @@ export default async function TenantOnboardingPage({
               skippedSteps: state?.skippedSteps || [],
               completedAt: state?.completedAt?.toISOString() || null,
               publishedAt: state?.publishedAt?.toISOString() || null,
+              channelPreference: state?.channelPreference === "META_CLOUD" || state?.channelPreference === "WUZAPI" ? state.channelPreference : null,
             },
           }}
         />

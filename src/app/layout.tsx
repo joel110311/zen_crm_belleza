@@ -7,13 +7,15 @@ import { SessionProvider } from "@/components/providers/session-provider"
 import { ColorThemeProvider } from "@/components/color-theme-provider"
 import { auth } from "@/lib/auth"
 import { COLOR_THEME_STORAGE_KEY, DEFAULT_COLOR_THEME } from "@/lib/color-theme"
-import { resolveBranding } from "@/lib/branding"
+import { resolveBranding, resolveTenantBranding } from "@/lib/branding"
 import { getSystemSettingsOrDefaults } from "@/lib/system-settings"
+import { getActiveTenantRuntimeContext } from "@/lib/active-tenant-context"
 
 export async function generateMetadata(): Promise<Metadata> {
   try {
     const settings = await getSystemSettingsOrDefaults();
-    const branding = resolveBranding(settings);
+    const tenant = await getActiveTenantRuntimeContext("read");
+    const branding = tenant ? resolveTenantBranding(settings, tenant.displayName) : resolveBranding(settings);
 
     return {
       title: branding.brandName,

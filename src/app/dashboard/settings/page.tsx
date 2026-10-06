@@ -346,6 +346,7 @@ export function SettingsWorkspace({
                 body: JSON.stringify(settingsPayload),
             });
             if (!response.ok) throw new Error("No se pudo guardar la configuracion");
+            router.refresh();
             toast({ title: "Configuracion guardada" });
             return true;
         } catch (error) {

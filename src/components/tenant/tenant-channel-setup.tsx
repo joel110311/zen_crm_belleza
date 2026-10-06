@@ -47,10 +47,12 @@ export function TenantChannelSetup({
     tenantSlug,
     enabled,
     onConfigured,
+    onSetupRequest,
 }: {
     tenantSlug: string;
     enabled: boolean;
     onConfigured?: (provider: "META_CLOUD" | "WUZAPI") => void;
+    onSetupRequest?: (provider: "META_CLOUD" | "WUZAPI", proceed: () => void) => void;
 }) {
     const [channels, setChannels] = useState<Channel[]>([]);
     const [loading, setLoading] = useState(enabled);
@@ -60,6 +62,11 @@ export function TenantChannelSetup({
     const [qrRiskAccepted, setQrRiskAccepted] = useState(false);
 
     const endpoint = `/api/t/${encodeURIComponent(tenantSlug)}/v1/channels`;
+
+    function requestSetup(provider: "META_CLOUD" | "WUZAPI", proceed: () => void) {
+        if (onSetupRequest) onSetupRequest(provider, proceed);
+        else proceed();
+    }
 
     async function refresh() {
         if (!enabled) return;
@@ -246,7 +253,7 @@ export function TenantChannelSetup({
                 <div className="flex items-start justify-between gap-3"><span className="flex size-10 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-700"><ShieldCheck className="size-5" /></span>{official ? <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-semibold text-emerald-700"><CheckCircle2 className="size-3.5" />Activa</span> : <span className="rounded-full border px-2.5 py-1 text-xs text-muted-foreground">Oficial</span>}</div>
                 <h3 className="mt-4 font-semibold">Conexión oficial de WhatsApp</h3>
                 <p className="mt-1 flex-1 text-sm text-muted-foreground">Recomendada para operar con la plataforma oficial de Meta, plantillas aprobadas y mayor estabilidad.</p>
-                <Button type="button" className="mt-4 w-full" onClick={() => void connectMeta()} disabled={busy !== null || Boolean(official)}>{busy === "meta" ? <Loader2 className="mr-2 size-4 animate-spin" /> : <ShieldCheck className="mr-2 size-4" />}{official ? "Conexión activa" : "Conectar oficialmente"}</Button>
+                <Button type="button" className="mt-4 w-full" onClick={() => requestSetup("META_CLOUD", () => void connectMeta())} disabled={busy !== null || Boolean(official)}>{busy === "meta" ? <Loader2 className="mr-2 size-4 animate-spin" /> : <ShieldCheck className="mr-2 size-4" />}{official ? "Conexión activa" : "Conectar oficialmente"}</Button>
                 <div className="mt-4 rounded-xl border border-sky-500/25 bg-sky-500/5 p-3">
                     <div className="flex items-start gap-2.5">
                         <CreditCard className="mt-0.5 size-4 shrink-0 text-sky-700 dark:text-sky-300" aria-hidden="true" />
@@ -296,7 +303,7 @@ export function TenantChannelSetup({
                 {qrSession.phone ? <div className="mt-3 rounded-xl border bg-muted/30 px-3 py-2"><p className="text-xs text-muted-foreground">Número vinculado</p><p className="break-all text-sm font-medium">{qrSession.phone.replace(/@.+$/, "")}</p></div> : null}
                 {qrSession.qrCode && !qrSession.active ? <div className="mt-4 rounded-2xl border border-dashed bg-white p-3"><Image src={qrSession.qrCode} alt="Código QR para vincular WhatsApp" width={224} height={224} unoptimized className="mx-auto h-auto w-full max-w-56" /><p className="mt-2 text-center text-xs text-slate-600">En WhatsApp abre Dispositivos vinculados, toca Vincular dispositivo y escanea este código.</p></div> : null}
                 <div className="mt-4 flex flex-wrap gap-2">
-                    {qrSession.active ? <Button type="button" variant="outline" className="flex-1" onClick={() => void disconnectQr()} disabled={busy !== null}>{busy === "disconnect" ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Unplug className="mr-2 size-4" />}Desvincular</Button> : <Button type="button" variant="outline" className="flex-1" onClick={() => void connectQr()} disabled={busy !== null || !qrRiskAccepted}>{busy === "qr" ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Smartphone className="mr-2 size-4" />}{qrSession.qrCode ? "Generar otro código" : "Conectar por QR bajo mi responsabilidad"}</Button>}
+                    {qrSession.active ? <Button type="button" variant="outline" className="flex-1" onClick={() => void disconnectQr()} disabled={busy !== null}>{busy === "disconnect" ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Unplug className="mr-2 size-4" />}Desvincular</Button> : <Button type="button" variant="outline" className="flex-1" onClick={() => requestSetup("WUZAPI", () => void connectQr())} disabled={busy !== null || !qrRiskAccepted}>{busy === "qr" ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Smartphone className="mr-2 size-4" />}{qrSession.qrCode ? "Generar otro código" : "Conectar por QR bajo mi responsabilidad"}</Button>}
                     {qrSession.configured && !qrSession.active ? <Button type="button" variant="ghost" onClick={() => void refreshQr(true)} disabled={busy !== null}><RefreshCw className="mr-2 size-4" />Revisar estado</Button> : null}
                 </div>
             </section>

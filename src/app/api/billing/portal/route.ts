@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
     try {
         const { tenant } = await requireBillingOwner(tenantSlug);
         if (!isStripeBillingEnabled()) {
-            return NextResponse.json({ error: "El portal de Stripe está deshabilitado en esta etapa. Renueva tu plan con Mercado Pago." }, { status: 409 });
+            return NextResponse.json({ error: "El portal de suscripciones automáticas no está disponible en esta etapa. Renueva tu plan con Mercado Pago." }, { status: 409 });
         }
         const db = getControlDb();
         const [subscription, selection] = await Promise.all([

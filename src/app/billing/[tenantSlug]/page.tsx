@@ -75,9 +75,9 @@ export default async function BillingPage({
     const checkoutNotice = checkout === "success"
         ? billingProvider === "MERCADO_PAGO"
             ? "Regresaste de Mercado Pago. Estamos verificando el pago directamente con el proveedor; el acceso se actualizará únicamente cuando quede aprobado."
-            : "Tu plan quedó registrado. Stripe realizará el primer cobro cuando termine la prueba y confirmaremos el acceso mediante un webhook firmado."
+            : "Tu plan quedó registrado. Confirmaremos la activación cuando el proveedor notifique el resultado del pago."
         : checkout === "scheduled" && billingProvider === "STRIPE"
-            ? "Tu tarjeta quedó protegida en Stripe. El plan se activará y cobrará cuando termine la prueba."
+            ? "Tu método de pago quedó registrado de forma segura. Consulta abajo la fecha de activación del plan."
         : checkout === "pending"
             ? "Mercado Pago dejó el pago pendiente. Conservaremos tu estado actual hasta recibir la confirmación."
         : checkout === "failure"
@@ -101,8 +101,8 @@ export default async function BillingPage({
                 <h1 className="mt-2 text-3xl font-semibold tracking-tight">Elige y administra tu plan</h1>
                 <p className="mt-3 text-sm leading-6 text-muted-foreground">
                     {billingProvider === "MERCADO_PAGO"
-                        ? "El cobro se realiza hoy en una página segura de Mercado Pago; nunca almacenamos los datos de tu tarjeta. Si aún estás en prueba, tu mes pagado comenzará cuando termine para que no pierdas ningún día."
-                        : "El cobro ocurre en una página segura de Stripe; nunca almacenamos los datos de tarjeta. Si eliges durante la prueba, hoy pagas $0 y el primer cargo ocurre al finalizar."}
+                        ? "El cobro se realiza al completar el pago en una página segura de Mercado Pago; nunca almacenamos los datos de tu tarjeta. Cada pago cubre una mensualidad, sin renovación automática. Si aún estás en prueba, tu mes pagado comenzará cuando termine para que no pierdas ningún día."
+                        : "El pago se completa en una página segura del proveedor; nunca almacenamos los datos de tu tarjeta. Revisa las condiciones del plan antes de confirmar."}
                 </p>
             </header>
             {checkoutNotice ? <p className="mt-6 rounded-lg border bg-muted/40 px-4 py-3 text-sm">{checkoutNotice}</p> : null}

@@ -11,6 +11,9 @@ import { auth } from "@/lib/auth";
 import { requireTenantRuntimeContext, TenantAccessDeniedError } from "@/lib/tenant-context";
 import { isMultitenantRuntimeEnabled } from "@/lib/multitenant-features";
 import { getControlDb } from "@/lib/control-db";
+import { getTenantSystemSettingsOrDefaults } from "@/lib/tenant-system-settings";
+import { resolveTenantBranding } from "@/lib/branding";
+import { getActiveBillingProvider } from "@/lib/billing/provider";
 
 export const dynamic = "force-dynamic";
 
@@ -53,6 +56,9 @@ export default async function TenantLayout({
         throw error;
     }
 
+    const tenantSettings = await getTenantSystemSettingsOrDefaults(tenant.db);
+    const branding = resolveTenantBranding(tenantSettings, tenant.displayName);
+    const billingProvider = getActiveBillingProvider();
     const billingSnapshot = await getControlDb().tenant.findUnique({
         where: { id: tenant.tenantId },
         select: {
@@ -61,16 +67,16 @@ export default async function TenantLayout({
                 select: { status: true, plan: { select: { name: true, monthlyAmountCents: true, currency: true } } },
             },
             subscriptions: {
-                where: { provider: "STRIPE", status: "TRIALING" },
+                where: { provider: billingProvider, status: "TRIALING" },
                 orderBy: { updatedAt: "desc" },
                 take: 1,
                 select: { plan: { select: { name: true, monthlyAmountCents: true, currency: true } } },
             },
         },
     });
-    const selectedPlan = billingSnapshot?.billingSelection && ["PENDING_SETUP", "SCHEDULED", "PROCESSING"].includes(billingSnapshot.billingSelection.status)
+    const selectedPlan = billingProvider === "STRIPE" && billingSnapshot?.billingSelection && ["SCHEDULED", "PROCESSING"].includes(billingSnapshot.billingSelection.status)
         ? billingSnapshot.billingSelection.plan
-        : billingSnapshot?.subscriptions[0]?.plan || null;
+        : billingProvider === "STRIPE" ? billingSnapshot?.subscriptions[0]?.plan || null : null;
     const trialNotice = billingSnapshot?.trial && ["ACTIVE", "ENDING"].includes(billingSnapshot.trial.status)
         ? {
             id: billingSnapshot.trial.id,
@@ -96,7 +102,7 @@ export default async function TenantLayout({
                 <InboxNotifier />
                 <WaitingRoomNotifier />
                 <UnreadTabBadge />
-                <Sidebar />
+                <Sidebar key={tenant.tenantId} initialBranding={branding} />
                 <DashboardShell trialNotice={trialNotice}>
                     {children}
                 </DashboardShell>

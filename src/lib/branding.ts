@@ -8,10 +8,20 @@ export type BrandingSettings = {
 };
 
 type BrandingSource = {
+    clinicName?: string | null;
     brandName?: string | null;
     brandLogoUrl?: string | null;
     brandFaviconUrl?: string | null;
 };
+
+/** Tenant shells use their saved business identity, not the application's seed branding. */
+export function resolveTenantBranding(source: BrandingSource | null | undefined, tenantName: string): BrandingSettings {
+    const businessName = cleanBrandValue(source?.clinicName);
+    const seededNames = ["zen crm belleza", "zen crm oftalmo"];
+    const brandName = businessName && !seededNames.includes(businessName.toLowerCase())
+        ? businessName : cleanBrandValue(tenantName) || cleanBrandValue(source?.brandName) || DEFAULT_BRAND_NAME;
+    return resolveBranding({ ...source, brandName });
+}
 
 function cleanBrandValue(value: string | null | undefined) {
     return value?.trim() || "";

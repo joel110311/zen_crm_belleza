@@ -83,14 +83,15 @@ const sidebarNavSections: SidebarNavSection[] = [
     },
 ];
 
-export function Sidebar({ className }: React.HTMLAttributes<HTMLDivElement>) {
+export function Sidebar({ className, initialBranding }: React.HTMLAttributes<HTMLDivElement> & { initialBranding?: BrandingSettings }) {
     const pathname = usePathname();
     const tenantSlug = tenantSlugFromPath(pathname);
     const dashboardHome = tenantSlug ? `/t/${encodeURIComponent(tenantSlug)}/dashboard` : "/dashboard";
     const resolveHref = (href: string) => href === "/control" ? href : tenantSlug ? tenantDashboardPath(tenantSlug, href) : href;
     const [open, setOpen] = useState(false);
     const [desktopCollapsed, setDesktopCollapsed] = useState(true);
-    const [branding, setBranding] = useState<BrandingSettings>(() => resolveBranding(null));
+    const [legacyBranding, setBranding] = useState<BrandingSettings>(() => resolveBranding(null));
+    const branding = initialBranding || legacyBranding;
     const { data: session, status } = useSession();
     const sessionLoading = status === "loading";
     const sessionUser = session?.user as { role?: string; permissions?: unknown; isPlatformAdmin?: boolean } | undefined;
@@ -108,6 +109,9 @@ export function Sidebar({ className }: React.HTMLAttributes<HTMLDivElement>) {
     };
 
     useEffect(() => {
+        // Tenant branding arrives from its authorized server layout. Do not race the
+        // active-tenant cookie or fetch a global default when switching businesses.
+        if (initialBranding) return;
         let ignore = false;
         fetch("/api/branding", { cache: "no-store" })
             .then((response) => response.json())
@@ -120,7 +124,7 @@ export function Sidebar({ className }: React.HTMLAttributes<HTMLDivElement>) {
         return () => {
             ignore = true;
         };
-    }, []);
+    }, [initialBranding, tenantSlug]);
 
     const canShowNavItem = (item: SidebarNavItem) => {
         if (item.tenantOnly && !tenantSlug) return false;

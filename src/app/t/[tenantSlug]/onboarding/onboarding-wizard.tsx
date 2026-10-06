@@ -1,7 +1,8 @@
 "use client";
 
-import { type ReactNode, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   CheckCircle2,
   ChevronLeft,
@@ -30,6 +31,8 @@ import {
 import type { BusinessPolicies } from "@/lib/ai/business-policies";
 import { TenantChannelSetup } from "@/components/tenant/tenant-channel-setup";
 import { portalNameAfterBusinessChange } from "@/lib/tenant-portal-defaults";
+import { onboardingExitAdvice, shouldGuardOnboardingLink } from "@/lib/onboarding-navigation";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 type InitialData = {
   business: {
@@ -68,6 +71,7 @@ type InitialData = {
     skippedSteps: string[];
     completedAt: string | null;
     publishedAt: string | null;
+    channelPreference?: "META_CLOUD" | "WUZAPI" | null;
   };
 };
 
@@ -138,6 +142,7 @@ export function TenantOnboardingWizard({
   initial,
   channelsEnabled,
 }: WizardProps) {
+  const router = useRouter();
   const [completedSteps, setCompletedSteps] = useState(() =>
     normalizeCompleted(initial.state),
   );
@@ -166,6 +171,8 @@ export function TenantOnboardingWizard({
   );
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [dirtySteps, setDirtySteps] = useState<Set<string>>(() => new Set());
+  const [exitNotice, setExitNotice] = useState<{ label: string; advice: string; href?: string; proceed?: () => void } | null>(null);
   const [business, setBusiness] = useState(initial.business);
   const [savedBusinessName, setSavedBusinessName] = useState(initial.business.clinicName);
   const [portalNameCustomized, setPortalNameCustomized] = useState(initial.state.completedSteps.includes("portal"));
@@ -183,7 +190,7 @@ export function TenantOnboardingWizard({
   });
   const [channelProvider, setChannelProvider] = useState<
     "META_CLOUD" | "WUZAPI" | "later"
-  >("later");
+  >(initial.state.channelPreference || "later");
   const timeZones = useMemo(
     () =>
       Array.from(
@@ -197,9 +204,40 @@ export function TenantOnboardingWizard({
   const current = STEPS[stepIndex];
   const coreComplete = CORE_STEPS.every((key) => completedSteps.has(key));
 
+  // Catch sidebar links too: unfinished onboarding must never be replaced by another module.
+  useEffect(() => {
+    if (published) return;
+    const guardLink = (event: MouseEvent) => {
+      if (event.defaultPrevented || event.button > 1 || !(event.target instanceof Element)) return;
+      const anchor = event.target.closest<HTMLAnchorElement>("a[href]");
+      if (!anchor || anchor.hasAttribute("data-onboarding-confirmed")) return;
+      if (!shouldGuardOnboardingLink(anchor.href, window.location.href)) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      setExitNotice({ label: anchor.textContent?.trim().replace(/^abrir\s+/i, "").slice(0, 160) || "este módulo", advice: onboardingExitAdvice(anchor.href), href: anchor.href });
+    };
+    document.addEventListener("click", guardLink, true);
+    document.addEventListener("auxclick", guardLink, true);
+    return () => {
+      document.removeEventListener("click", guardLink, true);
+      document.removeEventListener("auxclick", guardLink, true);
+    };
+  }, [published]);
+
+  useEffect(() => {
+    if (published || (dirtySteps.size === 0 && !saving)) return;
+    const warnBeforeClosing = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warnBeforeClosing);
+    return () => window.removeEventListener("beforeunload", warnBeforeClosing);
+  }, [published, dirtySteps.size, saving]);
+
   async function saveStep(
     step: Exclude<StepKey, "review">,
     payload: Record<string, unknown>,
+    advance = true,
   ) {
     setError(null);
     setSaving(true);
@@ -231,10 +269,16 @@ export function TenantOnboardingWizard({
         );
       setCompletedSteps(new Set(result.data.state.completedSteps || []));
       setSkippedSteps(new Set(result.data.state.skippedSteps || []));
+      setDirtySteps((currentDirty) => {
+        const nextDirty = new Set(currentDirty);
+        nextDirty.delete(step);
+        return nextDirty;
+      });
       if (step === "business") {
         const nextName = String(payload.clinicName || "").trim();
         setPortal((value) => ({ ...value, clinicName: portalNameAfterBusinessChange(value.clinicName, savedBusinessName, nextName, portalNameCustomized) }));
         setSavedBusinessName(nextName);
+        router.refresh();
       }
       if (step === "portal") setPortalNameCustomized(true);
       if (step === "service" && result.data.state.initialServiceId) {
@@ -254,7 +298,7 @@ export function TenantOnboardingWizard({
       }
       const next = Math.min(STEPS.length - 1, stepIndex + 1);
       setMaxIndex((currentMax) => Math.max(currentMax, next));
-      setStepIndex(next);
+      if (advance) setStepIndex(next);
     } catch (saveError) {
       setError(
         saveError instanceof Error
@@ -371,7 +415,7 @@ export function TenantOnboardingWizard({
         </div>
         <div className="mt-4 rounded-xl border bg-muted/25 p-4">
           <p className="font-medium">Elige tu plan cuando lo necesites</p>
-          <p className="mt-1 text-sm leading-6 text-muted-foreground">Puedes explorar los planes sin pagar hoy. El cobro se realiza al continuar y completar el pago seguro; si tu prueba sigue activa, el mes pagado comienza al terminarla.</p>
+          <p className="mt-1 text-sm leading-6 text-muted-foreground">Puedes explorar los planes sin pagar hoy. Para contratar debes completar el pago en una página segura; si tu prueba sigue activa, el mes pagado comienza al terminarla. Consultar los planes no registra una tarjeta ni programa un cobro.</p>
           <Button asChild variant="outline" className="mt-3"><Link href={`/billing/${tenantSlug}`}>Ver planes desde $200 al mes</Link></Button>
         </div>
         <div className="mt-7 flex flex-wrap gap-3">
@@ -395,7 +439,8 @@ export function TenantOnboardingWizard({
     );
 
   return (
-    <section className="rounded-2xl border bg-card shadow-sm">
+    <>
+    <section className="rounded-2xl border bg-card shadow-sm" onChangeCapture={() => setDirtySteps((value) => new Set(value).add(current.key))}>
       <div className="border-b px-5 py-6 sm:px-8">
         <p className="text-sm font-semibold text-primary">
           Centro de preparación
@@ -1014,7 +1059,7 @@ export function TenantOnboardingWizard({
           <div className="space-y-6">
             <StepHeading
               title="Equipo"
-              description="El equipo se administra desde Configuración. Ahí agregas cada profesional, su especialidad, disponibilidad y servicios."
+              description="Después del asistente puedes administrar tu equipo en Negocio → Especialistas: profesionales, especialidades, disponibilidad y servicios."
             />
             <div className="rounded-2xl border bg-muted/30 p-5">
               <p className="font-medium">Configura a tu ritmo</p>
@@ -1083,9 +1128,15 @@ export function TenantOnboardingWizard({
             <TenantChannelSetup
               tenantSlug={tenantSlug}
               enabled={channelsEnabled}
+              onSetupRequest={(provider, proceed) => setExitNotice({
+                label: provider === "META_CLOUD" ? "la conexión oficial de WhatsApp" : "la conexión mediante QR",
+                advice: onboardingExitAdvice("channels"),
+                proceed,
+              })}
               onConfigured={(provider) => {
                 setChannelProvider(provider);
-                void saveStep("channels", { provider });
+                // Checkpoint the choice without unmounting the QR or Meta connection panel.
+                void saveStep("channels", { provider }, false);
               }}
             />
             <StepFooter
@@ -1148,6 +1199,23 @@ export function TenantOnboardingWizard({
         ) : null}
       </div>
     </section>
+    <Dialog open={exitNotice !== null}>
+      <DialogContent role="alertdialog" showCloseButton={false} onEscapeKeyDown={(event) => event.preventDefault()} onPointerDownOutside={(event) => event.preventDefault()} onInteractOutside={(event) => event.preventDefault()}>
+        <DialogHeader>
+          <DialogTitle>Antes de abrir {exitNotice?.label}</DialogTitle>
+          <DialogDescription>Esta configuración es opcional. Abrir otro módulo no debe interrumpir la preparación de tu negocio.</DialogDescription>
+        </DialogHeader>
+        <p className="rounded-xl border border-primary/25 bg-primary/5 p-4 text-sm leading-6">{exitNotice?.advice}</p>
+        <p className="text-sm text-muted-foreground">{dirtySteps.size > 0 ? "Tienes cambios pendientes. Tu borrador permanecerá en esta pestaña; usa Guardar y continuar antes de cerrarla." : "Los pasos que ya guardaste se conservan. El asistente permanecerá abierto en esta pestaña."}</p>
+        <DialogFooter className="flex-col gap-2 sm:flex-col">
+          <Button type="button" onClick={() => setExitNotice(null)}>Seguir en el asistente (recomendado)</Button>
+          {exitNotice?.href ? <Button asChild variant="outline" disabled={saving}>
+            <a href={exitNotice.href} target="_blank" rel="noopener noreferrer" data-onboarding-confirmed onClick={(event) => { if (saving) event.preventDefault(); else setExitNotice(null); }}>Entendido, abrir en otra pestaña</a>
+          </Button> : <Button type="button" variant="outline" disabled={saving} onClick={() => { const proceed = exitNotice?.proceed; setExitNotice(null); proceed?.(); }}>Entendido, configurar ahora sin salir</Button>}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }
 

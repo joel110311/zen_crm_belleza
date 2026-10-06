@@ -115,11 +115,11 @@ docker compose -f docker-compose.zen-crm.yml up -d provisioner tenant-worker
 ## Cobro beta y cobertura internacional
 
 - No publicar un precio ni habilitar Checkout hasta tener precios activos en `BillingPrice` y las credenciales del proveedor en el gestor de secretos.
-- Stripe será el primer adaptador para una entidad operando desde México o España. Paddle queda disponible en el modelo para valorar un Merchant of Record si España/UE se convierte en mercado prioritario.
-- El comprobante de Stripe o Paddle no es CFDI mexicano. Mientras no exista facturación fiscal, el precio y checkout deben mostrar el aviso de acceso anticipado de forma visible.
+- La etapa actual utiliza Mercado Pago Checkout Pro para cobrar mensualidades individuales, sin renovación automática. El comprobante digital no sustituye un comprobante fiscal; el aviso de acceso anticipado permanece visible.
+- Stripe y Paddle quedan reservados para una segunda etapa. La configuración histórica no debe activar cobros ni presentarse como el método actual del CRM.
 - Antes de vender SaaS B2C a la UE con una entidad fuera de la UE, revisar con contador la clasificación e IVA/Non-Union OSS; no activar España basándose en un umbral informal de clientes.
 
-Cuando se decida activar Stripe, agregar además:
+Sólo para una futura segunda etapa, cuando se decida activar Stripe, agregar además:
 
 ```dotenv
 BILLING_STRIPE_ENABLED=false
