@@ -29,6 +29,7 @@ import {
 } from "@/lib/calendar/business-hours";
 import type { BusinessPolicies } from "@/lib/ai/business-policies";
 import { TenantChannelSetup } from "@/components/tenant/tenant-channel-setup";
+import { portalNameAfterBusinessChange } from "@/lib/tenant-portal-defaults";
 
 type InitialData = {
   business: {
@@ -54,6 +55,7 @@ type InitialData = {
   };
   policies: BusinessPolicies;
   portal: {
+    enabled: boolean;
     clinicName: string;
     intro: string;
     primaryColor: string;
@@ -165,6 +167,8 @@ export function TenantOnboardingWizard({
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [business, setBusiness] = useState(initial.business);
+  const [savedBusinessName, setSavedBusinessName] = useState(initial.business.clinicName);
+  const [portalNameCustomized, setPortalNameCustomized] = useState(initial.state.completedSteps.includes("portal"));
   const [hours, setHours] = useState(initial.hours);
   const [service, setService] = useState({
     ...initial.service,
@@ -227,6 +231,12 @@ export function TenantOnboardingWizard({
         );
       setCompletedSteps(new Set(result.data.state.completedSteps || []));
       setSkippedSteps(new Set(result.data.state.skippedSteps || []));
+      if (step === "business") {
+        const nextName = String(payload.clinicName || "").trim();
+        setPortal((value) => ({ ...value, clinicName: portalNameAfterBusinessChange(value.clinicName, savedBusinessName, nextName, portalNameCustomized) }));
+        setSavedBusinessName(nextName);
+      }
+      if (step === "portal") setPortalNameCustomized(true);
       if (step === "service" && result.data.state.initialServiceId) {
         setCatalogServices((currentServices) =>
           currentServices.some(
@@ -345,13 +355,14 @@ export function TenantOnboardingWizard({
           Centro de preparación publicado
         </p>
         <h1 className="mt-2 text-3xl font-semibold tracking-tight">
-          Tu agenda y portal ya están listos
+          {portal.enabled ? "Tu agenda y portal ya están listos" : "Tu agenda ya está lista"}
         </h1>
         <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">
           Las políticas, el catálogo inicial y la presentación del portal
           quedaron guardados. Puedes completar el equipo y los canales desde
           Configuración cuando lo necesites.
         </p>
+        {!portal.enabled ? <p className="mt-3 text-sm text-muted-foreground">El portal de reservas quedó desactivado. Puedes activarlo después desde Configuración.</p> : null}
         <div className="mt-5 rounded-xl border border-primary/25 bg-primary/5 p-4">
           <p className="font-medium">Tu primer servicio ya está publicado</p>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -359,8 +370,8 @@ export function TenantOnboardingWizard({
           </p>
         </div>
         <div className="mt-4 rounded-xl border bg-muted/25 p-4">
-          <p className="font-medium">Puedes dejar preparado tu plan sin pagar hoy</p>
-          <p className="mt-1 text-sm leading-6 text-muted-foreground">Stripe guardará la tarjeta de forma segura. El primer cobro ocurrirá solamente cuando termine tu prueba; también puedes decidirlo después.</p>
+          <p className="font-medium">Elige tu plan cuando lo necesites</p>
+          <p className="mt-1 text-sm leading-6 text-muted-foreground">Puedes explorar los planes sin pagar hoy. El cobro se realiza al continuar y completar el pago seguro; si tu prueba sigue activa, el mes pagado comienza al terminarla.</p>
           <Button asChild variant="outline" className="mt-3"><Link href={`/billing/${tenantSlug}`}>Ver planes desde $200 al mes</Link></Button>
         </div>
         <div className="mt-7 flex flex-wrap gap-3">
@@ -393,7 +404,7 @@ export function TenantOnboardingWizard({
           Dejemos listo tu negocio
         </h1>
         <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">
-          Los primeros seis pasos publican una agenda y portal utilizables.
+          Los primeros seis pasos preparan tu agenda y, si lo deseas, un portal de reservas.
           Equipo y canales son opcionales y se pueden terminar sin detener el
           lanzamiento.
         </p>
@@ -893,18 +904,23 @@ export function TenantOnboardingWizard({
               title="Portal de reservas"
               description="Define la presentación y los servicios que se mostrarán en tu portal de reservas."
             />
+            <label className="flex cursor-pointer items-start gap-3 rounded-xl border bg-primary/5 p-4">
+              <input type="checkbox" checked={portal.enabled} disabled={saving} onChange={(event) => setPortal((value) => ({ ...value, enabled: event.target.checked }))} className="mt-0.5 size-4 accent-primary" />
+              <span><span className="block text-sm font-semibold">Activar portal de reservas</span><span className="mt-1 block text-sm text-muted-foreground">Permite que tus clientes consulten servicios y reserven en línea cuando publiques la configuración. Si lo desmarcas, el portal no estará disponible; puedes conservar su diseño para activarlo después.</span></span>
+            </label>
             <div className="grid gap-5 sm:grid-cols-2">
               <Field label="Nombre visible">
                 <Input
                   required
                   maxLength={160}
                   value={portal.clinicName}
-                  onChange={(event) =>
+                  onChange={(event) => {
+                    setPortalNameCustomized(true);
                     setPortal((value) => ({
                       ...value,
                       clinicName: event.target.value,
-                    }))
-                  }
+                    }));
+                  }}
                 />
               </Field>
               <Field label="Color principal">
@@ -989,7 +1005,7 @@ export function TenantOnboardingWizard({
             </div>
             <StepFooter
               saving={saving}
-              label="Guardar portal y continuar"
+              label={portal.enabled ? "Guardar portal y continuar" : "Guardar con portal desactivado"}
               onBack={stepBack}
             />
           </form>
@@ -1103,6 +1119,7 @@ export function TenantOnboardingWizard({
               ))}
             </div>
             <div className="rounded-xl border p-4 text-sm text-muted-foreground">
+              <p className="mb-3 font-medium text-foreground">Portal de reservas: {portal.enabled ? "activo al publicar" : "desactivado"}</p>
               <p className="font-medium text-foreground">Opcionales</p>
               <p className="mt-1">
                 Equipo:{" "}

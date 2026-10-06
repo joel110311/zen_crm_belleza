@@ -9,6 +9,7 @@ import { getTenantSystemSettingsOrDefaults } from "@/lib/tenant-system-settings"
 import { normalizeBusinessPolicies } from "@/lib/ai/business-policies";
 import { TenantOnboardingWizard } from "./onboarding-wizard";
 import { isMultitenantChannelsEnabled } from "@/lib/multitenant-features";
+import { resolveTenantPortalName } from "@/lib/tenant-portal-defaults";
 
 export const dynamic = "force-dynamic";
 
@@ -106,7 +107,8 @@ export default async function TenantOnboardingPage({
             },
             policies: normalizeBusinessPolicies(settings.businessPolicies),
             portal: {
-              clinicName: settings.portalClinicName || settings.clinicName,
+              enabled: settings.portalEnabled,
+              clinicName: resolveTenantPortalName(settings.portalClinicName, settings.clinicName, tenant.displayName, state?.completedSteps.includes("portal")),
               intro:
                 settings.portalIntro ||
                 "Aparta el horario para tu próximo servicio.",

@@ -28,6 +28,7 @@ import {
 } from "@/lib/tenant-services/context";
 import { asRecord } from "@/lib/tenant-services/validation";
 import { getTenantSystemSettingsOrDefaults } from "@/lib/tenant-system-settings";
+import { portalEnabledFromInput, portalNameAfterBusinessChange, resolveTenantPortalName } from "@/lib/tenant-portal-defaults";
 
 export const runtime = "nodejs";
 
@@ -324,7 +325,7 @@ export async function getOnboardingPayload(tenant: TenantServiceContext) {
       businessPolicies: normalizeBusinessPolicies(settings.businessPolicies),
       portal: {
         enabled: settings.portalEnabled,
-        clinicName: settings.portalClinicName || settings.clinicName,
+        clinicName: resolveTenantPortalName(settings.portalClinicName, settings.clinicName, tenant.displayName, state?.completedSteps.includes("portal")),
         intro: settings.portalIntro,
         primaryColor: settings.portalPrimaryColor,
         paymentInstructions: settings.portalPaymentInstructions,
@@ -394,6 +395,11 @@ export async function updateOnboardingStep(
     const businessTimeZone = validTimeZone(body.businessTimeZone);
     const country = getOperationCountry(operationCountry);
     return tenant.db.$transaction(async (tx) => {
+      const [previousSettings, previousState] = await Promise.all([
+        tx.systemSettings.findUnique({ where: { id: "default" }, select: { clinicName: true, portalClinicName: true } }),
+        tx.tenantOnboardingState.findUnique({ where: { id: "default" }, select: { completedSteps: true } }),
+      ]);
+      const portalClinicName = portalNameAfterBusinessChange(previousSettings?.portalClinicName, previousSettings?.clinicName, clinicName, previousState?.completedSteps.includes("portal"));
       await tx.systemSettings.upsert({
         where: { id: "default" },
         create: {
@@ -402,7 +408,7 @@ export async function updateOnboardingStep(
           clinicSubtitle,
           clinicAddress,
           brandName: clinicName,
-          portalClinicName: clinicName,
+          portalClinicName,
           portalSlug: tenant.slug,
           operationCountry,
           phoneDefaultCountry: operationCountry,
@@ -415,7 +421,7 @@ export async function updateOnboardingStep(
           clinicSubtitle,
           clinicAddress,
           brandName: clinicName,
-          portalClinicName: clinicName,
+          portalClinicName,
           portalSlug: tenant.slug,
           operationCountry,
           phoneDefaultCountry: operationCountry,
@@ -578,6 +584,9 @@ export async function updateOnboardingStep(
   }
 
   if (step === "portal") {
+    if (body.enabled !== undefined && typeof body.enabled !== "boolean") {
+      throw new OnboardingRequestError("Selecciona si deseas activar el portal de reservas.");
+    }
     const clinicName = requiredText(
       body.clinicName,
       "el nombre que verá el cliente",
@@ -593,6 +602,8 @@ export async function updateOnboardingStep(
     );
     const visibleServiceIds = cleanVisibleServiceIds(body.visibleServiceIds);
     return tenant.db.$transaction(async (tx) => {
+      const previousSettings = await tx.systemSettings.findUnique({ where: { id: "default" }, select: { portalEnabled: true } });
+      const portalEnabled = portalEnabledFromInput(body.enabled as boolean | undefined, previousSettings?.portalEnabled);
       if (visibleServiceIds.length > 0) {
         const count = await tx.service.count({
           where: { id: { in: visibleServiceIds }, isActive: true },
@@ -606,7 +617,7 @@ export async function updateOnboardingStep(
         where: { id: "default" },
         create: {
           id: "default",
-          portalEnabled: true,
+          portalEnabled,
           portalSlug: tenant.slug,
           portalClinicName: clinicName,
           portalIntro: intro,
@@ -615,7 +626,7 @@ export async function updateOnboardingStep(
           portalVisibleServiceIds: visibleServiceIds,
         },
         update: {
-          portalEnabled: true,
+          portalEnabled,
           portalSlug: tenant.slug,
           portalClinicName: clinicName,
           portalIntro: intro,
