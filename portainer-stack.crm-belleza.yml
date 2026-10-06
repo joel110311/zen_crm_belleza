@@ -64,8 +64,9 @@ services:
       - MERCADO_PAGO_TEST_WEBHOOK_SECRET=${MERCADO_PAGO_TEST_WEBHOOK_SECRET:-}
       - MERCADO_PAGO_PRODUCTION_ACCESS_TOKEN=${MERCADO_PAGO_PRODUCTION_ACCESS_TOKEN:-}
       - MERCADO_PAGO_PRODUCTION_WEBHOOK_SECRET=${MERCADO_PAGO_PRODUCTION_WEBHOOK_SECRET:-}
-      # Compatibilidad temporal; usa las variables separadas de arriba en instalaciones nuevas.
+      # Token legado: sólo se usa en MERCADO_PAGO_ENVIRONMENT si falta el token específico.
       - MERCADO_PAGO_ACCESS_TOKEN=${MERCADO_PAGO_ACCESS_TOKEN:-}
+      # Compatible con Eventtia: secreto compartido; los específicos de arriba tienen prioridad.
       - MERCADO_PAGO_WEBHOOK_SECRET=${MERCADO_PAGO_WEBHOOK_SECRET:-}
       - TENANT_CREDENTIALS_ENCRYPTION_KEY=${TENANT_CREDENTIALS_ENCRYPTION_KEY:-}
       - TENANT_CREDENTIALS_KEY_VERSION=${TENANT_CREDENTIALS_KEY_VERSION:-1}

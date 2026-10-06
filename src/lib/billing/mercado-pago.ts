@@ -1,6 +1,7 @@
 import "server-only";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { getMercadoPagoEnvironment, getMercadoPagoEnvironmentFallback, type MercadoPagoEnvironment } from "@/lib/billing/platform-runtime";
+import { resolveMercadoPagoCredentials } from "@/lib/billing/mercado-pago-runtime-helpers";
 
 const API_BASE_URL = "https://api.mercadopago.com";
 
@@ -30,19 +31,7 @@ export type MercadoPagoRuntimeConfiguration = {
 };
 
 function environmentCredentials(environment: MercadoPagoEnvironment) {
-    const legacyEnvironment = getMercadoPagoEnvironmentFallback();
-    return {
-        accessToken: (environment === "production"
-            ? process.env.MERCADO_PAGO_PRODUCTION_ACCESS_TOKEN
-            : process.env.MERCADO_PAGO_TEST_ACCESS_TOKEN)?.trim()
-            || (environment === legacyEnvironment ? process.env.MERCADO_PAGO_ACCESS_TOKEN?.trim() : "")
-            || "",
-        webhookSecret: (environment === "production"
-            ? process.env.MERCADO_PAGO_PRODUCTION_WEBHOOK_SECRET
-            : process.env.MERCADO_PAGO_TEST_WEBHOOK_SECRET)?.trim()
-            || (environment === legacyEnvironment ? process.env.MERCADO_PAGO_WEBHOOK_SECRET?.trim() : "")
-            || "",
-    };
+    return resolveMercadoPagoCredentials(process.env, environment, getMercadoPagoEnvironmentFallback());
 }
 
 export async function getMercadoPagoRuntimeConfiguration(): Promise<MercadoPagoRuntimeConfiguration> {

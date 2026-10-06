@@ -1,10 +1,11 @@
 import "server-only";
 
 import { getControlDb } from "@/lib/control-db";
+import { resolveMercadoPagoCredentials, type MercadoPagoEnvironment } from "@/lib/billing/mercado-pago-runtime-helpers";
 
 export const PLATFORM_BILLING_RUNTIME_KEY = "billing.runtime";
 
-export type MercadoPagoEnvironment = "test" | "production";
+export type { MercadoPagoEnvironment } from "@/lib/billing/mercado-pago-runtime-helpers";
 
 function record(value: unknown): Record<string, unknown> {
     return value && typeof value === "object" && !Array.isArray(value)
@@ -41,14 +42,14 @@ function configured(value: string | undefined) {
 
 export async function getMercadoPagoControlState() {
     const legacyEnvironment = getMercadoPagoEnvironmentFallback();
-    const legacyAccessTokenConfigured = configured(process.env.MERCADO_PAGO_ACCESS_TOKEN);
-    const legacyWebhookSecretConfigured = configured(process.env.MERCADO_PAGO_WEBHOOK_SECRET);
+    const testCredentials = resolveMercadoPagoCredentials(process.env, "test", legacyEnvironment);
+    const productionCredentials = resolveMercadoPagoCredentials(process.env, "production", legacyEnvironment);
     return {
         environment: await getMercadoPagoEnvironment(),
         applicationIdConfigured: configured(process.env.MERCADO_PAGO_APPLICATION_ID),
-        testAccessTokenConfigured: configured(process.env.MERCADO_PAGO_TEST_ACCESS_TOKEN) || (legacyEnvironment === "test" && legacyAccessTokenConfigured),
-        testWebhookSecretConfigured: configured(process.env.MERCADO_PAGO_TEST_WEBHOOK_SECRET) || (legacyEnvironment === "test" && legacyWebhookSecretConfigured),
-        productionAccessTokenConfigured: configured(process.env.MERCADO_PAGO_PRODUCTION_ACCESS_TOKEN) || (legacyEnvironment === "production" && legacyAccessTokenConfigured),
-        productionWebhookSecretConfigured: configured(process.env.MERCADO_PAGO_PRODUCTION_WEBHOOK_SECRET) || (legacyEnvironment === "production" && legacyWebhookSecretConfigured),
+        testAccessTokenConfigured: configured(testCredentials.accessToken),
+        testWebhookSecretConfigured: configured(testCredentials.webhookSecret),
+        productionAccessTokenConfigured: configured(productionCredentials.accessToken),
+        productionWebhookSecretConfigured: configured(productionCredentials.webhookSecret),
     };
 }
