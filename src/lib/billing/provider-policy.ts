@@ -9,3 +9,8 @@ export function resolveActiveBillingProvider(env: Record<string, string | undefi
 export function hasActiveTrial(trial: { status: string; endsAt: Date } | null, now: Date) {
     return Boolean(trial && ["ACTIVE", "ENDING"].includes(trial.status) && trial.endsAt > now);
 }
+
+/** Never offer a Stripe portal for Mercado Pago, including stale API responses. */
+export function shouldOfferBillingPortal(provider: ActiveBillingProvider, knownCustomer: boolean, reportedAvailable = false) {
+    return provider === "STRIPE" && (knownCustomer || reportedAvailable);
+}

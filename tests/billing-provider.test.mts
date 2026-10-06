@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { hasActiveTrial, resolveActiveBillingProvider } from "../src/lib/billing/provider-policy.ts";
+import { hasActiveTrial, resolveActiveBillingProvider, shouldOfferBillingPortal } from "../src/lib/billing/provider-policy.ts";
 
 test("Mercado Pago is the default; stale Stripe configuration cannot restore Stripe", () => {
     for (const env of [{}, { BILLING_PROVIDER: "stripe" }, { BILLING_STRIPE_ENABLED: "true" }, { BILLING_PROVIDER: "stripe", BILLING_STRIPE_ENABLED: "false" }]) {
@@ -19,4 +19,18 @@ test("expired and converted trials must never be presented as active", () => {
     assert.equal(hasActiveTrial({ status: "ACTIVE", endsAt: new Date("2026-09-10T12:00:00Z") }, now), false);
     assert.equal(hasActiveTrial({ status: "CONVERTED", endsAt: new Date("2026-10-10T12:00:00Z") }, now), false);
     assert.equal(hasActiveTrial({ status: "ACTIVE", endsAt: new Date("2026-10-10T12:00:00Z") }, now), true);
+});
+
+test("a known Stripe customer, including scheduled selections, gets a manage button", () => {
+    assert.equal(shouldOfferBillingPortal("STRIPE", true), true);
+    assert.equal(shouldOfferBillingPortal("STRIPE", false), false);
+});
+
+test("a checkout conflict that reports an available portal exposes the manage action", () => {
+    assert.equal(shouldOfferBillingPortal("STRIPE", false, true), true);
+});
+
+test("Mercado Pago never offers the disabled Stripe portal, even with historical customers or stale responses", () => {
+    assert.equal(shouldOfferBillingPortal("MERCADO_PAGO", true, true), false);
+    assert.equal(shouldOfferBillingPortal("MERCADO_PAGO", false, true), false);
 });

@@ -5,7 +5,7 @@ import { BillingActions } from "./billing-actions";
 import { BillingStatusRefresh } from "./billing-status-refresh";
 import { BillingAccessError, requireBillingOwner } from "@/lib/billing/context";
 import { getActiveBillingProvider } from "@/lib/billing/provider";
-import { hasActiveTrial } from "@/lib/billing/provider-policy";
+import { hasActiveTrial, shouldOfferBillingPortal } from "@/lib/billing/provider-policy";
 import { getControlDb } from "@/lib/control-db";
 
 export const dynamic = "force-dynamic";
@@ -69,7 +69,9 @@ export default async function BillingPage({
     const historicalSubscription = !subscription ? subscriptions.find((item) =>
         ["ACTIVE", "TRIALING"].includes(item.status)
         && (!item.currentPeriodEndsAt || item.currentPeriodEndsAt > new Date())) : null;
-    const hasStripeCustomer = billingProvider === "STRIPE" && Boolean(subscription?.providerCustomerId);
+    // Match the portal endpoint: scheduled selections and older customer records also qualify.
+    const hasStripeCustomer = shouldOfferBillingPortal(billingProvider,
+        Boolean(selection?.providerCustomerId) || subscriptions.some((item) => item.provider === "STRIPE" && Boolean(item.providerCustomerId)));
     const checkoutNotice = checkout === "success"
         ? billingProvider === "MERCADO_PAGO"
             ? "Regresaste de Mercado Pago. Estamos verificando el pago directamente con el proveedor; el acceso se actualizará únicamente cuando quede aprobado."
@@ -122,7 +124,7 @@ export default async function BillingPage({
                             <p className="mt-5 text-2xl font-semibold">{formatMoney(amount, plan.currency)}<span className="ml-1 text-sm font-normal text-muted-foreground">/{interval === "annual" ? "año" : "mes"}</span></p>
                             <div className="mt-6">
                                 {interval
-                                    ? <BillingActions tenantSlug={context.tenant.slug} planSlug={plan.slug} interval={interval} />
+                                    ? <BillingActions tenantSlug={context.tenant.slug} planSlug={plan.slug} interval={interval} billingProvider={billingProvider} />
                                     : <p className="rounded-lg bg-muted px-3 py-2 text-center text-xs text-muted-foreground">Pago en línea por configurar</p>}
                             </div>
                         </article>
@@ -142,7 +144,7 @@ export default async function BillingPage({
                 </p>
                 {billingProvider === "MERCADO_PAGO" && subscription ? <p className="mt-2 text-sm text-muted-foreground">Para renovar o cambiar de plan, utiliza las opciones de arriba. No hay cargos automáticos.</p> : null}
                 {billingProvider === "STRIPE" && selection?.status === "FAILED" ? <p className="mt-3 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">No fue posible activar el plan. No realizaremos intentos ocultos; soporte puede revisar y reintentar la activación. {selection.lastError ? `Referencia: ${selection.lastError}` : ""}</p> : null}
-                <div className="mt-4 max-w-xs"><BillingActions tenantSlug={context.tenant.slug} canManage={hasStripeCustomer} /></div>
+                <div className="mt-4 max-w-xs"><BillingActions tenantSlug={context.tenant.slug} canManage={hasStripeCustomer} billingProvider={billingProvider} /></div>
             </section>
         </main>
     );

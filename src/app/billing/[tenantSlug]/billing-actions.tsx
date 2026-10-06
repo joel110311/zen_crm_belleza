@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Loader2 } from "lucide-react";
+import { shouldOfferBillingPortal, type ActiveBillingProvider } from "@/lib/billing/provider-policy";
 
 type BillingAction = "checkout" | "portal";
 
@@ -10,14 +11,18 @@ export function BillingActions({
     planSlug,
     interval,
     canManage,
+    billingProvider,
 }: {
     tenantSlug: string;
     planSlug?: string;
     interval?: "monthly" | "annual";
     canManage?: boolean;
+    billingProvider: ActiveBillingProvider;
 }) {
     const [pendingAction, setPendingAction] = useState<BillingAction | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const [portalReportedAvailable, setPortalReportedAvailable] = useState(false);
+    const showPortal = shouldOfferBillingPortal(billingProvider, canManage === true, portalReportedAvailable);
 
     async function start(action: BillingAction) {
         setError(null);
@@ -30,8 +35,9 @@ export function BillingActions({
                     ? { tenantSlug, planSlug, interval }
                     : { tenantSlug }),
             });
-            const payload = await response.json() as { error?: string; url?: string };
+            const payload = await response.json() as { error?: string; url?: string; portalAvailable?: boolean };
             if (!response.ok || !payload.url) {
+                if (action === "checkout" && payload.portalAvailable === true) setPortalReportedAvailable(true);
                 setError(payload.error || "No fue posible continuar.");
                 return;
             }
@@ -50,7 +56,7 @@ export function BillingActions({
                     {pendingAction === "checkout" ? <><Loader2 className="mr-2 size-4 animate-spin" />Abriendo pago...</> : "Continuar a pago seguro"}
                 </button>
             ) : null}
-            {canManage ? (
+            {showPortal ? (
                 <button type="button" onClick={() => start("portal")} disabled={pendingAction !== null} className="inline-flex h-10 w-full items-center justify-center rounded-md border px-4 text-sm font-semibold disabled:opacity-60">
                     {pendingAction === "portal" ? <><Loader2 className="mr-2 size-4 animate-spin" />Abriendo portal...</> : "Administrar suscripción"}
                 </button>
