@@ -12,6 +12,7 @@ import {
 } from "@/lib/billing/mercado-pago";
 import { getControlDb } from "@/lib/control-db";
 import { resolveMercadoPagoWebhookPayment } from "@/lib/billing/mercado-pago-runtime-helpers";
+import { paidPeriodStart } from "@/lib/billing/paid-period";
 
 export const runtime = "nodejs";
 
@@ -89,12 +90,17 @@ async function reconcilePayment(payment: MercadoPagoPayment, runtime: MercadoPag
                 where: { tenantId: attempt.tenantId, provider: "MERCADO_PAGO" },
                 orderBy: { updatedAt: "desc" },
             });
-            const periodStartsAt = [
-                paidAt,
+            const previousAccess = await tx.subscription.findFirst({
+                where: { tenantId: attempt.tenantId, provider: { not: "MERCADO_PAGO" }, status: { in: ["ACTIVE", "TRIALING"] }, currentPeriodEndsAt: { gt: paidAt } },
+                orderBy: { currentPeriodEndsAt: "desc" },
+                select: { currentPeriodEndsAt: true },
+            });
+            const periodStartsAt = paidPeriodStart(paidAt, [
                 attempt.tenant.trial && ["ACTIVE", "ENDING"].includes(attempt.tenant.trial.status)
                     ? attempt.tenant.trial.endsAt : null,
                 existing?.status === "ACTIVE" ? existing.currentPeriodEndsAt : null,
-            ].filter((value): value is Date => Boolean(value)).reduce((latest, value) => value > latest ? value : latest, paidAt);
+                previousAccess?.currentPeriodEndsAt,
+            ]);
             const periodEndsAt = addMonths(periodStartsAt, 1);
             const providerCustomerId = text(payment.payer?.id) || payment.payer?.email || null;
             const providerSubscriptionId = `mp_payment_${paymentId}`;

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import type Stripe from "stripe";
 import { Prisma } from "@/generated/control-plane";
 import { accessModeForSubscription, toBillingStatus, toSubscriptionStatus } from "@/lib/billing/subscription-state";
-import { getStripeClient, getStripeWebhookSecret, StripeBillingConfigurationError } from "@/lib/billing/stripe";
+import { getStripeClient, getStripeWebhookSecret, isStripeBillingEnabled, StripeBillingConfigurationError } from "@/lib/billing/stripe";
 import { getControlDb } from "@/lib/control-db";
 
 export const runtime = "nodejs";
@@ -270,6 +270,9 @@ async function processStripeEvent(event: Stripe.Event, rawPayload: Prisma.InputJ
 }
 
 export async function POST(request: NextRequest) {
+    if (!isStripeBillingEnabled()) {
+        return NextResponse.json({ error: "Stripe está deshabilitado." }, { status: 404 });
+    }
     const signature = request.headers.get("stripe-signature");
     if (!signature) {
         return NextResponse.json({ error: "Falta la firma de Stripe." }, { status: 400 });

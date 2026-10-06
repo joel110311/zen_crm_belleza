@@ -121,6 +121,7 @@ async function expireTrials(pool) {
              WHERE tr.status IN ('ACTIVE','ENDING') AND tr."endsAt"<=NOW()
                AND NOT EXISTS (
                  SELECT 1 FROM "Subscription" s WHERE s."tenantId"=tr."tenantId" AND s.status IN ('ACTIVE','TRIALING')
+                   AND (s."currentPeriodEndsAt" IS NULL OR s."currentPeriodEndsAt">NOW())
                )
              ORDER BY tr."endsAt" FOR UPDATE OF tr SKIP LOCKED LIMIT $1`,
             [maxBatch],
@@ -151,7 +152,7 @@ function subscriptionState(value) {
 async function activateScheduledSelections(pool) {
     const secretKey = process.env.STRIPE_SECRET_KEY?.trim();
     const activeProvider = process.env.BILLING_PROVIDER?.trim().toLowerCase();
-    if (!secretKey || process.env.BILLING_STRIPE_ENABLED !== "true" || activeProvider === "mercado_pago" || activeProvider === "mercadopago") return 0;
+    if (!secretKey || process.env.BILLING_STRIPE_ENABLED !== "true" || activeProvider !== "stripe") return 0;
     const stripe = new Stripe(secretKey);
     let activated = 0;
     for (let index = 0; index < maxBatch; index += 1) {
@@ -241,7 +242,8 @@ async function expireMercadoPagoPeriods(pool) {
             );
             const activeAccess = await client.query(
                 `SELECT 1
-                 WHERE EXISTS (SELECT 1 FROM "Subscription" WHERE "tenantId"=$1 AND status IN ('ACTIVE','TRIALING'))
+                 WHERE EXISTS (SELECT 1 FROM "Subscription" WHERE "tenantId"=$1 AND status IN ('ACTIVE','TRIALING')
+                    AND ("currentPeriodEndsAt" IS NULL OR "currentPeriodEndsAt">NOW()))
                     OR EXISTS (SELECT 1 FROM "Trial" WHERE "tenantId"=$1 AND status IN ('ACTIVE','ENDING') AND "endsAt">NOW())`,
                 [item.tenantId],
             );

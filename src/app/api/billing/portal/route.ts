@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { BillingAccessError, requireBillingOwner } from "@/lib/billing/context";
-import { getPlatformBaseUrl, getStripeClient, StripeBillingConfigurationError } from "@/lib/billing/stripe";
+import { getPlatformBaseUrl, getStripeClient, isStripeBillingEnabled, StripeBillingConfigurationError } from "@/lib/billing/stripe";
 import { getControlDb } from "@/lib/control-db";
 import { isSameApplicationOrigin } from "@/lib/security";
 
@@ -24,6 +24,9 @@ export async function POST(request: NextRequest) {
 
     try {
         const { tenant } = await requireBillingOwner(tenantSlug);
+        if (!isStripeBillingEnabled()) {
+            return NextResponse.json({ error: "El portal de Stripe está deshabilitado en esta etapa. Renueva tu plan con Mercado Pago." }, { status: 409 });
+        }
         const db = getControlDb();
         const [subscription, selection] = await Promise.all([
             db.subscription.findFirst({

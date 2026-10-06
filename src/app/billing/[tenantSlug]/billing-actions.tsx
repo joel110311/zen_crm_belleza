@@ -30,13 +30,9 @@ export function BillingActions({
                     ? { tenantSlug, planSlug, interval }
                     : { tenantSlug }),
             });
-            const payload = await response.json() as { error?: string; url?: string; portalAvailable?: boolean };
+            const payload = await response.json() as { error?: string; url?: string };
             if (!response.ok || !payload.url) {
-                if (payload.portalAvailable) {
-                    setError("Ya existe una suscripción. Usa el botón para administrarla.");
-                } else {
-                    setError(payload.error || "No fue posible continuar.");
-                }
+                setError(payload.error || "No fue posible continuar.");
                 return;
             }
             window.location.assign(payload.url);

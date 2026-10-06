@@ -40,7 +40,7 @@ async function allowance(): Promise<UsageAllowance | null> {
     const db = getControlDb();
     const [subscription, trial] = await Promise.all([
         db.subscription.findFirst({
-            where: { tenantId, status: { in: ["ACTIVE", "TRIALING"] } },
+            where: { tenantId, status: { in: ["ACTIVE", "TRIALING"] }, OR: [{ currentPeriodEndsAt: null }, { currentPeriodEndsAt: { gt: now } }] },
             orderBy: { updatedAt: "desc" },
             select: { planId: true, currentPeriodStartsAt: true, currentPeriodEndsAt: true, plan: { select: { limits: true, features: true } } },
         }),

@@ -2,6 +2,10 @@
 
 El CRM crea una preferencia por negocio y plan en `/checkout/preferences`, redirige al comprador a Mercado Pago y confirma el pago consultando `/v1/payments/{id}` después de validar la firma del webhook. Sólo un pago aprobado, con la aplicación, moneda e importe esperados, habilita o extiende un mes de acceso. Checkout Pro no realiza una renovación automática: el cliente vuelve a pagar para renovar.
 
+Mercado Pago es el proveedor predeterminado de esta etapa. Stripe no aparece en el formulario de precios, su portal y webhook quedan deshabilitados y el worker no ejecuta activaciones programadas. Los registros históricos se conservan y no bloquean un nuevo Checkout de Mercado Pago. Esta desactivación en el CRM **no cancela suscripciones externas existentes en Stripe**; comprueba cualquier contrato real directamente en Stripe antes de cambiar el proveedor de un cliente. Reactivar Stripe en una segunda etapa requiere explícitamente `BILLING_PROVIDER=stripe` y `BILLING_STRIPE_ENABLED=true`.
+
+Al guardar precios de Mercado Pago se conserva el catálogo histórico de Stripe sin modificarlo ni borrarlo.
+
 ## 1. Credenciales en Portainer
 
 En el stack `crm-belleza`, abre **Editor → Environment variables**. Las credenciales y el Application ID deben pertenecer a la misma aplicación de Mercado Pago. No copies valores al YAML ni al repositorio.

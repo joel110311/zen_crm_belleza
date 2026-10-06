@@ -1,5 +1,6 @@
 import "server-only";
 import Stripe from "stripe";
+import { getActiveBillingProvider } from "./provider";
 
 export class StripeBillingConfigurationError extends Error {
     constructor(message: string) {
@@ -9,7 +10,7 @@ export class StripeBillingConfigurationError extends Error {
 }
 
 export function isStripeBillingEnabled(): boolean {
-    return process.env.BILLING_STRIPE_ENABLED === "true";
+    return process.env.BILLING_STRIPE_ENABLED === "true" && getActiveBillingProvider() === "STRIPE";
 }
 
 export function getStripeClient(): Stripe {

@@ -53,30 +53,15 @@ export async function POST(request: NextRequest) {
             if (interval !== "MONTHLY") {
                 return NextResponse.json({ error: "Mercado Pago está disponible únicamente para mensualidades." }, { status: 409 });
             }
-            const [plan, conflictingSubscription] = await Promise.all([
-                db.plan.findFirst({
-                    where: { slug: planSlug, isActive: true, monthlyAmountCents: { gt: 0 } },
-                    select: { id: true, name: true, description: true, currency: true, monthlyAmountCents: true },
-                }),
-                db.subscription.findFirst({
-                    where: {
-                        tenantId: tenant.tenantId,
-                        provider: "STRIPE",
-                        status: { in: ["TRIALING", "ACTIVE", "PAST_DUE", "UNPAID", "INCOMPLETE"] },
-                    },
-                    select: { id: true },
-                }),
-            ]);
+            // Historical Stripe records preserve access, but cannot block the current provider.
+            // Stripe's API, portal and scheduled charges are disabled separately during this stage.
+            const plan = await db.plan.findFirst({
+                where: { slug: planSlug, isActive: true, monthlyAmountCents: { gt: 0 } },
+                select: { id: true, name: true, description: true, currency: true, monthlyAmountCents: true },
+            });
             if (!plan?.monthlyAmountCents) {
                 return NextResponse.json({ error: "Este plan no está disponible para pago en línea." }, { status: 409 });
             }
-            if (conflictingSubscription) {
-                return NextResponse.json(
-                    { error: "Ya existe una suscripción administrada por Stripe para este negocio.", portalAvailable: true },
-                    { status: 409 },
-                );
-            }
-
             const attemptId = randomUUID();
             const externalReference = `sl_${attemptId.replaceAll("-", "")}`;
             await db.billingCheckoutAttempt.create({

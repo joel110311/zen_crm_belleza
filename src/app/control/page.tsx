@@ -23,8 +23,8 @@ export default async function ControlCenterPage() {
         db.plan.findMany({ orderBy: { monthlyAmountCents: "asc" }, include: { prices: { where: { provider: "STRIPE", interval: "MONTHLY", countryCode: null }, take: 1 } } }),
         db.trial.count({ where: { status: { in: ["ACTIVE", "ENDING"] }, endsAt: { gt: now } } }),
         db.trial.count({ where: { status: { in: ["ACTIVE", "ENDING"] }, endsAt: { gt: now, lte: in48Hours } } }),
-        db.subscription.findMany({ where: { status: "ACTIVE" }, select: { plan: { select: { monthlyAmountCents: true } } } }),
-        db.subscription.count({ where: { status: { in: ["PAST_DUE", "UNPAID"] } } }),
+        db.subscription.findMany({ where: { provider: billingProvider, status: "ACTIVE" }, select: { plan: { select: { monthlyAmountCents: true } } } }),
+        db.subscription.count({ where: { provider: billingProvider, status: { in: ["PAST_DUE", "UNPAID"] } } }),
         db.billingCheckoutAttempt.count({ where: { provider: "MERCADO_PAGO", status: { in: ["REJECTED", "REFUNDED", "CHARGED_BACK"] } } }),
         db.billingCheckoutAttempt.findMany({
             where: { provider: "MERCADO_PAGO" },

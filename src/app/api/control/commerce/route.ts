@@ -6,6 +6,7 @@ import { normalizeChatModelSelection, SUPPORTED_CHAT_MODELS } from "@/lib/ai/mod
 import { PLATFORM_AI_RUNTIME_KEY } from "@/lib/ai/platform-runtime";
 import { encryptChannelSecret } from "@/lib/tenant-channel-secrets";
 import { getMercadoPagoControlState, PLATFORM_BILLING_RUNTIME_KEY } from "@/lib/billing/platform-runtime";
+import { isStripeBillingEnabled } from "@/lib/billing/stripe";
 
 export const runtime = "nodejs";
 
@@ -154,16 +155,17 @@ export async function PATCH(request: NextRequest) {
             const planId = cleanText(body.planId, 100, true);
             const monthlyAmountCents = integer(body.monthlyAmountCents, 0, 100_000_000);
             const stripePriceId = cleanText(body.stripePriceId, 200);
+            const updateStripe = isStripeBillingEnabled() && typeof body.stripePriceId === "string";
             await db.$transaction(async (tx) => {
-                const plan = await tx.plan.update({ where: { id: planId }, data: { monthlyAmountCents, stripeMonthlyPriceId: stripePriceId || null } });
-                const existingPrice = await tx.billingPrice.findFirst({ where: { planId, provider: "STRIPE", interval: "MONTHLY", countryCode: null }, select: { id: true } });
-                if (stripePriceId) {
+                const plan = await tx.plan.update({ where: { id: planId }, data: { monthlyAmountCents, ...(updateStripe ? { stripeMonthlyPriceId: stripePriceId || null } : {}) } });
+                const existingPrice = updateStripe ? await tx.billingPrice.findFirst({ where: { planId, provider: "STRIPE", interval: "MONTHLY", countryCode: null }, select: { id: true } }) : null;
+                if (updateStripe && stripePriceId) {
                     if (existingPrice) await tx.billingPrice.update({ where: { id: existingPrice.id }, data: { externalPriceId: stripePriceId, currency: plan.currency, isActive: true } });
                     else await tx.billingPrice.create({ data: { planId, provider: "STRIPE", interval: "MONTHLY", externalPriceId: stripePriceId, currency: plan.currency } });
                 } else if (existingPrice) {
                     await tx.billingPrice.update({ where: { id: existingPrice.id }, data: { isActive: false } });
                 }
-                await tx.auditLog.create({ data: { actorUserId: admin.id, action: "billing_plan.updated", resourceType: "Plan", resourceId: planId, metadata: { monthlyAmountCents, stripePriceConfigured: Boolean(stripePriceId) } } });
+                await tx.auditLog.create({ data: { actorUserId: admin.id, action: "billing_plan.updated", resourceType: "Plan", resourceId: planId, metadata: { monthlyAmountCents, stripePriceUpdated: updateStripe } } });
             });
             return NextResponse.json({ saved: true });
         }
@@ -186,6 +188,7 @@ export async function PATCH(request: NextRequest) {
         }
 
         if (action === "retry-selection") {
+            if (!isStripeBillingEnabled()) throw new Error("Las activaciones de Stripe están pausadas. Utiliza Mercado Pago.");
             const tenantId = cleanText(body.tenantId, 100, true);
             const reason = cleanText(body.reason, 300, true);
             await db.$transaction(async (tx) => {
