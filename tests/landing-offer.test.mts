@@ -22,13 +22,14 @@ test("landing follows policy changes and never advertises an unavailable offer",
 test("public landing uses live catalog, safe routes and no unsupported legacy claims", async () => {
     const page = await readFile(new URL("../src/app/page.tsx", import.meta.url), "utf8");
     const landing = await readFile(new URL("../src/components/marketing/crm-landing.tsx", import.meta.url), "utf8");
+    const experience = await readFile(new URL("../src/components/marketing/landing-experience.tsx", import.meta.url), "utf8");
     const offer = await readFile(new URL("../src/lib/billing/public-offer.ts", import.meta.url), "utf8");
     assert.match(page, /isPublicTenantSignupEnabled/);
     assert.match(page, /getPublicLandingOffer/);
     assert.match(landing, /href="\/signup"/);
     assert.match(landing, /href="\/login"/);
     assert.match(landing, /<BrandLogo/);
-    assert.match(landing, /id="inicio"/);
+    assert.match(experience, /id="inicio"/);
     assert.match(landing, /href="#inicio" className="landing-brand"/);
     assert.doesNotMatch(landing, /Acceso beta|facturación CFDI|n8n|Teknobyte|Laura Vega|reduce errores a cero/i);
     assert.match(offer, /isActive: true/);

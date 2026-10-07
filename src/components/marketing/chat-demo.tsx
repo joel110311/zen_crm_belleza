@@ -1,27 +1,38 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, CheckCheck, MessageCircle, MoreVertical, Phone, Send, Signal, Wifi } from "lucide-react";
 
 const examples = [
     { name: "Barbería", initial: "B", messages: ["Hola, ¿tienen espacio para un corte?", "¡Hola! Claro. ¿Para qué día te gustaría agendar?", "Para mañana por la tarde.", "Revisemos los horarios disponibles. ¿Prefieres a las 4:00 o a las 6:00?", "A las 6:00, por favor."] },
     { name: "Spa", initial: "S", messages: ["Hola, quiero saber más de sus masajes.", "¡Hola! Con gusto. ¿Buscas relajación o un tratamiento específico?", "Relajación. ¿Cuánto dura la sesión?", "Puedes consultar la duración y el precio en nuestro catálogo. ¿Te ayudo a elegir un horario?", "Sí, para el viernes."] },
-    { name: "Salón de uñas", initial: "U", messages: ["¡Hola! ¿Hacen uñas con diseño?", "¡Hola! Sí. Cuéntame qué estilo tienes en mente.", "Algo natural, para una boda.", "¡Qué bonito! Te puedo orientar con los servicios del salón y ayudarte a encontrar un horario.", "Perfecto, quiero agendar."] },
+    { name: "Studio de uñas", initial: "U", messages: ["¡Hola! ¿Hacen uñas con diseño?", "¡Hola! Sí. Cuéntame qué estilo tienes en mente.", "Algo natural, para una boda.", "¡Qué bonito! Te puedo orientar con los servicios del studio y ayudarte a encontrar un horario.", "Perfecto, quiero agendar."] },
 ];
 
 export function LandingChatDemo() {
+    const demoRef = useRef<HTMLDivElement>(null);
     const [selected, setSelected] = useState(0);
     const [shown, setShown] = useState(2);
     const [paused, setPaused] = useState(false);
     const example = examples[selected];
 
     useEffect(() => {
-        if (paused || shown >= example.messages.length || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-        const timer = window.setTimeout(() => setShown((value) => value + 1), 2200);
-        return () => window.clearTimeout(timer);
+        if (paused || shown >= example.messages.length) return;
+        const media = window.matchMedia("(prefers-reduced-motion: reduce)");
+        let timer: number | undefined;
+        let visible = false;
+        function arm() {
+            window.clearTimeout(timer);
+            if (!media.matches && !document.hidden && visible) timer = window.setTimeout(() => setShown((value) => value + 1), 2200);
+        }
+        const observer = new IntersectionObserver(([entry]) => { visible = entry.isIntersecting; arm(); });
+        if (demoRef.current) observer.observe(demoRef.current);
+        media.addEventListener("change", arm);
+        document.addEventListener("visibilitychange", arm);
+        return () => { window.clearTimeout(timer); observer.disconnect(); media.removeEventListener("change", arm); document.removeEventListener("visibilitychange", arm); };
     }, [example, paused, shown]);
 
-    return <div className="landing-demo">
+    return <div className="landing-demo" ref={demoRef}>
         <div className="landing-demo-tabs" aria-label="Ejemplo de negocio">{examples.map((item, index) => <button type="button" key={item.name} aria-pressed={selected === index} onClick={() => { setSelected(index); setShown(2); }}>{item.name}</button>)}</div>
         <div className="landing-phone" aria-label={`Demostración ilustrativa de una conversación para ${example.name}`}>
             <div className="landing-phone-notch" />

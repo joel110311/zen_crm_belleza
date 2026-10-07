@@ -8,6 +8,7 @@ public/uploads
 .env.*
 .vscode
 .idea
+output
 cookies.txt
 csrf.json
 build_stats.txt

@@ -7,8 +7,8 @@ import { getPublicLandingOffer } from "@/lib/billing/public-offer";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-    title: "Zen CRM Cuidado Personal | Tu negocio, ahora inteligente",
-    description: "Agenda, clientes, portal de reservas y WhatsApp en un solo CRM para barberías, peluquerías, salones y spas.",
+    title: "Zen CRM | CRM con inteligencia artificial para tu negocio",
+    description: "Responde por WhatsApp con IA, organiza citas y gestiona tus clientes en Zen CRM. Para barberías, peluquerías, salones y spas.",
 };
 
 export default async function Home() {
