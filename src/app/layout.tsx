@@ -19,7 +19,7 @@ export async function generateMetadata(): Promise<Metadata> {
 
     return {
       title: branding.brandName,
-      description: "CRM de belleza para WhatsApp con IA",
+      description: "CRM para negocios de cuidado personal con WhatsApp e IA",
       icons: {
         icon: branding.brandFaviconUrl,
         shortcut: branding.brandFaviconUrl,
@@ -31,7 +31,7 @@ export async function generateMetadata(): Promise<Metadata> {
 
     return {
       title: branding.brandName,
-      description: "CRM de belleza para WhatsApp con IA",
+      description: "CRM para negocios de cuidado personal con WhatsApp e IA",
       icons: {
         icon: branding.brandFaviconUrl,
         shortcut: branding.brandFaviconUrl,

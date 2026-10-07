@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
-import { FileImage, FileText, Loader2, Plus, RefreshCw, Trash2, Upload, WandSparkles } from "lucide-react";
+import { FileImage, FileText, Loader2, Plus, RefreshCw, Trash2, Upload, Bot } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -449,7 +449,7 @@ export function BulkCampaignMessageTab({
                         <div className="min-w-0 space-y-4">
                             <div className="min-w-0 rounded-xl border bg-background/80 p-4">
                                 <div className="flex items-center gap-2">
-                                    <WandSparkles className="h-4 w-4 text-primary" />
+                                    <Bot className="h-4 w-4 text-primary" />
                                     <p className="text-sm font-semibold">Vista previa de WhatsApp</p>
                                 </div>
                                 <p className="mt-1 text-sm leading-6 text-muted-foreground">
@@ -716,7 +716,7 @@ export function BulkCampaignMessageTab({
                 <div className="min-w-0 space-y-4">
                     <div className="min-w-0 rounded-xl border bg-muted/15 p-4">
                         <div className="flex items-center gap-2">
-                            <WandSparkles className="h-4 w-4 text-primary" />
+                            <Bot className="h-4 w-4 text-primary" />
                             <p className="text-sm font-semibold">Vista previa de WhatsApp</p>
                         </div>
                         <p className="mt-1 text-sm leading-6 text-muted-foreground">

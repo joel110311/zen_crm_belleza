@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { FileImage, FileText, Search, Star, Wand2 } from "lucide-react";
+import { FileImage, FileText, Search, Star, LayoutTemplate } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -49,7 +49,7 @@ export function TemplatePicker({ templates, onApply, disabled = false }: Templat
                     disabled={disabled}
                     title="Usar plantilla"
                 >
-                    <Wand2 className="h-5 w-5" />
+                    <LayoutTemplate className="h-5 w-5" />
                 </Button>
             </PopoverTrigger>
             <PopoverContent

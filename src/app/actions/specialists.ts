@@ -143,7 +143,7 @@ export async function saveSpecialist(input: SpecialistInput) {
         const data = {
             name,
             displayName: nullableText(input.displayName) || name,
-            specialty: nullableText(input.specialty) || "Belleza",
+            specialty: nullableText(input.specialty) || "Cuidado personal",
             email: nullableText(input.email),
             phone: nullableText(input.phone),
             professionalTitle: nullableText(input.professionalTitle),

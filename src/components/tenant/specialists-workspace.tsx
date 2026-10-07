@@ -61,7 +61,7 @@ export function SpecialistsWorkspace({ tenantSlug, embedded = false }: { tenantS
                 <Feedback error={error} success={success} />
                 {showForm ? <form onSubmit={create} className="grid gap-4 rounded-2xl border bg-card p-5 shadow-sm sm:grid-cols-2 lg:grid-cols-3">
                     <Field label="Nombre"><Input required name="name" maxLength={160} /></Field>
-                    <Field label="Especialidad"><Input name="specialty" maxLength={160} placeholder="Belleza" /></Field>
+                    <Field label="Especialidad"><Input name="specialty" maxLength={160} placeholder="Cuidado personal" /></Field>
                     <Field label="Correo"><Input name="email" type="email" maxLength={160} /></Field>
                     <Field label="Teléfono"><Input name="phone" maxLength={40} /></Field>
                     <Field label="Espacio / cabina"><Input name="room" maxLength={100} /></Field>

@@ -3,6 +3,8 @@ import test from "node:test";
 import { portalEnabledFromInput, portalNameAfterBusinessChange, resolveTenantPortalName } from "../src/lib/tenant-portal-defaults.ts";
 
 test("first portal setup uses the tenant business name instead of seeded CRM branding", () => {
+    assert.equal(resolveTenantPortalName("Zen CRM Cuidado Personal", "Zen CRM Cuidado Personal", "Barbería Central"), "Barbería Central");
+    assert.equal(portalNameAfterBusinessChange("Zen CRM Cuidado Personal", "Barbería Central", "Barbería Central"), "Barbería Central");
     assert.equal(resolveTenantPortalName("Zen CRM Belleza", "logicapp", "logicapp"), "logicapp");
     assert.equal(resolveTenantPortalName("Zen CRM Belleza", "Zen CRM Belleza", "logicapp"), "logicapp");
     assert.equal(resolveTenantPortalName(null, "logicapp", "logicapp"), "logicapp");

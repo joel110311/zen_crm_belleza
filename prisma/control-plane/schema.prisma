@@ -453,7 +453,7 @@ model Trial {
   tenantId          String       @unique
   policyId          String?
   policyVersion     Int          @default(1)
-  durationDays      Int          @default(7)
+  durationDays      Int          @default(14)
   warningHours      Int          @default(48)
   finalWarningHours Int          @default(24)
   status            TrialStatus  @default(ACTIVE)
@@ -479,7 +479,7 @@ model TrialPolicy {
   slug                  String                     @unique
   name                  String
   version               Int                        @default(1)
-  trialDays             Int                        @default(7)
+  trialDays             Int                        @default(14)
   warningHours          Int                        @default(48)
   finalWarningHours     Int                        @default(24)
   paymentCollectionMode TrialPaymentCollectionMode @default(OPTIONAL_AFTER_ONBOARDING)

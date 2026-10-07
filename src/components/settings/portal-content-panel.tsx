@@ -28,7 +28,7 @@ const DEFAULT_PORTAL_SETTINGS: PortalSettings = {
     portalEnabled: true,
     portalSocialLinks: [],
     portalSlug: "belleza",
-    portalClinicName: "Zen CRM Belleza",
+    portalClinicName: "Zen CRM Cuidado Personal",
     portalIntro: "Aparta el horario para tu próximo servicio.",
     portalPrimaryColor: "#4B5F25",
 };
@@ -64,7 +64,7 @@ export function PortalContentPanel() {
                     portalEnabled: settings.portalEnabled !== false,
                     portalSocialLinks: normalizePortalSocialLinks(settings.portalSocialLinks),
                     portalSlug: settings.portalSlug || "belleza",
-                    portalClinicName: /oftalm/i.test(storedPortalName) ? "Zen CRM Belleza" : storedPortalName || "Zen CRM Belleza",
+                    portalClinicName: /oftalm/i.test(storedPortalName) ? "Zen CRM Cuidado Personal" : storedPortalName || "Zen CRM Cuidado Personal",
                     portalIntro: /oftalm/i.test(storedPortalIntro) ? DEFAULT_PORTAL_SETTINGS.portalIntro : storedPortalIntro || DEFAULT_PORTAL_SETTINGS.portalIntro,
                     portalPrimaryColor: !settings.portalPrimaryColor || settings.portalPrimaryColor.toUpperCase() === "#2563EB"
                         ? "#4B5F25"

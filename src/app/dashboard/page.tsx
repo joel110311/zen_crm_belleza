@@ -12,7 +12,7 @@ import {
     MapPin,
     Plus,
     Search,
-    Sparkles,
+    BadgeCheck,
     TrendingUp,
     Users,
 } from "lucide-react";
@@ -799,7 +799,7 @@ function MobileDashboard({
                     <MobileStatTile
                         label="Hoy"
                         value={data.stats.appointmentsToday}
-                        icon={Sparkles}
+                        icon={CalendarDays}
                         locale={operationContext.locale}
                     />
                     <MobileStatTile
@@ -953,7 +953,7 @@ function SpecialistProfileCard({
     const displayName = specialist?.displayName || specialist?.name || fallbackName;
     const specialty = specialist?.specialty && !/oftalm/i.test(specialist.specialty)
         ? specialist.specialty
-        : "Especialista de belleza";
+        : "Especialista de cuidado personal";
     const photoUrl = specialist?.photoUrl || "";
     const room = specialist?.room?.trim();
     const attentionArea = room && !/^\d+$/.test(room) ? room : "Área de atención";
@@ -966,7 +966,7 @@ function SpecialistProfileCard({
                         Especialista
                     </span>
                     <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-                        <Sparkles className="h-4 w-4" />
+                        <BadgeCheck className="h-4 w-4" />
                     </span>
                 </div>
                 <div className="mt-5 flex items-center gap-4">

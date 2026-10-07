@@ -2,7 +2,7 @@
 
 ## Objetivo
 
-Convertir Zen CRM Belleza de una instalación por cliente a una plataforma SaaS:
+Convertir Zen CRM Cuidado Personal de una instalación por cliente a una plataforma SaaS:
 
 - Un alta de prueba desde la landing crea un tenant automáticamente.
 - La aplicación web, el portal público y las futuras apps móviles comparten el mismo backend.

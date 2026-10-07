@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, Megaphone, SlidersHorizontal, Wand2 } from "lucide-react";
+import { Loader2, Megaphone, SlidersHorizontal, Bot } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
     Dialog,
@@ -1112,7 +1112,7 @@ export function ContactsBulkCampaignDialog({
                             </>
                         ) : (
                             <>
-                                <Wand2 className="mr-2 h-4 w-4" />
+                                <Bot className="mr-2 h-4 w-4" />
                                 {submitLabel}
                             </>
                         )}

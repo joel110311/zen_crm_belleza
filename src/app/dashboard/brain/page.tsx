@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
-import { Bot, BrainCircuit, Loader2, MessagesSquare, RotateCcw, Save, SearchCheck, Sparkles } from "lucide-react";
+import { Bot, BrainCircuit, Loader2, MessagesSquare, RotateCcw, Save, SearchCheck, SlidersHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -477,7 +477,7 @@ export default function BrainConfigPage() {
                         {!isTenantWorkspace ? <Card>
                             <CardHeader>
                                 <CardTitle className="flex items-center gap-2">
-                                    <Sparkles className="h-5 w-5 text-primary" />
+                                    <SlidersHorizontal className="h-5 w-5 text-primary" />
                                     Parametros del modelo
                                 </CardTitle>
                                 <CardDescription>Ajusta cuanto contexto recuperar y que tan creativo sera el agente.</CardDescription>

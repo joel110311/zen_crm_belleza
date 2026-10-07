@@ -10,7 +10,7 @@ import {
     RefreshCw,
     Save,
     ShieldCheck,
-    Sparkles,
+    CircleHelp,
     Unlink,
     Users,
 } from "lucide-react";
@@ -467,7 +467,7 @@ export function GoogleCalendarPanel() {
                     <Card className="min-w-0">
                         <CardHeader className="min-w-0">
                             <CardTitle className="flex items-start gap-2 leading-snug">
-                                <Sparkles className="h-5 w-5 text-primary" />
+                                <CircleHelp className="h-5 w-5 text-primary" />
                                 <span className="min-w-0">Como lo usa el CRM</span>
                             </CardTitle>
                         </CardHeader>

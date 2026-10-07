@@ -16,7 +16,7 @@ import {
     Phone,
     RotateCw,
     Search,
-    Sparkles,
+    Scissors,
     X,
 } from "lucide-react";
 
@@ -468,7 +468,7 @@ export function ContactsTable({ contacts }: ContactsPageProps) {
                                         <span className="inline-flex min-w-10 items-center justify-center rounded-full bg-primary/10 px-2.5 py-1 font-semibold text-primary">{metrics.attendedCount}</span>
                                     </TableCell>
                                     <TableCell className="hidden lg:table-cell">
-                                        <span className="inline-flex items-center gap-2 text-sm text-foreground"><Sparkles className="h-4 w-4 text-gold" />{metrics.favoriteService}</span>
+                                        <span className="inline-flex items-center gap-2 text-sm text-foreground"><Scissors className="h-4 w-4 text-gold" />{metrics.favoriteService}</span>
                                     </TableCell>
                                     <TableCell className="text-right">
                                         {contact.id ? (

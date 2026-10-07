@@ -51,7 +51,7 @@ function specialistData(rawInput: unknown, partial = false) {
         displayName: input.displayName === undefined && partial
             ? undefined
             : optionalText(input.displayName, "Nombre visible", 160) || parsedName,
-        specialty: input.specialty === undefined && partial ? undefined : optionalText(input.specialty, "Especialidad", 160) || "Belleza",
+        specialty: input.specialty === undefined && partial ? undefined : optionalText(input.specialty, "Especialidad", 160) || "Cuidado personal",
         email: input.email === undefined && partial ? undefined : emailValue(input.email),
         phone: input.phone === undefined && partial ? undefined : optionalText(input.phone, "Teléfono", 40),
         professionalTitle: input.professionalTitle === undefined && partial ? undefined : optionalText(input.professionalTitle, "Título profesional", 160),

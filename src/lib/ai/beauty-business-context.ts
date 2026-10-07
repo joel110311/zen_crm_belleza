@@ -126,7 +126,7 @@ export async function buildBeautyBusinessContext(settings: AppSystemSettings) {
         "IDENTIDAD Y OPERACIÓN",
         `- Nombre del asistente: ${cleanInline(settings.agentName, "Asistente del negocio")}`,
         `- Nombre comercial: ${cleanInline(settings.clinicName || settings.portalClinicName, "No configurado")}`,
-        `- Giro o subtítulo: ${cleanInline(settings.clinicSubtitle, "Negocio de belleza")}`,
+        `- Giro o subtítulo: ${cleanInline(settings.clinicSubtitle, "Negocio de cuidado personal")}`,
         `- Dirección: ${cleanInline(settings.clinicAddress, "No configurada")}`,
         `- Zona horaria: ${settings.businessTimeZone}`,
         `- Recordatorios automáticos: ${settings.appointmentRemindersEnabled ? formatReminderOffsets(settings.appointmentReminderOffsets) : "desactivados"}`,

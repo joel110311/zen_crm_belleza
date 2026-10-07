@@ -16,7 +16,7 @@ import {
     Loader2,
     MapPin,
     Scissors,
-    Sparkles,
+    HandHeart,
     Sun,
     Sunrise,
     Tag,
@@ -77,7 +77,7 @@ type Props = {
     mode?: "legacy" | "tenant";
 };
 
-const SERVICE_ICONS: ComponentType<{ className?: string }>[] = [Scissors, Sparkles, Droplets];
+const SERVICE_ICONS: ComponentType<{ className?: string }>[] = [Scissors, HandHeart, Droplets];
 
 function dateKey(value: Date) {
     return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
@@ -123,7 +123,7 @@ export function PortalBooking({ data, mode = "legacy" }: Props) {
     const [lastName, setLastName] = useState("");
     const [phone, setPhone] = useState("");
     const [email, setEmail] = useState("");
-    const [reason, setReason] = useState(data.services[0]?.name || "Servicio de belleza");
+    const [reason, setReason] = useState(data.services[0]?.name || "Servicio de cuidado personal");
     const [sendReminders, setSendReminders] = useState(Boolean(data.remindersEnabled));
     const [showCustomerForm, setShowCustomerForm] = useState(false);
     const [confirmationToken, setConfirmationToken] = useState<string | null>(null);
@@ -351,7 +351,7 @@ export function PortalBooking({ data, mode = "legacy" }: Props) {
                                     style={{ transform: `scale(${Math.max(0.6, Math.min(1.6, data.logoScale / 100))})` }}
                                 />
                             ) : (
-                                <Sparkles className="h-5 w-5" />
+                                <HandHeart className="h-5 w-5" />
                             )}
                         </div>
                         <div className="min-w-0">
@@ -419,7 +419,7 @@ export function PortalBooking({ data, mode = "legacy" }: Props) {
                             {data.logoUrl ? (
                                 <Image src={data.logoUrl} alt="" width={44} height={44} unoptimized className="h-full w-full object-contain p-1" />
                             ) : (
-                                <Sparkles className="h-5 w-5" />
+                                <HandHeart className="h-5 w-5" />
                             )}
                         </div>
                         <div className="min-w-0">
@@ -631,7 +631,7 @@ export function PortalBooking({ data, mode = "legacy" }: Props) {
                                     className="flex h-32 w-full items-center justify-center rounded-2xl text-white"
                                     style={{ background: `linear-gradient(135deg, ${data.primaryColor}, #A88B54)` }}
                                 >
-                                    <Sparkles className="h-9 w-9" />
+                                    <HandHeart className="h-9 w-9" />
                                 </div>
                             )}
 

@@ -124,8 +124,8 @@ export function SettingsWorkspace({
     const [brandName, setBrandName] = useState(DEFAULT_BRAND_NAME);
     const [brandLogoUrl, setBrandLogoUrl] = useState("");
     const [brandFaviconUrl, setBrandFaviconUrl] = useState(DEFAULT_BRAND_FAVICON_URL);
-    const [clinicName, setClinicName] = useState("Zen CRM Belleza");
-    const [clinicSubtitle, setClinicSubtitle] = useState("Servicios de belleza");
+    const [clinicName, setClinicName] = useState("Zen CRM Cuidado Personal");
+    const [clinicSubtitle, setClinicSubtitle] = useState("Servicios de cuidado personal");
     const [clinicAddress, setClinicAddress] = useState("Dirección del negocio");
     const [clinicLogoUrl, setClinicLogoUrl] = useState("");
     const [clinicLogoScale, setClinicLogoScale] = useState(100);
@@ -194,8 +194,8 @@ export function SettingsWorkspace({
                 setBrandName(settings.brandName || DEFAULT_BRAND_NAME);
                 setBrandLogoUrl(settings.brandLogoUrl || "");
                 setBrandFaviconUrl(settings.brandFaviconUrl || DEFAULT_BRAND_FAVICON_URL);
-                setClinicName(/oftalm/i.test(settings.clinicName || "") ? "Zen CRM Belleza" : settings.clinicName || "Zen CRM Belleza");
-                setClinicSubtitle(/oftalm|cl[ií]nica/i.test(settings.clinicSubtitle || "") ? "Servicios de belleza" : settings.clinicSubtitle || "Servicios de belleza");
+                setClinicName(/oftalm/i.test(settings.clinicName || "") ? "Zen CRM Cuidado Personal" : settings.clinicName || "Zen CRM Cuidado Personal");
+                setClinicSubtitle(/oftalm|cl[ií]nica/i.test(settings.clinicSubtitle || "") ? "Servicios de cuidado personal" : settings.clinicSubtitle || "Servicios de cuidado personal");
                 setClinicAddress(settings.clinicAddress || "Dirección del negocio");
                 setClinicLogoUrl(settings.clinicLogoUrl || "");
                 setClinicLogoScale(Number(settings.clinicLogoScale || 100));

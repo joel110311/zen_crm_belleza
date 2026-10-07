@@ -58,7 +58,7 @@ export default async function TenantOnboardingPage({
     }),
   ]);
   const hours = normalizeBusinessHours(settings);
-  const isSeedDefault = settings.clinicName === "Zen CRM Belleza";
+  const isSeedDefault = settings.clinicName === "Zen CRM Cuidado Personal";
 
   return (
     <main className="min-h-screen bg-muted/30 px-5 py-8 sm:px-8">
@@ -73,7 +73,7 @@ export default async function TenantOnboardingPage({
                 ? tenant.displayName
                 : settings.clinicName,
               clinicSubtitle:
-                settings.clinicSubtitle === "Servicios de belleza"
+                settings.clinicSubtitle === "Servicios de cuidado personal"
                   ? ""
                   : settings.clinicSubtitle,
               clinicAddress:

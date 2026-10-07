@@ -64,7 +64,7 @@ const EMPTY_FORM = {
     id: "",
     name: "",
     displayName: "",
-    specialty: "Belleza y cuidado personal",
+    specialty: "Cuidado personal",
     email: "",
     phone: "",
     professionalTitle: "Especialista",
@@ -143,7 +143,7 @@ export function SpecialistManagerPanel() {
             id: specialist.id,
             name: specialist.name,
             displayName: specialist.displayName || "",
-            specialty: specialist.specialty || "Belleza y cuidado personal",
+            specialty: specialist.specialty || "Cuidado personal",
             email: specialist.email || "",
             phone: specialist.phone || "",
             professionalTitle: specialist.professionalTitle || "",
@@ -337,7 +337,7 @@ export function SpecialistManagerPanel() {
                                             {specialist.googleCalendarSource ? <Badge variant="outline">Google</Badge> : null}
                                         </div>
                                         <p className="mt-1 text-sm text-muted-foreground">
-                                            {specialist.specialty || "Belleza y cuidado personal"} · {specialist.defaultDurationMinutes} min · {specialist.room || "Sin área asignada"}
+                                            {specialist.specialty || "Cuidado personal"} · {specialist.defaultDurationMinutes} min · {specialist.room || "Sin área asignada"}
                                         </p>
                                         <p className="mt-1 text-xs text-muted-foreground">
                                             {specialist._count.appointments} citas · {specialist._count.availabilityBlocks} bloqueos

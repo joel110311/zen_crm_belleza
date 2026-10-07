@@ -76,7 +76,7 @@ export default function LoginPage() {
             <main className="relative z-10 mx-auto grid min-h-dvh w-full max-w-[1280px] items-center gap-10 px-5 py-8 sm:px-8 sm:py-10 lg:grid-cols-[0.9fr_1.1fr] lg:gap-16 lg:px-12 xl:gap-24">
                 <section className="hidden max-w-xl lg:block">
                     <p className="text-xs font-semibold uppercase tracking-[0.24em] text-primary">
-                        Gestión para negocios de belleza
+                        Gestión para negocios de cuidado personal
                     </p>
                     <h1 className="mt-5 text-balance text-5xl font-semibold leading-[1.06] tracking-[-0.04em] xl:text-6xl">
                         Tu negocio, organizado y siempre cerca de tus clientes.
@@ -103,7 +103,7 @@ export default function LoginPage() {
                             />
                             <div className="min-w-0 text-left">
                                 <p className="truncate text-sm font-semibold sm:text-base">{branding.brandName}</p>
-                                <p className="text-xs text-muted-foreground">CRM para belleza</p>
+                                <p className="text-xs text-muted-foreground">CRM para cuidado personal</p>
                             </div>
                         </div>
                         <h2 className="mt-6 text-balance text-3xl font-semibold tracking-[-0.03em] sm:text-4xl">

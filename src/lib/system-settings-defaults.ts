@@ -7,7 +7,7 @@ import {
     buildUniformBusinessWeeklySchedule,
 } from "@/lib/calendar/business-hours";
 import { getOperationCountry } from "@/lib/operation-context";
-import { DEFAULT_BRAND_NAME } from "@/lib/branding";
+import { DEFAULT_BRAND_NAME, normalizeDefaultBusinessText } from "@/lib/branding";
 import { DEFAULT_BEAUTY_AGENT_PROMPT } from "@/lib/ai/default-agent-prompt";
 import { EMPTY_BUSINESS_POLICIES } from "@/lib/ai/business-policies";
 
@@ -56,18 +56,18 @@ export const SYSTEM_SETTINGS_DEFAULTS = {
     brandName: DEFAULT_BRAND_NAME,
     brandLogoUrl: "",
     brandFaviconUrl: "",
-    clinicName: "Zen CRM Belleza",
-    clinicSubtitle: "Servicios de belleza",
+    clinicName: "Zen CRM Cuidado Personal",
+    clinicSubtitle: "Servicios de cuidado personal",
     clinicAddress: "Direccion del negocio",
     clinicLogoUrl: "",
     clinicLogoScale: 100,
     doctorName: "Joel Venegas",
-    doctorTitle: "Profesional de belleza",
+    doctorTitle: "Profesional de cuidado personal",
     doctorProfessionalLicense: "",
     googleCalendarId: "primary",
     portalEnabled: true,
     portalSlug: "belleza",
-    portalClinicName: "Zen CRM Belleza",
+    portalClinicName: "Zen CRM Cuidado Personal",
     portalIntro: "Aparta el horario para tu proximo servicio.",
     portalPrimaryColor: "#4B5F25",
     portalSocialLinks: [],
@@ -80,7 +80,7 @@ export const SYSTEM_SETTINGS_DEFAULTS = {
     posTicketEnabled: true,
     posTicketShowUnitPrice: true,
     posTicketFullDescription: false,
-    posTicketHeader: "Zen CRM Belleza\nServicios de belleza\nDireccion del negocio",
+    posTicketHeader: "Zen CRM Cuidado Personal\nServicios de cuidado personal\nDireccion del negocio",
     posTicketFooter: "Gracias por su compra\nRegrese pronto",
     mercadoPagoAccessToken: "",
     googleMeetEnabled: true,
@@ -114,8 +114,11 @@ export const SYSTEM_SETTINGS_DEFAULTS = {
 export type AppSystemSettings = SystemSettings & typeof SYSTEM_SETTINGS_DEFAULTS;
 
 export function withSettingsDefaults(settings: SystemSettings | null | undefined): AppSystemSettings {
+    const presentationFields = new Set(["brandName", "clinicName", "clinicSubtitle", "doctorTitle", "portalClinicName", "posTicketHeader"]);
     const sanitizedSettings = settings
-        ? Object.fromEntries(Object.entries(settings).filter(([, value]) => value !== null && value !== undefined))
+        ? Object.fromEntries(Object.entries(settings)
+            .filter(([, value]) => value !== null && value !== undefined)
+            .map(([key, value]) => [key, presentationFields.has(key) && typeof value === "string" ? normalizeDefaultBusinessText(value) : value]))
         : {};
 
     return {

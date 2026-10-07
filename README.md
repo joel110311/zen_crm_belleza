@@ -1,6 +1,14 @@
-# Zen CRM Belleza
+# Zen CRM Cuidado Personal
 
-CRM para negocios de belleza con clientes, servicios, agenda y reservas públicas, caja, WhatsApp, recordatorios y personalización de marca.
+## Landing pública y vista previa
+
+La página `/` muestra la landing cuando el registro público está habilitado. Los precios y la duración de prueba se leen del catálogo y de la política activa del centro de mando; si no se pueden consultar, no se anuncian importes ni duraciones sin verificar.
+
+Para revisar el diseño sin habilitar registro, cobros o una base real, inicia el servidor de desarrollo y abre `/signup/landing-preview`. Esta ruta sólo existe en desarrollo y muestra los valores ilustrativos actuales: Esencial $200, Automatiza $500 y Pro $800 MXN por mes, con prueba de 14 días. Sus enlaces llevan a las rutas normales de registro y acceso; no simulan cuentas ni pagos.
+
+La migración `20261006010000_fourteen_day_introductory_trial` establece una nueva política de 14 días para futuros registros, conservando los plazos y políticas de las pruebas ya iniciadas. La duración sigue siendo editable desde el centro de mando.
+
+CRM para negocios de cuidado personal con clientes, servicios, agenda y reservas públicas, caja, WhatsApp, recordatorios y personalización de marca.
 
 El modo actual es mono-tenant por stack: cada instalación usa su propia aplicación y base. La plataforma está en transición a una aplicación compartida con una base PostgreSQL por tenant, control plane central y alta automática desde la landing. El plan y sus criterios de salida están en [docs/multitenant-implementation-plan.md](docs/multitenant-implementation-plan.md).
 
@@ -38,7 +46,7 @@ Para despliegue SaaS por cliente, la recomendacion es:
 
 ## Despliegue con Docker / Portainer
 
-Para la instalación independiente de Belleza en Portainer usa `portainer-stack.crm-belleza.yml` y carga las variables de `portainer.crm-belleza.env.example`.
+Para la instalación independiente de Cuidado Personal en Portainer usa `portainer-stack.crm-belleza.yml` y carga las variables de `portainer.crm-belleza.env.example`.
 
 Este stack publica las imágenes:
 

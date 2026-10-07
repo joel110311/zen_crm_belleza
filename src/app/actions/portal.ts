@@ -55,7 +55,7 @@ function resolvePortalColor(value?: string | null) {
 }
 
 function resolvePortalName(value?: string | null) {
-    return !value || /oftalm/i.test(value) ? "Zen CRM Belleza" : value;
+    return !value || /oftalm/i.test(value) ? "Zen CRM Cuidado Personal" : value;
 }
 
 function resolvePortalIntro(value?: string | null) {
@@ -69,7 +69,7 @@ function resolvePortalPaymentInstructions(value?: string | null) {
 }
 
 function resolveBusinessSubtitle(value?: string | null) {
-    return !value || /oftalm|cl[ií]nica/i.test(value) ? "Servicios de belleza" : value;
+    return !value || /oftalm|cl[ií]nica/i.test(value) ? "Servicios de cuidado personal" : value;
 }
 
 async function ensurePortalEnabled(slug: string) {
@@ -134,9 +134,9 @@ export async function getPortalData(slug = DEFAULT_PORTAL_SLUG) {
     if (specialists.length === 0) {
         const created = await prisma.specialist.create({
             data: {
-                name: "Profesional de belleza",
-                displayName: "Profesional de belleza",
-                specialty: "Belleza",
+                name: "Profesional de cuidado personal",
+                displayName: "Profesional de cuidado personal",
+                specialty: "Cuidado personal",
                 color: resolvePortalColor(settings.portalPrimaryColor),
                 defaultDurationMinutes: 30,
                 isActive: true,
@@ -274,7 +274,7 @@ export async function bookPortalAppointment(input: PortalBookingInput) {
             include: { specialists: { select: { specialistId: true } } },
         })
         : null;
-    const reason = selectedService?.name || cleanText(input.reason) || "Servicio de belleza";
+    const reason = selectedService?.name || cleanText(input.reason) || "Servicio de cuidado personal";
 
     if (!firstName || !phone || !specialistId || !input.date || !input.time) {
         return { success: false, error: "Completa nombre, teléfono, profesional, fecha y hora." };

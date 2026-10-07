@@ -1085,7 +1085,7 @@ function CreateTemplatePage({ onBack, wabaId }: { onBack: () => void; wabaId: st
                         </div>
                         <Textarea
                             ref={bodyRef}
-                            placeholder="¡Hola {{nombre}}! 👋&#10;&#10;Recordatorio: Tu cita es el día de hoy en el siguiente horario:&#10;&#10;📅 {{fecha_y_hora}}&#10;📍 Villa de Coss 118, Villas de Santa Julia, Leon, Guanajuato.&#10;&#10;¿Confirmas tu asistencia? ✨"
+                            placeholder="¡Hola {{nombre}}! 👋&#10;&#10;Recordatorio: Tu cita es el día de hoy en el siguiente horario:&#10;&#10;📅 {{fecha_y_hora}}&#10;📍 Villa de Coss 118, Villas de Santa Julia, Leon, Guanajuato.&#10;&#10;¿Confirmas tu asistencia?"
                             value={bodyText}
                             onChange={(e) => setBodyText(e.target.value)}
                             rows={8}

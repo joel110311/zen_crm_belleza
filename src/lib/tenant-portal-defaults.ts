@@ -1,4 +1,4 @@
-const SEEDED_NAMES = new Set(["zen crm belleza", "zen crm oftalmo"]);
+const SEEDED_NAMES = new Set(["zen crm cuidado personal", "zen crm belleza", "zen crm oftalmo"]);
 
 function isSeededName(value: string) {
     return !value.trim() || SEEDED_NAMES.has(value.trim().toLowerCase());

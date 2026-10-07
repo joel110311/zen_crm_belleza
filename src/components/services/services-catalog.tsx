@@ -108,7 +108,7 @@ function specialistRole(specialist: Specialist) {
     const specialty = specialist.specialty?.trim();
     return specialty && !specialty.toLocaleLowerCase("es-MX").includes("oftalm")
         ? specialty
-        : "Profesional de belleza";
+        : "Profesional de cuidado personal";
 }
 
 function formatMoney(value: number, currency: string) {

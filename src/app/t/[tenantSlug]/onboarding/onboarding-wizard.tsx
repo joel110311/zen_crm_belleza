@@ -15,7 +15,7 @@ import {
   Store,
   UsersRound,
   UserRound,
-  WandSparkles,
+  Scissors,
   Waypoints,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -100,7 +100,7 @@ const STEPS: {
 }[] = [
   { key: "business", label: "Negocio", icon: Store },
   { key: "hours", label: "Horarios", icon: Clock3 },
-  { key: "service", label: "Servicio", icon: WandSparkles },
+  { key: "service", label: "Servicio", icon: Scissors },
   { key: "professional", label: "Profesional", icon: UserRound },
   { key: "policies", label: "Políticas", icon: ShieldCheck },
   { key: "portal", label: "Portal", icon: Palette },
