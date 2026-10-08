@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import { Prisma, type BulkCampaign, type BulkCampaignVariant, type Contact } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { assertCampaignChannelActive } from "@/lib/campaign-channels";
 import {
     businessBoundsForDate,
     getNextOpenDate,
@@ -1176,6 +1177,7 @@ export async function startBulkCampaign(id: string) {
     }
 
     ensureCampaignCanLaunch(campaign);
+    await assertCampaignChannelActive(campaign.sourceType, campaign.sourceId);
 
     const filters = normalizeBulkCampaignAudienceFilters(
         campaign.audienceFilters,
@@ -1252,6 +1254,8 @@ export async function resumeBulkCampaign(id: string) {
         select: {
             status: true,
             scheduledStartAt: true,
+            sourceType: true,
+            sourceId: true,
         },
     });
 
@@ -1262,6 +1266,8 @@ export async function resumeBulkCampaign(id: string) {
     if (existing.status === "draft") {
         return startBulkCampaign(id);
     }
+
+    await assertCampaignChannelActive(existing.sourceType, existing.sourceId);
 
     return prisma.bulkCampaign.update({
         where: { id },

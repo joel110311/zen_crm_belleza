@@ -51,7 +51,7 @@ import { Slider } from "@/components/ui/slider";
 import { WhatsAppIcon } from "@/components/icons/whatsapp-icon";
 import { hasPermission, type PermissionKey } from "@/lib/permissions";
 import { OPERATION_COUNTRIES, getOperationCountry, normalizeCurrencyList } from "@/lib/operation-context";
-import { DEFAULT_BRAND_FAVICON_URL, DEFAULT_BRAND_NAME } from "@/lib/branding";
+import { DEFAULT_BRAND_FAVICON_URL, DEFAULT_BRAND_NAME, resolveBrandFavicon } from "@/lib/branding";
 import { BrandLogo } from "@/components/brand/brand-logo";
 import { tenantSlugFromPath } from "@/lib/tenant-request-routing";
 import {
@@ -193,7 +193,7 @@ export function SettingsWorkspace({
                 );
                 setBrandName(settings.brandName || DEFAULT_BRAND_NAME);
                 setBrandLogoUrl(settings.brandLogoUrl || "");
-                setBrandFaviconUrl(settings.brandFaviconUrl || DEFAULT_BRAND_FAVICON_URL);
+                setBrandFaviconUrl(resolveBrandFavicon(settings.brandFaviconUrl));
                 setClinicName(/oftalm/i.test(settings.clinicName || "") ? "Zen CRM Cuidado Personal" : settings.clinicName || "Zen CRM Cuidado Personal");
                 setClinicSubtitle(/oftalm|cl[ií]nica/i.test(settings.clinicSubtitle || "") ? "Servicios de cuidado personal" : settings.clinicSubtitle || "Servicios de cuidado personal");
                 setClinicAddress(settings.clinicAddress || "Dirección del negocio");

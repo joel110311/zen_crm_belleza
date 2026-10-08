@@ -7,24 +7,21 @@ import { SessionProvider } from "@/components/providers/session-provider"
 import { ColorThemeProvider } from "@/components/color-theme-provider"
 import { auth } from "@/lib/auth"
 import { COLOR_THEME_STORAGE_KEY, DEFAULT_COLOR_THEME } from "@/lib/color-theme"
-import { resolveBranding, resolveTenantBranding } from "@/lib/branding"
+import { getBrandingIcons, resolveBranding, resolveTenantBranding } from "@/lib/branding"
 import { getSystemSettingsOrDefaults } from "@/lib/system-settings"
 import { getActiveTenantRuntimeContext } from "@/lib/active-tenant-context"
+import { isMultitenantRuntimeEnabled } from "@/lib/multitenant-features"
 
 export async function generateMetadata(): Promise<Metadata> {
   try {
-    const settings = await getSystemSettingsOrDefaults();
     const tenant = await getActiveTenantRuntimeContext("read");
+    const settings = isMultitenantRuntimeEnabled() && !tenant ? null : await getSystemSettingsOrDefaults();
     const branding = tenant ? resolveTenantBranding(settings, tenant.displayName) : resolveBranding(settings);
 
     return {
       title: branding.brandName,
       description: "CRM para negocios de cuidado personal con WhatsApp e IA",
-      icons: {
-        icon: branding.brandFaviconUrl,
-        shortcut: branding.brandFaviconUrl,
-        apple: branding.brandFaviconUrl,
-      },
+      icons: getBrandingIcons(branding),
     };
   } catch {
     const branding = resolveBranding(null);
@@ -32,11 +29,7 @@ export async function generateMetadata(): Promise<Metadata> {
     return {
       title: branding.brandName,
       description: "CRM para negocios de cuidado personal con WhatsApp e IA",
-      icons: {
-        icon: branding.brandFaviconUrl,
-        shortcut: branding.brandFaviconUrl,
-        apple: branding.brandFaviconUrl,
-      },
+      icons: getBrandingIcons(branding),
     };
   }
 }

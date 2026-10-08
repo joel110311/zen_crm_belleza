@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCampaignChannels } from "@/components/shared/use-campaign-channels";
 import { Loader2, Megaphone, SlidersHorizontal, Bot } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -264,6 +265,29 @@ export function ContactsBulkCampaignDialog({
     const [bodyLayoutWidth, setBodyLayoutWidth] = useState(0);
     const [form, setForm] = useState<QuickCampaignFormState>(DEFAULT_QUICK_CAMPAIGN_FORM);
 
+    const { channels, isLoading: channelsLoading, error: channelsError } = useCampaignChannels(open);
+    const selectedChannel = channels.find((channel) => channel.sourceType === form.sourceType);
+    const changeChannel = useCallback((value: "wuzapi" | "meta") => {
+        setForm((current) => ({
+            ...current,
+            sourceType: value,
+            type: value === "wuzapi" && current.type === "template" ? "text" : current.type,
+            content: value === "wuzapi" && current.type === "template" ? "" : current.content,
+            mediaUrl: value === "wuzapi" && current.type === "template" ? null : current.mediaUrl,
+            mediaType: value === "wuzapi" && current.type === "template" ? null : current.mediaType,
+            mediaFileName: value === "wuzapi" && current.type === "template" ? null : current.mediaFileName,
+            ycloudTemplateName: value === "wuzapi" ? "" : current.ycloudTemplateName,
+            ycloudTemplateLanguage: value === "wuzapi" ? "" : current.ycloudTemplateLanguage,
+            ycloudTemplateComponents: value === "wuzapi" ? [] : current.ycloudTemplateComponents,
+            ycloudTemplateVariableValues: value === "wuzapi" ? {} : current.ycloudTemplateVariableValues,
+            followUpCount: value === "meta" ? 0 : current.followUpCount,
+        }));
+    }, []);
+
+    useEffect(() => {
+        if (open && !channelsLoading && channels.length > 0 && !selectedChannel) changeChannel(channels[0].sourceType);
+    }, [open, channelsLoading, channels, selectedChannel, changeChannel]);
+
     const previewContact = contacts[0] || null;
     const firstSelectedName = useMemo(
         () => (contacts[0] ? getContactFullName(contacts[0], "Sin nombre") : "Sin nombre"),
@@ -492,6 +516,10 @@ export function ContactsBulkCampaignDialog({
     };
 
     const handleSubmit = async () => {
+        if (channelsLoading || !selectedChannel) {
+            toast({ title: "Conecta un canal de WhatsApp", description: channelsError || "No hay un canal activo para este envío.", variant: "destructive" });
+            return;
+        }
         if (contacts.length === 0) {
             return;
         }
@@ -560,7 +588,7 @@ export function ContactsBulkCampaignDialog({
                 name: form.name.trim(),
                 description: `Envío rápido desde Clientes para ${contacts.length} destinatario(s).`,
                 sourceType: form.sourceType,
-                sourceId: null,
+                sourceId: selectedChannel.sourceId,
                 type: form.type,
                 mediaUrl: form.type === "text" || form.type === "template" ? null : form.mediaUrl,
                 mediaType: form.type === "text" || form.type === "template" ? null : form.mediaType,
@@ -585,7 +613,7 @@ export function ContactsBulkCampaignDialog({
                     query: "",
                     limit: null,
                     sourceType: form.sourceType === "meta" && form.type !== "template" ? "meta" : "any",
-                    sourceId: "",
+                    sourceId: form.sourceType === "meta" ? selectedChannel.sourceId || "" : "",
                     onlyOpenYCloudWindow: form.sourceType === "meta" && form.type !== "template",
                     lastInboundFrom: "",
                     lastInboundTo: "",
@@ -738,34 +766,19 @@ export function ContactsBulkCampaignDialog({
                                 <div className="space-y-2">
                                     <Label>Canal de salida</Label>
                                     <Select
-                                        value={form.sourceType}
-                                        onValueChange={(value: "wuzapi" | "meta") =>
-                                            setForm((current) => ({
-                                                ...current,
-                                                sourceType: value,
-                                                type: value === "wuzapi" && current.type === "template" ? "text" : current.type,
-                                                content: value === "wuzapi" && current.type === "template" ? "" : current.content,
-                                                mediaUrl: value === "wuzapi" && current.type === "template" ? null : current.mediaUrl,
-                                                mediaType: value === "wuzapi" && current.type === "template" ? null : current.mediaType,
-                                                mediaFileName: value === "wuzapi" && current.type === "template" ? null : current.mediaFileName,
-                                                ycloudTemplateName: value === "wuzapi" ? "" : current.ycloudTemplateName,
-                                                ycloudTemplateLanguage: value === "wuzapi" ? "" : current.ycloudTemplateLanguage,
-                                                ycloudTemplateComponents: value === "wuzapi" ? [] : current.ycloudTemplateComponents,
-                                                ycloudTemplateVariableValues: value === "wuzapi" ? {} : current.ycloudTemplateVariableValues,
-                                                followUpCount: value === "meta" ? 0 : current.followUpCount,
-                                            }))
-                                        }
+                                        value={channelsLoading ? "" : selectedChannel?.sourceType || ""}
+                                        disabled={channelsLoading || channels.length === 0}
+                                        onValueChange={changeChannel}
                                     >
                                         <SelectTrigger className="h-11 rounded-xl">
-                                            <SelectValue placeholder="Selecciona canal" />
+                                            <SelectValue placeholder={channelsLoading ? "Verificando canales…" : channels.length === 0 ? "Sin canal activo" : "Selecciona canal activo"} />
                                         </SelectTrigger>
                                         <SelectContent>
-                                            <SelectItem value="wuzapi">WhatsApp por QR</SelectItem>
-                                            <SelectItem value="meta">WhatsApp API oficial</SelectItem>
+                                            {channels.map((channel) => <SelectItem key={channel.sourceType} value={channel.sourceType}>{channel.label}</SelectItem>)}
                                         </SelectContent>
                                     </Select>
                                     <p className="text-xs text-muted-foreground">
-                                        {form.sourceType === "meta"
+                                        {channelsLoading ? "Verificando la conexión de WhatsApp." : !selectedChannel ? channelsError || "Conecta WhatsApp desde Configuración para habilitar los envíos." : form.sourceType === "meta"
                                             ? form.type === "template"
                                                 ? "La plantilla puede enviarse aunque el cliente no tenga ventana abierta."
                                                 : "El mensaje libre solo incluira clientes seleccionados con ventana de WhatsApp API abierta."
@@ -812,7 +825,7 @@ export function ContactsBulkCampaignDialog({
                                             </SelectTrigger>
                                             <SelectContent>
                                                 <SelectItem value="open-window">Mensaje libre (ventana abierta)</SelectItem>
-                                                <SelectItem value="template">Plantilla Meta</SelectItem>
+                                                <SelectItem value="template" disabled={!channels.some((channel) => channel.sourceType === "meta")}>Plantilla Meta</SelectItem>
                                             </SelectContent>
                                         </Select>
                                     </div>
@@ -1103,7 +1116,7 @@ export function ContactsBulkCampaignDialog({
                         type="button"
                         className="rounded-xl"
                         onClick={handleSubmit}
-                        disabled={isSubmitting || contacts.length === 0}
+                        disabled={isSubmitting || contacts.length === 0 || channelsLoading || !selectedChannel}
                     >
                         {isSubmitting ? (
                             <>

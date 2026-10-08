@@ -1,5 +1,8 @@
 "use client";
 
+import { DEFAULT_BRAND_FAVICON_URL } from "./branding.ts";
+import { BRAND_LOTUS_BACKGROUND, BRAND_LOTUS_INK, BRAND_LOTUS_PATHS } from "./brand-lotus.ts";
+
 export type InboxUnreadCounts = Record<string, number>;
 
 export const INBOX_UNREAD_STORAGE_KEY = "zencrm_inbox_unread_counts";
@@ -45,23 +48,19 @@ function getBaseTitle(): string {
         return "Zen CRM";
     }
 
-    if (!window.__zencrmBaseTitle) {
-        window.__zencrmBaseTitle = document.title.replace(/^\(\d+\+?\)\s+/, "") || "Zen CRM";
-    }
+    window.__zencrmBaseTitle = document.title.replace(/^\(\d+\+?\)\s+/, "") || window.__zencrmBaseTitle || "Zen CRM";
 
     return window.__zencrmBaseTitle;
 }
 
 function getBaseFaviconHref(): string {
     if (typeof document === "undefined") {
-        return "/brand/zen-favicon.svg";
+        return DEFAULT_BRAND_FAVICON_URL;
     }
-
-    if (!window.__zencrmBaseFaviconHref) {
-        const iconLink = document.querySelector<HTMLLinkElement>('link[rel~="icon"]:not([data-zen-dynamic-favicon="true"])');
-        window.__zencrmBaseFaviconHref = iconLink?.href || "/brand/zen-favicon.svg";
-    }
-
+    // Configured metadata follows the file-convention /favicon.ico. Prefer that custom icon,
+    // and re-read it after tenant navigation rather than caching another business's branding.
+    const icons = document.querySelectorAll<HTMLLinkElement>('link[rel~="icon"]:not([data-zen-dynamic-favicon="true"])');
+    window.__zencrmBaseFaviconHref = Array.from(icons).at(-1)?.href || DEFAULT_BRAND_FAVICON_URL;
     return window.__zencrmBaseFaviconHref;
 }
 
@@ -86,35 +85,17 @@ function drawBaseIcon(ctx: CanvasRenderingContext2D, size: number) {
     ctx.clearRect(0, 0, size, size);
 
     drawRoundedRect(ctx, 2, 2, size - 4, size - 4, 16);
-    ctx.fillStyle = "#0b0d12";
+    ctx.fillStyle = BRAND_LOTUS_BACKGROUND;
     ctx.fill();
-
-    ctx.strokeStyle = "#2e3442";
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.moveTo(13, 10);
-    ctx.lineTo(13, size - 12);
-    ctx.lineTo(size - 10, size - 12);
-    ctx.stroke();
-
-    const bars = [
-        { x: 19, y: 35, w: 8, h: 17, color: "#7b8597", wickTop: 25, wickBottom: 55 },
-        { x: 31, y: 24, w: 10, h: 25, color: "#b2bdcc", wickTop: 14, wickBottom: 52 },
-        { x: 45, y: 12, w: 12, h: 32, color: "#f1f5f9", wickTop: 4, wickBottom: 48 },
-    ];
-
-    for (const bar of bars) {
-        ctx.strokeStyle = bar.color;
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(bar.x + bar.w / 2, bar.wickTop);
-        ctx.lineTo(bar.x + bar.w / 2, bar.wickBottom);
-        ctx.stroke();
-
-        drawRoundedRect(ctx, bar.x, bar.y, bar.w, bar.h, 3);
-        ctx.fillStyle = bar.color;
-        ctx.fill();
-    }
+    ctx.save();
+    ctx.translate(8, 11);
+    ctx.scale(2, 2);
+    ctx.strokeStyle = BRAND_LOTUS_INK;
+    ctx.lineWidth = 1.9;
+    ctx.lineCap = "square";
+    ctx.lineJoin = "miter";
+    for (const path of BRAND_LOTUS_PATHS) ctx.stroke(new Path2D(path));
+    ctx.restore();
 }
 
 function applyDocumentTitleBadge(totalUnread: number) {
@@ -148,7 +129,10 @@ async function drawConfiguredBaseIcon(ctx: CanvasRenderingContext2D, size: numbe
     }
 }
 
+let faviconBadgeRevision = 0;
+
 async function applyFaviconBadge(totalUnread: number) {
+    const revision = ++faviconBadgeRevision;
     if (typeof document === "undefined") {
         return;
     }
@@ -169,6 +153,8 @@ async function applyFaviconBadge(totalUnread: number) {
     }
 
     await drawConfiguredBaseIcon(ctx, size);
+    // A cleared count or a newer update must not be overwritten by an earlier image load.
+    if (revision !== faviconBadgeRevision) return;
 
     const badgeRadius = 14;
     const badgeX = 14;

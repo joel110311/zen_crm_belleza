@@ -1,5 +1,6 @@
 export const DEFAULT_BRAND_NAME = "Zen CRM Cuidado Personal";
-export const DEFAULT_BRAND_FAVICON_URL = "/brand/zen-favicon.svg";
+export const DEFAULT_BRAND_FAVICON_URL = "/brand/lotus-favicon.svg";
+export const DEFAULT_BRAND_APPLE_ICON_URL = "/brand/lotus-apple-touch-icon.png";
 
 export type BrandingSettings = {
     brandName: string;
@@ -27,6 +28,20 @@ function cleanBrandValue(value: string | null | undefined) {
     return value?.trim() || "";
 }
 
+export function resolveBrandFavicon(value?: string | null) {
+    const url = cleanBrandValue(value);
+    return !url || url === "/brand/zen-favicon.svg" ? DEFAULT_BRAND_FAVICON_URL : url;
+}
+
+/** Metadata, white-label preview and public pages share the same icon defaults. */
+export function getBrandingIcons(branding: BrandingSettings) {
+    return {
+        icon: [{ url: branding.brandFaviconUrl, ...(branding.brandFaviconUrl === DEFAULT_BRAND_FAVICON_URL ? { type: "image/svg+xml", sizes: "any" } : {}) }],
+        shortcut: branding.brandFaviconUrl,
+        apple: branding.brandFaviconUrl === DEFAULT_BRAND_FAVICON_URL ? DEFAULT_BRAND_APPLE_ICON_URL : branding.brandFaviconUrl,
+    };
+}
+
 /** Upgrade only the former product defaults; keep each business's custom identity. */
 export function normalizeDefaultBusinessText(value: string): string {
     const defaults: Record<string, string> = {
@@ -41,7 +56,7 @@ export function normalizeDefaultBusinessText(value: string): string {
 export function resolveBranding(source?: BrandingSource | null): BrandingSettings {
     const brandName = normalizeDefaultBusinessText(cleanBrandValue(source?.brandName)) || DEFAULT_BRAND_NAME;
     const brandLogoUrl = cleanBrandValue(source?.brandLogoUrl);
-    const brandFaviconUrl = cleanBrandValue(source?.brandFaviconUrl) || DEFAULT_BRAND_FAVICON_URL;
+    const brandFaviconUrl = resolveBrandFavicon(source?.brandFaviconUrl);
 
     return {
         brandName,

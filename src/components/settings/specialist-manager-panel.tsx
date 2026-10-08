@@ -2,7 +2,7 @@
 
 import type { ChangeEvent } from "react";
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { CalendarOff, ImageIcon, Loader2, RefreshCw, Save, Trash2, Upload, UserRound, X } from "lucide-react";
+import { CalendarOff, ImageIcon, Loader2, Plus, RefreshCw, Save, Trash2, Upload, UserRound, X } from "lucide-react";
 import {
     deactivateSpecialist,
     deleteSpecialist,
@@ -98,6 +98,8 @@ export function SpecialistManagerPanel() {
     const [users, setUsers] = useState<AssignableUser[]>([]);
     const [googleSources, setGoogleSources] = useState<GoogleSource[]>([]);
     const [form, setForm] = useState(EMPTY_FORM);
+    const [isFormOpen, setIsFormOpen] = useState(false);
+    const [formBaseline, setFormBaseline] = useState(JSON.stringify(EMPTY_FORM));
     const [blockForm, setBlockForm] = useState(() => getDefaultBlockForm(operationContext.timeZone));
     const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
     const [specialistToDelete, setSpecialistToDelete] = useState<SpecialistRow | null>(null);
@@ -138,8 +140,20 @@ export function SpecialistManagerPanel() {
         };
     }, []);
 
+    const handleNew = () => {
+        setForm(EMPTY_FORM);
+        setFormBaseline(JSON.stringify(EMPTY_FORM));
+        setIsFormOpen(true);
+    };
+
+    const handleFormOpenChange = (open: boolean) => {
+        if (!open && (isPending || isUploadingPhoto)) return;
+        if (!open && JSON.stringify(form) !== formBaseline && !window.confirm("Tienes cambios sin guardar. ¿Quieres descartarlos y cerrar?")) return;
+        setIsFormOpen(open);
+    };
+
     const handleEdit = (specialist: SpecialistRow) => {
-        setForm({
+        const nextForm = {
             id: specialist.id,
             name: specialist.name,
             displayName: specialist.displayName || "",
@@ -156,7 +170,10 @@ export function SpecialistManagerPanel() {
             isActive: specialist.isActive,
             userId: specialist.userId || "none",
             googleCalendarSourceId: specialist.googleCalendarSourceId || "none",
-        });
+        };
+        setForm(nextForm);
+        setFormBaseline(JSON.stringify(nextForm));
+        setIsFormOpen(true);
     };
 
     const handlePhotoUpload = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -210,6 +227,7 @@ export function SpecialistManagerPanel() {
                 variant: result.warning ? "destructive" : "default",
             });
             setForm(EMPTY_FORM);
+            setIsFormOpen(false);
             await load();
         });
     };
@@ -298,9 +316,13 @@ export function SpecialistManagerPanel() {
                         <RefreshCw className="mr-2 h-4 w-4" />
                         Refrescar
                     </Button>
-                    <Button onClick={handleSync} disabled={isPending}>
+                    <Button variant="outline" onClick={handleSync} disabled={isPending}>
                         {isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
                         Sincronizar Google
+                    </Button>
+                    <Button onClick={handleNew} disabled={isPending || activeCount >= 5} title={activeCount >= 5 ? "Puedes tener hasta 5 especialistas activos." : "Agregar especialista sin crear un usuario"}>
+                        <Plus className="mr-2 h-4 w-4" />
+                        Nuevo especialista
                     </Button>
                 </div>
             </div>
@@ -393,14 +415,64 @@ export function SpecialistManagerPanel() {
                 </Card>
 
                 <div className="space-y-4">
+
                     <Card>
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2 text-base">
-                                <UserRound className="h-5 w-5 text-primary" />
-                                {form.id ? "Editar especialista" : "Nuevo especialista"}
+                                <CalendarOff className="h-5 w-5 text-primary" />
+                                Bloquear agenda
                             </CardTitle>
                         </CardHeader>
-                        <CardContent className="space-y-4">
+                        <CardContent className="space-y-3">
+                            <div className="space-y-2">
+                                <Label>Especialista</Label>
+                                <Select value={blockForm.specialistId} onValueChange={(value) => setBlockForm((current) => ({ ...current, specialistId: value }))}>
+                                    <SelectTrigger>
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="global">Todos</SelectItem>
+                                        {specialists.filter((specialist) => specialist.isActive).map((specialist) => (
+                                            <SelectItem key={specialist.id} value={specialist.id}>
+                                                {specialist.displayName || specialist.name}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Título</Label>
+                                <Input value={blockForm.title} onChange={(event) => setBlockForm((current) => ({ ...current, title: event.target.value }))} />
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-2">
+                                    <Label>Inicio</Label>
+                                    <Input type="datetime-local" value={blockForm.startTime} onChange={(event) => setBlockForm((current) => ({ ...current, startTime: event.target.value }))} />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Fin</Label>
+                                    <Input type="datetime-local" value={blockForm.endTime} onChange={(event) => setBlockForm((current) => ({ ...current, endTime: event.target.value }))} />
+                                </div>
+                            </div>
+                            <Button onClick={handleSaveBlock} disabled={isPending || !blockForm.title} className="w-full">
+                                Guardar bloqueo
+                            </Button>
+                        </CardContent>
+                    </Card>
+                </div>
+            </div>
+
+            <Dialog open={isFormOpen} onOpenChange={handleFormOpenChange}>
+                <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl">
+                    <div className="space-y-5">
+                        <DialogHeader>
+                            <DialogTitle className="flex items-center gap-2 text-base">
+                                <UserRound className="h-5 w-5 text-primary" />
+                                {form.id ? "Editar especialista" : "Nuevo especialista"}
+                            </DialogTitle>
+                            <DialogDescription>Agrega a quien realiza los servicios. Vincular una cuenta de acceso o Google Calendar es opcional.</DialogDescription>
+                        </DialogHeader>
+                        <div className="space-y-4">
                             <div className="rounded-2xl border bg-muted/15 p-4">
                                 <div className="flex flex-col gap-4 sm:flex-row">
                                     <div
@@ -452,17 +524,17 @@ export function SpecialistManagerPanel() {
                                     </div>
                                 </div>
                             </div>
-                            <div className="grid grid-cols-2 gap-3">
+                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                                 <div className="space-y-2">
-                                    <Label>Nombre</Label>
-                                    <Input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} />
+                                    <Label htmlFor="specialist-name">Nombre</Label>
+                                    <Input id="specialist-name" autoFocus value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} />
                                 </div>
                                 <div className="space-y-2">
                                     <Label>Nombre visible</Label>
                                     <Input value={form.displayName} onChange={(event) => setForm((current) => ({ ...current, displayName: event.target.value }))} />
                                 </div>
                             </div>
-                            <div className="grid grid-cols-2 gap-3">
+                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                                 <div className="space-y-2">
                                     <Label>Email</Label>
                                     <Input type="email" value={form.email} onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))} />
@@ -475,7 +547,7 @@ export function SpecialistManagerPanel() {
                                     />
                                 </div>
                             </div>
-                            <div className="grid grid-cols-2 gap-3">
+                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                                 <div className="space-y-2">
                                     <Label>Especialidad</Label>
                                     <Input value={form.specialty} onChange={(event) => setForm((current) => ({ ...current, specialty: event.target.value }))} />
@@ -489,7 +561,7 @@ export function SpecialistManagerPanel() {
                                     />
                                 </div>
                             </div>
-                            <div className="grid grid-cols-2 gap-3">
+                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                                 <div className="space-y-2">
                                     <Label>Título profesional</Label>
                                     <Input
@@ -507,7 +579,7 @@ export function SpecialistManagerPanel() {
                                     />
                                 </div>
                             </div>
-                            <div className="grid grid-cols-2 gap-3">
+                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                                 <div className="space-y-2">
                                     <Label>Duración predeterminada</Label>
                                     <Input
@@ -575,64 +647,18 @@ export function SpecialistManagerPanel() {
                                 <Switch checked={form.isActive} onCheckedChange={(checked) => setForm((current) => ({ ...current, isActive: checked }))} />
                             </div>
                             <div className="flex gap-2">
-                                <Button onClick={handleSave} disabled={isPending || isUploadingPhoto || !form.name} className="flex-1">
+                                <Button onClick={handleSave} disabled={isPending || isUploadingPhoto || !form.name.trim()} className="flex-1">
                                     {isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
                                     Guardar
                                 </Button>
-                                {form.id ? (
-                                    <Button variant="outline" onClick={() => setForm(EMPTY_FORM)}>
-                                        Cancelar
-                                    </Button>
-                                ) : null}
+                                <Button variant="outline" onClick={() => handleFormOpenChange(false)} disabled={isPending || isUploadingPhoto}>
+                                    Cancelar
+                                </Button>
                             </div>
-                        </CardContent>
-                    </Card>
-
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="flex items-center gap-2 text-base">
-                                <CalendarOff className="h-5 w-5 text-primary" />
-                                Bloquear agenda
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent className="space-y-3">
-                            <div className="space-y-2">
-                                <Label>Especialista</Label>
-                                <Select value={blockForm.specialistId} onValueChange={(value) => setBlockForm((current) => ({ ...current, specialistId: value }))}>
-                                    <SelectTrigger>
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="global">Todos</SelectItem>
-                                        {specialists.filter((specialist) => specialist.isActive).map((specialist) => (
-                                            <SelectItem key={specialist.id} value={specialist.id}>
-                                                {specialist.displayName || specialist.name}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            <div className="space-y-2">
-                                <Label>Título</Label>
-                                <Input value={blockForm.title} onChange={(event) => setBlockForm((current) => ({ ...current, title: event.target.value }))} />
-                            </div>
-                            <div className="grid grid-cols-2 gap-3">
-                                <div className="space-y-2">
-                                    <Label>Inicio</Label>
-                                    <Input type="datetime-local" value={blockForm.startTime} onChange={(event) => setBlockForm((current) => ({ ...current, startTime: event.target.value }))} />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>Fin</Label>
-                                    <Input type="datetime-local" value={blockForm.endTime} onChange={(event) => setBlockForm((current) => ({ ...current, endTime: event.target.value }))} />
-                                </div>
-                            </div>
-                            <Button onClick={handleSaveBlock} disabled={isPending || !blockForm.title} className="w-full">
-                                Guardar bloqueo
-                            </Button>
-                        </CardContent>
-                    </Card>
-                </div>
-            </div>
+                        </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
 
             <Dialog open={Boolean(specialistToDelete)} onOpenChange={(open) => !open && setSpecialistToDelete(null)}>
                 <DialogContent className="sm:max-w-md">

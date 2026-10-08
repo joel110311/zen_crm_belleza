@@ -1,5 +1,5 @@
 import Image from "next/image";
-import { ZenLogo } from "@/components/icons/zen-logo";
+import { BeautyLeafIcon } from "@/components/icons/beauty-leaf-icon";
 import { cn } from "@/lib/utils";
 
 type BrandLogoProps = {
@@ -23,5 +23,5 @@ export function BrandLogo({ brandName, logoUrl, className, imageClassName }: Bra
         );
     }
 
-    return <ZenLogo className={className} />;
+    return <BeautyLeafIcon className={className} />;
 }

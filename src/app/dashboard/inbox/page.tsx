@@ -36,7 +36,6 @@ import { parseInboundAdPreviewMessageContent } from "@/lib/inbound-ad-preview";
 import { hasPermission } from "@/lib/permissions";
 import { shiftDateKey } from "@/lib/calendar/business-hours";
 import { MetaTemplateSendModal } from "@/components/inbox/ycloud-template-send-modal";
-import { type GeneratedQuoteAsset, QuoteBuilderPanel } from "@/components/quotes/quote-builder-panel";
 import { useOperationContext } from "@/components/shared/use-operation-context";
 import { buildOperationContext, formatPhoneForDisplay } from "@/lib/operation-context";
 import {
@@ -49,13 +48,6 @@ import {
 import { INBOX_DRAFT_STORAGE_KEY, type InboxDraftPayload } from "@/lib/inbox-drafts";
 import { tenantSlugFromPath } from "@/lib/tenant-request-routing";
 import { NewContactDialog } from "@/components/contacts/new-contact-dialog";
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogHeader,
-    DialogTitle,
-} from "@/components/ui/dialog";
 
 const REACTION_EMOJIS = [
     "👍", "👎", "❤️", "🩵", "🔥", "🎉", "👏",
@@ -1220,7 +1212,6 @@ export default function InboxPage() {
     const [viewerMessageId, setViewerMessageId] = useState<string | null>(null);
     const [isWindowOpen, setIsWindowOpen] = useState(true);
     const [templateModalOpen, setTemplateModalOpen] = useState(false);
-    const [quoteBuilderOpen, setQuoteBuilderOpen] = useState(false);
     // Reply, React & Forward state
     const [replyingTo, setReplyingTo] = useState<Message | null>(null);
     const [emojiPickerMsgId, setEmojiPickerMsgId] = useState<string | null>(null);
@@ -2570,42 +2561,6 @@ export default function InboxPage() {
         await markTemplateUsed(template.id);
     };
 
-    const openQuoteBuilder = useCallback(() => {
-        if (!selectedChat) return;
-        setQuoteBuilderOpen(true);
-    }, [selectedChat]);
-
-    const handleQuoteGenerated = useCallback(async (asset: GeneratedQuoteAsset) => {
-        setIsUploading(true);
-        try {
-            const file = new File([asset.blob], asset.fileName, { type: asset.mimeType });
-            const formData = new FormData();
-            formData.append("file", file);
-
-            const response = await fetch("/api/upload", { method: "POST", body: formData });
-            const result = await response.json().catch(() => ({}));
-
-            if (!response.ok || !result.success) {
-                throw new Error(result.error || "No se pudo generar la cotizacion.");
-            }
-
-            setInputText(asset.caption);
-            setPendingFile({
-                url: result.url,
-                fileName: result.fileName || asset.fileName,
-                mimeType: result.mimeType || asset.mimeType,
-                mediaCategory: result.mediaCategory || asset.mediaCategory,
-                previewUrl: asset.previewUrl,
-            });
-            setReplyingTo(null);
-            setQuoteBuilderOpen(false);
-        } catch (error) {
-            alert(error instanceof Error ? error.message : "No se pudo generar la cotizacion.");
-        } finally {
-            setIsUploading(false);
-        }
-    }, []);
-
     const handleComposerKeyDown = async (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
         if (slashQuery !== null && slashTemplateMatches.length > 0) {
             if (e.key === "ArrowDown") {
@@ -3068,15 +3023,6 @@ export default function InboxPage() {
                                     </button>
                                 </div>
                                 <div className="ml-auto flex items-center gap-2 flex-wrap justify-end">
-                                    <Button
-                                        variant="ghost"
-                                        className="hidden h-9 rounded-xl border border-border bg-background px-3 text-xs font-semibold shadow-none lg:inline-flex"
-                                        onClick={openQuoteBuilder}
-                                        title="Crear cotizacion para este contacto"
-                                    >
-                                        <FileText className="h-4 w-4" />
-                                        Cotizar
-                                    </Button>
                                     <div className="hidden min-w-[150px] lg:block">
                                         <Select
                                             value={selectedChat.assignedUserId || "__unassigned__"}
@@ -3129,9 +3075,6 @@ export default function InboxPage() {
                                         <DropdownMenuContent align="end" className="w-52">
                                             <DropdownMenuItem onClick={() => setShowContactInfo(true)}>
                                                 <Info className="h-4 w-4 mr-2" /> Info. del contacto
-                                            </DropdownMenuItem>
-                                            <DropdownMenuItem onClick={openQuoteBuilder}>
-                                                <FileText className="h-4 w-4 mr-2" /> Crear cotizacion
                                             </DropdownMenuItem>
                                             <DropdownMenuSeparator />
                                             <DropdownMenuItem onClick={() => performAction("mute")}>
@@ -3768,30 +3711,6 @@ export default function InboxPage() {
                         );
                     }}
                 />
-            )}
-            {selectedChat && (
-                <Dialog open={quoteBuilderOpen} onOpenChange={setQuoteBuilderOpen}>
-                    <DialogContent className="max-h-[94vh] w-[96vw] max-w-[88rem] overflow-hidden p-0 sm:max-w-[88rem]">
-                        <DialogHeader className="border-b px-5 py-4">
-                            <DialogTitle>Crear cotizacion</DialogTitle>
-                            <DialogDescription>
-                                Ajusta la cotizacion para {selectedChat.contact?.name || "este contacto"} y genera el contenido listo para enviar.
-                            </DialogDescription>
-                        </DialogHeader>
-                        <div className="max-h-[calc(94vh-6.5rem)] overflow-y-auto p-4">
-                            <QuoteBuilderPanel
-                                mode="compact"
-                                initialContact={{
-                                    name: selectedChat.contact?.name,
-                                    phone: selectedChat.contact?.phone,
-                                    company: selectedChat.contact?.company,
-                                }}
-                                agentName={currentUserName}
-                                onGenerate={handleQuoteGenerated}
-                            />
-                        </div>
-                    </DialogContent>
-                </Dialog>
             )}
             {/* Forward Message Dialog */}
             {forwardMsg && (

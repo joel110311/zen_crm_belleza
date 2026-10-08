@@ -39,6 +39,7 @@ import {
 import { listTemplateVariableKeys, renderTemplateContent } from "@/lib/templates";
 import { useOperationContext } from "@/components/shared/use-operation-context";
 import { operationInputValueToUtc } from "@/lib/operation-dates";
+import { useCampaignChannels } from "@/components/shared/use-campaign-channels";
 
 function normalizeCampaignTypeForForm(value: unknown): CampaignMessageType {
     return value === "image" || value === "document" || value === "template" ? value : "text";
@@ -125,6 +126,33 @@ export function BulkCampaignManagerPanel() {
     const [csvImportTag, setCsvImportTag] = useState("");
     const [audiencePreview, setAudiencePreview] = useState<AudiencePreview | null>(null);
     const [isPreviewLoading, setIsPreviewLoading] = useState(false);
+
+    const { channels, isLoading: channelsLoading, error: channelsError } = useCampaignChannels();
+    const selectedChannel = channels.find((channel) => channel.sourceType === form.sourceType);
+    const changeChannel = useCallback((value: CampaignFormState["sourceType"]) => {
+        setForm((current) => ({
+            ...current,
+            sourceType: value,
+            sourceId: channels.find((channel) => channel.sourceType === value)?.sourceId || "",
+            type: value === "wuzapi" && current.type === "template" ? "text" : current.type,
+            mediaUrl: value === "wuzapi" && current.type === "template" ? null : current.mediaUrl,
+            mediaType: value === "wuzapi" && current.type === "template" ? null : current.mediaType,
+            mediaFileName: value === "wuzapi" && current.type === "template" ? null : current.mediaFileName,
+            ycloudTemplateName: value === "wuzapi" ? "" : current.ycloudTemplateName,
+            ycloudTemplateLanguage: value === "wuzapi" ? "" : current.ycloudTemplateLanguage,
+            ycloudTemplateComponents: value === "wuzapi" ? [] : current.ycloudTemplateComponents,
+            ycloudTemplateVariableValues: value === "wuzapi" ? {} : current.ycloudTemplateVariableValues,
+            audienceOnlyOpenYCloudWindow: value === "meta" && current.type !== "template"
+                ? true
+                : current.audienceOnlyOpenYCloudWindow,
+            audienceMode: value === "meta" && current.type !== "template" ? "filters" : current.audienceMode,
+            followUpCount: value === "meta" ? 0 : current.followUpCount,
+        }));
+    }, [channels]);
+
+    useEffect(() => {
+        if (!form.id && !channelsLoading && channels.length > 0 && !selectedChannel) changeChannel(channels[0].sourceType);
+    }, [form.id, channelsLoading, channels, selectedChannel, changeChannel]);
 
     const resetForm = useCallback(() => {
         setForm(EMPTY_FORM);
@@ -213,7 +241,7 @@ export function BulkCampaignManagerPanel() {
         query: form.audienceQuery,
         limit: form.audienceLimit.trim() ? Number.parseInt(form.audienceLimit, 10) : null,
         sourceType: form.sourceType === "meta" && form.type !== "template" ? "meta" : "any",
-        sourceId: form.sourceId.trim(),
+        sourceId: form.sourceType === "meta" ? selectedChannel?.sourceId || form.sourceId.trim() : form.sourceId.trim(),
         onlyOpenYCloudWindow: form.sourceType === "meta" && form.type !== "template" ? form.audienceOnlyOpenYCloudWindow : false,
         lastInboundFrom: form.audienceLastInboundFrom ? new Date(form.audienceLastInboundFrom).toISOString() : "",
         lastInboundTo: form.audienceLastInboundTo ? new Date(form.audienceLastInboundTo).toISOString() : "",
@@ -232,6 +260,7 @@ export function BulkCampaignManagerPanel() {
         form.type,
         form.sourceId,
         form.sourceType,
+        selectedChannel?.sourceId,
         manualEntries,
     ]);
 
@@ -313,7 +342,7 @@ export function BulkCampaignManagerPanel() {
                 name: form.name,
                 description: form.description,
                 sourceType: form.sourceType,
-                sourceId: form.sourceId.trim() || null,
+                sourceId: selectedChannel?.sourceId || form.sourceId.trim() || null,
                 type: form.type,
                 mediaUrl: form.type === "text" || form.type === "template" ? null : form.mediaUrl,
                 mediaType: form.type === "text" || form.type === "template" ? null : form.mediaType,
@@ -368,6 +397,10 @@ export function BulkCampaignManagerPanel() {
     };
 
     const runAction = async (action: "start" | "pause" | "resume" | "cancel") => {
+        if ((action === "start" || action === "resume") && (channelsLoading || !selectedChannel)) {
+            toast({ title: "Conecta un canal de WhatsApp", description: channelsError || "No hay un canal activo para esta campaña.", variant: "destructive" });
+            return;
+        }
         if (!form.id) {
             toast({
                 title: "Guarda la campaña primero",
@@ -590,7 +623,7 @@ export function BulkCampaignManagerPanel() {
 
                     <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                         {(form.status === "draft" || form.status === "completed" || form.status === "cancelled" || form.status === "failed") && (
-                            <Button onClick={() => void runAction("start")} disabled={actionLoading !== null} className="w-full sm:w-auto">
+                            <Button onClick={() => void runAction("start")} disabled={actionLoading !== null || channelsLoading || !selectedChannel} className="w-full sm:w-auto">
                                 {actionLoading === "start" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />}
                                 {form.scheduledStartAt ? "Programar campaña" : "Iniciar campaña"}
                             </Button>
@@ -602,7 +635,7 @@ export function BulkCampaignManagerPanel() {
                             </Button>
                         )}
                         {form.status === "paused" && (
-                            <Button variant="outline" onClick={() => void runAction("resume")} disabled={actionLoading !== null} className="w-full sm:w-auto">
+                            <Button variant="outline" onClick={() => void runAction("resume")} disabled={actionLoading !== null || channelsLoading || !selectedChannel} className="w-full sm:w-auto">
                                 {actionLoading === "resume" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />}
                                 Reanudar
                             </Button>
@@ -633,38 +666,19 @@ export function BulkCampaignManagerPanel() {
                         <div className="space-y-2">
                             <Label>Número / canal de salida</Label>
                             <Select
-                                value={form.sourceType}
-                                onValueChange={(value: CampaignFormState["sourceType"]) =>
-                                    setForm((current) => ({
-                                        ...current,
-                                        sourceType: value,
-                                        sourceId: "",
-                                        type: value === "wuzapi" && current.type === "template" ? "text" : current.type,
-                                        mediaUrl: value === "wuzapi" && current.type === "template" ? null : current.mediaUrl,
-                                        mediaType: value === "wuzapi" && current.type === "template" ? null : current.mediaType,
-                                        mediaFileName: value === "wuzapi" && current.type === "template" ? null : current.mediaFileName,
-                                        ycloudTemplateName: value === "wuzapi" ? "" : current.ycloudTemplateName,
-                                        ycloudTemplateLanguage: value === "wuzapi" ? "" : current.ycloudTemplateLanguage,
-                                        ycloudTemplateComponents: value === "wuzapi" ? [] : current.ycloudTemplateComponents,
-                                        ycloudTemplateVariableValues: value === "wuzapi" ? {} : current.ycloudTemplateVariableValues,
-                                        audienceOnlyOpenYCloudWindow: value === "meta" && current.type !== "template"
-                                            ? true
-                                            : current.audienceOnlyOpenYCloudWindow,
-                                        audienceMode: value === "meta" && current.type !== "template" ? "filters" : current.audienceMode,
-                                        followUpCount: value === "meta" ? 0 : current.followUpCount,
-                                    }))
-                                }
+                                value={channelsLoading ? "" : selectedChannel?.sourceType || ""}
+                                disabled={channelsLoading || channels.length === 0}
+                                onValueChange={changeChannel}
                             >
                                 <SelectTrigger className="w-full">
-                                    <SelectValue placeholder="Selecciona canal" />
+                                    <SelectValue placeholder={channelsLoading ? "Verificando canales…" : channels.length === 0 ? "Sin canal activo" : "Selecciona canal activo"} />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="wuzapi">WhatsApp por QR</SelectItem>
-                                    <SelectItem value="meta">WhatsApp API oficial</SelectItem>
+                                    {channels.map((channel) => <SelectItem key={channel.sourceType} value={channel.sourceType}>{channel.label}</SelectItem>)}
                                 </SelectContent>
                             </Select>
                             <p className="text-xs text-muted-foreground">
-                                {form.sourceType === "meta"
+                                {channelsLoading ? "Verificando la conexión de WhatsApp." : !selectedChannel ? channelsError || "Conecta WhatsApp desde Configuración para habilitar los envíos." : form.sourceType === "meta"
                                     ? "WhatsApp API solo enviara mensajes libres a ventanas abiertas; fuera de ventana usa una plantilla aprobada."
                                     : "WhatsApp por QR mantiene el envio masivo actual sin regla de ventana 24h."}
                             </p>
@@ -701,7 +715,7 @@ export function BulkCampaignManagerPanel() {
                                     <SelectItem value="text">Solo texto</SelectItem>
                                     <SelectItem value="image">Imagen + caption</SelectItem>
                                     <SelectItem value="document">Documento + caption</SelectItem>
-                                    <SelectItem value="template">Plantilla Meta</SelectItem>
+                                    <SelectItem value="template" disabled={!channels.some((channel) => channel.sourceType === "meta")}>Plantilla Meta</SelectItem>
                                 </SelectContent>
                             </Select>
                         </div>

@@ -59,7 +59,7 @@ export const APP_PERMISSION_GROUPS = [
             {
                 key: "templates.manage",
                 label: "Plantillas",
-                description: "Administrar respuestas guardadas, plantillas oficiales y cotizaciones.",
+                description: "Administrar respuestas guardadas y plantillas oficiales.",
             },
             {
                 key: "campaigns.manage",

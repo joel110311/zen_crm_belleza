@@ -1,10 +1,9 @@
 "use client";
 
-import { useMemo, type ComponentType } from "react";
+import { type ComponentType } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
-import { LayoutTemplate, Loader2, Megaphone, ShieldAlert, MessageSquare, ReceiptText } from "lucide-react";
-import { QuoteBuilderPanel } from "@/components/quotes/quote-builder-panel";
+import { LayoutTemplate, Loader2, Megaphone, ShieldAlert, MessageSquare } from "lucide-react";
 import { BulkCampaignManagerPanel } from "@/components/settings/bulk-campaign-manager-panel";
 import { TemplateManagerPanel } from "@/components/settings/template-manager-panel";
 import { MetaTemplateRequestPanel } from "@/components/templates/ycloud-template-request-panel";
@@ -20,7 +19,6 @@ const TEMPLATE_TAB_ITEMS: Array<{
     { value: "templates", label: "Respuestas guardadas", icon: LayoutTemplate, permission: "templates.manage" },
     { value: "meta", label: "Plantillas WhatsApp API", icon: MessageSquare, permission: "templates.manage" },
     { value: "campaigns", label: "Envios masivos", icon: Megaphone, permission: "campaigns.manage" },
-    { value: "quotes", label: "Cotizaciones", icon: ReceiptText, permission: "templates.manage" },
 ];
 
 const TEMPLATE_TABS = new Set(TEMPLATE_TAB_ITEMS.map((tab) => tab.value));
@@ -33,17 +31,11 @@ export default function TemplatesPage() {
     const sessionUser = session?.user as { role?: string; permissions?: unknown } | undefined;
     const visibleTabs = TEMPLATE_TAB_ITEMS.filter((tab) => hasPermission(sessionUser, tab.permission));
     const hasTemplateAccess = visibleTabs.length > 0;
-    const currentUserName = session?.user?.name || "";
     const requestedTab = searchParams.get("tab") || "templates";
     const fallbackTab = visibleTabs[0]?.value || "templates";
     const activeTab = TEMPLATE_TABS.has(requestedTab) && visibleTabs.some((tab) => tab.value === requestedTab)
         ? requestedTab
         : fallbackTab;
-    const quoteInitialContact = useMemo(() => ({
-        name: searchParams.get("contactName") || "",
-        phone: searchParams.get("phone") || "",
-        company: searchParams.get("company") || "",
-    }), [searchParams]);
 
     const handleTabChange = (value: string) => {
         const params = new URLSearchParams(searchParams.toString());
@@ -79,7 +71,7 @@ export default function TemplatesPage() {
                     <ShieldAlert className="mx-auto h-10 w-10 text-amber-500" />
                     <h2 className="mt-4 text-lg font-semibold">Acceso restringido</h2>
                     <p className="mt-2 text-sm text-muted-foreground">
-                        Tu rol no tiene permisos para gestionar plantillas, campañas o cotizaciones.
+                        Tu rol no tiene permisos para gestionar plantillas o campañas.
                     </p>
                 </div>
             </div>
@@ -99,7 +91,7 @@ export default function TemplatesPage() {
             </div>
 
             <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-4">
-                <TabsList className="grid h-auto w-full max-w-[64rem] grid-cols-2 gap-2 rounded-2xl border bg-card p-1.5 shadow-[0_12px_24px_-20px_rgba(15,23,42,0.22)] md:grid-cols-4">
+                <TabsList className="grid h-auto w-full max-w-[64rem] grid-cols-1 gap-2 rounded-2xl border bg-card p-1.5 shadow-[0_12px_24px_-20px_rgba(15,23,42,0.22)] sm:grid-cols-3">
                     {visibleTabs.map((tab) => {
                         const Icon = tab.icon;
                         return (
@@ -121,13 +113,6 @@ export default function TemplatesPage() {
                             <MetaTemplateRequestPanel />
                         </TabsContent>
 
-                        <TabsContent value="quotes" className="mt-0">
-                            <QuoteBuilderPanel
-                                key={`${quoteInitialContact.name}-${quoteInitialContact.phone}-${quoteInitialContact.company}`}
-                                initialContact={quoteInitialContact}
-                                agentName={currentUserName}
-                            />
-                        </TabsContent>
                     </>
                 ) : null}
 
