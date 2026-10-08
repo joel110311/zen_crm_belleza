@@ -89,17 +89,25 @@
 .landing :global(.landing-phone-status > span:last-child) { display: flex; gap: 3px; }
 .landing :global(.landing-phone-header) { display: flex; gap: 8px; align-items: center; padding: 8px 9px 12px; background: var(--sea); color: #faf7f0; }
 .landing :global(.landing-phone-header > div) { flex: 1; }
+.landing :global(.landing-phone-status), .landing :global(.landing-phone-header), .landing :global(.landing-phone-compose) { flex-shrink: 0; }
 .landing :global(.landing-phone-header strong) { display: block; font-size: 12px; font-weight: 550; }
 .landing :global(.landing-phone-header small) { display: block; font-size: 8px; opacity: .85; margin-top: 3px; }
 .landing :global(.landing-phone-avatar) { display: grid; place-items: center; width: 29px; height: 29px; background: #faf7f0; border-radius: 50%; color: var(--sea); font-size: 12px; font-weight: 600; }
-.landing :global(.landing-phone-messages) { display: flex; flex-direction: column; gap: 11px; flex: 1; overflow-y: auto; padding: 12px; background-image: radial-gradient(#c5c3b950 .7px, transparent .7px); background-size: 12px 12px; }
+.landing :global(.landing-phone-messages) { display: flex; flex-direction: column; gap: 11px; flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; padding: 12px; background-image: radial-gradient(#c5c3b950 .7px, transparent .7px); background-size: 12px 12px; }
+.landing :global(.landing-phone-messages)::-webkit-scrollbar { display: none; }
+.landing :global(.landing-phone-messages:focus-visible) { outline: 2px solid var(--sea); outline-offset: -2px; }
+.landing :global(.landing-phone-messages > *) { flex-shrink: 0; }
 .landing :global(.landing-phone-date) { align-self: center; background: #faf7f0c0; font-size: 8px; padding: 3px 10px; border-radius: 5px; }
 .landing :global(.landing-bubble) { align-self: flex-start; max-width: 90%; background: #fffefa; color: #344235; border-radius: 0 11px 11px; padding: 9px 11px 5px; box-shadow: 0 1px 2px #263f4610; font-size: 12px; line-height: 1.5; }
 .landing :global(.landing-bubble-agent) { align-self: flex-end; background: #e2e9d9; border-radius: 11px 0 11px 11px; }
 .landing :global(.landing-bubble small) { display: flex; justify-content: end; align-items: center; gap: 3px; font-size: 8px; margin-top: 3px; color: #64725c; }
 .landing :global(.landing-bubble small svg) { color: var(--sea); }
 .landing :global(.landing-typing) { display: flex; gap: 3px; padding: 10px; background: #fffefa; width: fit-content; border-radius: 8px; }
-.landing :global(.landing-typing span) { height: 4px; width: 4px; border-radius: 50%; background: #8b997d; }
+.landing :global(.landing-typing span) { height: 4px; width: 4px; border-radius: 50%; background: #8b997d; animation: landing-typing-dot 1.2s ease-in-out infinite; }
+.landing :global(.landing-typing span:nth-child(2)) { animation-delay: .15s; }
+.landing :global(.landing-typing span:nth-child(3)) { animation-delay: .3s; }
+.landing :global(.landing-demo[data-paused="true"] .landing-typing span) { animation-play-state: paused; }
+@keyframes landing-typing-dot { 0%, 60%, 100% { transform: translateY(0); opacity: .65; } 30% { transform: translateY(-3px); opacity: 1; } }
 .landing :global(.landing-phone-compose) { display: flex; align-items: center; gap: 10px; padding: 10px 10px 17px; font-size: 10px; color: var(--sea); }
 .landing :global(.landing-phone-compose span) { flex: 1; display: flex; gap: 7px; align-items: center; border-radius: 100px; background: #fffefa; padding: 8px 10px; color: #758269; }
 .landing :global(.landing-demo-pause) { color: var(--sea); font-size: 10px; min-height: 30px; text-decoration: underline; text-underline-offset: 3px; }
