@@ -80,6 +80,7 @@ type WizardProps = {
   ownerName: string;
   initial: InitialData;
   channelsEnabled: boolean;
+  allowActorLink?: boolean;
 };
 type StepKey =
   | "business"
@@ -141,6 +142,7 @@ export function TenantOnboardingWizard({
   ownerName,
   initial,
   channelsEnabled,
+  allowActorLink = true,
 }: WizardProps) {
   const router = useRouter();
   const [completedSteps, setCompletedSteps] = useState(() =>
@@ -775,7 +777,7 @@ export function TenantOnboardingWizard({
                 </Field>
               </div>
             </div>
-            <label className="flex items-start gap-3 rounded-xl border bg-muted/30 p-4 text-sm">
+            {allowActorLink ? <label className="flex items-start gap-3 rounded-xl border bg-muted/30 p-4 text-sm">
               <input
                 className="mt-0.5 size-4"
                 type="checkbox"
@@ -794,7 +796,7 @@ export function TenantOnboardingWizard({
                   agenda personal.
                 </span>
               </span>
-            </label>
+            </label> : null}
             <StepFooter
               saving={saving}
               label="Guardar y continuar"

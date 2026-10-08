@@ -10,6 +10,7 @@ import { normalizeBusinessPolicies } from "@/lib/ai/business-policies";
 import { TenantOnboardingWizard } from "./onboarding-wizard";
 import { isMultitenantChannelsEnabled } from "@/lib/multitenant-features";
 import { resolveTenantPortalName } from "@/lib/tenant-portal-defaults";
+import { getControlDb } from "@/lib/control-db";
 
 export const dynamic = "force-dynamic";
 
@@ -59,13 +60,20 @@ export default async function TenantOnboardingPage({
   ]);
   const hours = normalizeBusinessHours(settings);
   const isSeedDefault = settings.clinicName === "Zen CRM Cuidado Personal";
+  const owner = tenant.support ? await getControlDb().tenantMembership.findFirst({
+    where: { tenantId: tenant.tenantId, role: "OWNER", isActive: true },
+    orderBy: { createdAt: "asc" }, select: { user: { select: { name: true, email: true } } },
+  }) : null;
+  const ownerName = tenant.support ? owner?.user.name || "" : tenant.actor.name || "";
+  const ownerEmail = tenant.support ? owner?.user.email || "" : tenant.actor.email;
 
   return (
     <main className="min-h-screen bg-muted/30 px-5 py-8 sm:px-8">
       <div className="mx-auto max-w-3xl">
         <TenantOnboardingWizard
           tenantSlug={tenant.slug}
-          ownerName={tenant.actor.name || ""}
+          ownerName={ownerName}
+          allowActorLink={!tenant.support}
           channelsEnabled={isMultitenantChannelsEnabled()}
           initial={{
             business: {
@@ -98,10 +106,10 @@ export default async function TenantOnboardingPage({
               durationMinutes: service?.durationMinutes || 60,
             },
             specialist: {
-              name: specialist?.name || tenant.actor.name || "",
+              name: specialist?.name || ownerName,
               specialty: specialist?.specialty || "",
-              email: specialist?.email || tenant.actor.email,
-              linkActor: specialist
+              email: specialist?.email || ownerEmail,
+              linkActor: tenant.support ? false : specialist
                 ? specialist.userId === tenant.actor.id
                 : true,
             },

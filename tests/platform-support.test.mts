@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { NextRequest, NextResponse } from "next/server.js";
+import { renderToStaticMarkup } from "react-dom/server";
 import { loadTsModule } from "./helpers/load-ts-module.mts";
 import * as routing from "../src/lib/tenant-request-routing.ts";
 import * as policy from "../src/lib/platform-admin-policy.ts";
@@ -215,4 +216,52 @@ test("read-only batch transactions work without weakening checks on write batche
     assert.equal(operations.at(-1), "read");
     await assert.rejects(db.$transaction([db.contact.create()]), /READ_ONLY/);
     assert.equal(operations.at(-1), "write");
+});
+
+test("support onboarding edits preserve owner specialist links and never link the platform operator, even on forged input", async () => {
+    const mod = loadTsModule("src/app/api/t/[tenantSlug]/onboarding/route.ts", {
+        "@/lib/calendar/business-hours": {}, "@/lib/ai/business-policies": {}, "@/lib/operation-context": {},
+        "@/lib/tenant-api": {}, "@/lib/tenant-services/context": { TenantServiceError: class extends Error {} },
+        "@/lib/tenant-services/validation": {}, "@/lib/tenant-system-settings": {}, "@/lib/tenant-portal-defaults": {},
+    });
+    const update = mod.updateOnboardingStep as (tenant: unknown, step: string, body: unknown) => Promise<unknown>;
+    for (const existing of [false, true]) {
+        let data: Record<string, unknown> | null = null;
+        const tx = {
+            tenantOnboardingState: { findUnique: async () => ({ initialSpecialistId: existing ? "specialist" : null, completedSteps: [], skippedSteps: [], currentStep: 1 }), upsert: async () => ({}) },
+            specialist: {
+                findUnique: async () => ({ id: "specialist", userId: "customer-owner" }),
+                create: async (input: { data: Record<string, unknown> }) => { data = input.data; return { id: "specialist" }; },
+                update: async (input: { data: Record<string, unknown> }) => { data = input.data; return { id: "specialist" }; },
+            },
+        };
+        await update({ actor: { id: "platform-support-actor" }, support: { mode: "FULL" }, db: { $transaction: async (callback: (tx: unknown) => unknown) => callback(tx) } }, "professional", { name: "Cliente", email: "cliente@example.com", linkActor: true });
+        assert.equal(data!.userId, existing ? "customer-owner" : null);
+    }
+});
+
+test("support wizard uses the actual owner's profile, not administrative defaults or account linkage", async () => {
+    let props: Record<string, unknown> | null = null;
+    let ownerQuery: Record<string, unknown> | null = null;
+    const mod = loadTsModule("src/app/t/[tenantSlug]/onboarding/page.tsx", {
+        "next/navigation": { notFound: () => { throw new Error("404"); } },
+        "@/lib/auth": { auth: async () => ({ user: { id: "admin" } }) },
+        "@/lib/calendar/business-hours": { DEFAULT_BUSINESS_TIME_ZONE: "America/Mexico_City", normalizeBusinessHours: () => ({}) },
+        "@/lib/tenant-context": { requireTenantRuntimeContext: async () => ({ tenantId: "tenant-a", slug: "new-salon", displayName: "Salon", role: "ADMIN", support: { mode: "FULL" }, actor: { id: "support", name: "Soporte de plataforma", email: "admin@platform.invalid" }, db: { tenantOnboardingState: { findUnique: async () => null }, service: { findMany: async () => [] } } }) },
+        "@/lib/tenant-system-settings": { getTenantSystemSettingsOrDefaults: async () => ({ clinicName: "Salon" }) },
+        "@/lib/ai/business-policies": { normalizeBusinessPolicies: () => ({}) },
+        "./onboarding-wizard": { TenantOnboardingWizard: (input: Record<string, unknown>) => { props = input; return null; } },
+        "@/lib/multitenant-features": { isMultitenantChannelsEnabled: () => true },
+        "@/lib/tenant-portal-defaults": { resolveTenantPortalName: () => "Salon" },
+        "@/lib/control-db": { getControlDb: () => ({ tenantMembership: { findFirst: async (input: Record<string, unknown>) => { ownerQuery = input; return { user: { name: "Customer", email: "customer@example.com" } }; } } }) },
+    });
+    const page = mod.default as (input: unknown) => Promise<Parameters<typeof renderToStaticMarkup>[0]>;
+    renderToStaticMarkup(await page({ params: Promise.resolve({ tenantSlug: "new-salon" }) }));
+    assert.equal(props!.ownerName, "Customer");
+    assert.equal(props!.allowActorLink, false);
+    const initial = props!.initial as { specialist: { name: string; email: string; linkActor: boolean } };
+    assert.equal(initial.specialist.name, "Customer");
+    assert.equal(initial.specialist.email, "customer@example.com");
+    assert.equal(initial.specialist.linkActor, false);
+    assert.equal((ownerQuery!.where as { tenantId: string }).tenantId, "tenant-a");
 });

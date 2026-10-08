@@ -55,6 +55,9 @@ No se modificaron permisos ni contraseñas de esas cuentas para resolverlo.
   HTTP y operaciones de escritura de la DAL. No crea personal local en ese modo.
 - Con edición se proyecta un actor local **Soporte de plataforma**, sin contraseña ni
   especialista automático, para atribuir las operaciones; no se suplanta al propietario.
+- El wizard conserva los datos de la persona propietaria al revisar un alta desde
+  soporte. No ofrece vincular al administrador como profesional, y el servidor
+  preserva la vinculación existente aunque se altere el campo `linkActor` en la petición.
 - Este acceso otorga administración operativa del CRM, no convierte al operador en
   propietario contractual: los flujos de pagos de suscripción reservados a OWNER
   siguen siendo del cliente. Pruebas/planes se administran desde el panel de plataforma.

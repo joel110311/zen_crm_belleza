@@ -536,7 +536,9 @@ export async function updateOnboardingStep(
         displayName: name,
         specialty,
         email,
-        userId: linkActor ? tenant.actor.id : null,
+        // Support edits preserve an existing owner's linkage. The platform operator must
+        // never become the customer's initial specialist, even with a forged linkActor.
+        userId: tenant.support ? currentSpecialist?.userId || null : linkActor ? tenant.actor.id : null,
         isActive: true,
       };
       const specialist = currentSpecialist
