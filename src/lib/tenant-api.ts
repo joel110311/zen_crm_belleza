@@ -124,7 +124,9 @@ export async function withTenantApi(
             return tenantError(requestId, "NOT_FOUND", "No se encontró el recurso solicitado.", 404);
         }
 
-        if ((options.operation ?? "read") === "write" && !isSameApplicationOrigin(request)) {
+        const operation = options.permission.endsWith(".write") ? "write"
+            : options.operation ?? (["GET", "HEAD", "OPTIONS"].includes(request.method) ? "read" : "write");
+        if (operation === "write" && !isSameApplicationOrigin(request)) {
             return tenantError(requestId, "INVALID_ORIGIN", "El origen de la solicitud no es válido.", 403);
         }
 
@@ -137,7 +139,7 @@ export async function withTenantApi(
         const runtime = await requireTenantRuntimeContext(
             user.id,
             tenantSlug,
-            options.operation ?? "read",
+            operation,
         );
         assertTenantPermission(runtime, options.permission);
         return await handler({ ...runtime, requestId });

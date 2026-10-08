@@ -97,7 +97,7 @@ export default async function TenantLayout({
                 data-apple-workspace
                 data-business={tenant.slug}
             >
-                <ActiveTenantCookie tenantSlug={tenant.slug} />
+                {!tenant.support ? <ActiveTenantCookie tenantSlug={tenant.slug} /> : null}
                 <TenantNavigationBridge tenantSlug={tenant.slug} />
                 <InboxNotifier />
                 <WaitingRoomNotifier />

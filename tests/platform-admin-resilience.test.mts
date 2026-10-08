@@ -83,7 +83,7 @@ test("control page distinguishes unauthorized, forbidden and infrastructure fail
         "next/navigation": { redirect: (path: string) => { throw new Error(`REDIRECT:${path}`); } },
         "@/lib/platform-admin": { PlatformAdminAccessError: AccessError, requirePlatformAdmin: async () => { throw failure; } },
         "@/lib/control-db": { getControlDb: () => { databaseAccesses++; throw new Error("must not read protected data"); } },
-        "@/components/control/commerce-control-center": {}, "@/lib/ai/platform-runtime": {},
+        "@/components/control/commerce-control-center": {}, "@/components/control/workspace-support-center": {}, "@/lib/ai/platform-runtime": {},
         "@/lib/billing/provider": {}, "@/lib/billing/platform-runtime": {},
     });
     const page = mod.default as () => Promise<Parameters<typeof renderToStaticMarkup>[0]>;
@@ -138,7 +138,7 @@ test("dedicated credentials provider rejects legacy requests, enforces rate limi
 
 test("administrative API never turns infrastructure errors into validation errors or reveals credentials", () => {
     class AccessError extends Error { status = 403; }
-    const mod = loadTsModule("src/lib/control-api-errors.ts", { "server-only": {}, "@/lib/platform-admin": { PlatformAdminAccessError: AccessError } });
+    const mod = loadTsModule("src/lib/control-api-errors.ts", { "server-only": {}, "@/lib/platform-admin": { PlatformAdminAccessError: AccessError }, "@/lib/control-validation-error": { ControlValidationError: class extends Error {} } });
     const map = mod.controlApiError as (error: unknown) => { status: number; message: string };
     const Validation = mod.ControlValidationError as new (message: string) => Error;
     assert.equal(map(new Validation("Completa el campo")).status, 400);

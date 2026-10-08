@@ -2,6 +2,7 @@ import "server-only";
 import bcrypt from "bcryptjs";
 import { getControlDb } from "@/lib/control-db";
 import { Prisma } from "@/generated/control-plane";
+import { getPlatformSupportGrant, type SupportGrant } from "@/lib/platform-support";
 
 const tenantSlugPattern = /^[a-z0-9](?:[a-z0-9-]{1,46}[a-z0-9])?$/;
 
@@ -30,6 +31,7 @@ export type TenantAccess = {
     role: "OWNER" | "ADMIN" | "PROFESSIONAL" | "RECEPTION";
     status: "PROVISIONING" | "READY" | "SUSPENDED" | "ARCHIVED" | "FAILED";
     accessMode: "FULL" | "READ_ONLY" | "BILLING_ONLY" | "SUSPENDED";
+    support?: Pick<SupportGrant, "id" | "mode" | "reason" | "expiresAt">;
 };
 
 export type CreateControlUserInput = {
@@ -381,6 +383,7 @@ export async function getTenantAccessForUser(
                 },
                 select: {
                     role: true,
+                    user: { select: { isPlatformAdmin: true } },
                 },
                 take: 1,
             },
@@ -388,9 +391,24 @@ export async function getTenantAccessForUser(
     });
 
     const membership = tenant?.memberships[0];
-    if (!tenant || !membership) {
+    if (!tenant) {
         return null;
     }
+    // Ordinary members retain the original single-tenant lookup path. Only platform
+    // operators or non-members need to resolve an explicit temporary support grant.
+    const grant = !membership || membership.user?.isPlatformAdmin
+        ? await getPlatformSupportGrant(normalizedUserId) : null;
+    if (grant?.tenantId === tenant.id && grant.slug === tenant.slug) {
+        return {
+            tenantId: tenant.id, slug: tenant.slug, displayName: tenant.displayName,
+            timeZone: tenant.timeZone, role: "ADMIN", status: tenant.status,
+            // Support can inspect billing-restricted workspaces without changing their plan
+            // or billing flags. Suspended/unfinished runtimes remain unavailable to the DAL.
+            accessMode: grant.mode,
+            support: { id: grant.id, mode: grant.mode, reason: grant.reason, expiresAt: grant.expiresAt },
+        };
+    }
+    if (!membership) return null;
 
     return {
         tenantId: tenant.id,

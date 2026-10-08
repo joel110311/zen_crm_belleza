@@ -10,6 +10,7 @@ test("control requests never inherit an unrelated workspace cookie or spoofed te
         "next-auth/jwt": { getToken: async () => token },
         "next/server": { NextResponse: { next: (value: unknown) => value, redirect: (url: URL) => ({ redirect: String(url) }), json: (_value: unknown, init: unknown) => init } },
         "@/lib/platform-admin-policy": adminPolicy,
+        "@/lib/platform-support": { getPlatformSupportGrant: async () => null },
         "@/lib/permissions": { hasPermission: () => true },
         "@/lib/tenant-request-routing": routing,
     }, { process: { env: { AUTH_SECRET: "test-only" } } });

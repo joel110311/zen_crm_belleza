@@ -131,6 +131,7 @@ test("actual upload/media routes: >10MB MP4, real WebM→Opus, images/documents,
 test("media routes preserve sanitized tenant context, and static uploads cannot bypass private authorization", async () => {
     const proxy = loadTsModule("src/proxy.ts", {
         "@/lib/platform-admin-policy": adminPolicy,
+        "@/lib/platform-support": { getPlatformSupportGrant: async () => null },
         "next-auth/jwt": { getToken: async () => ({ id: "owner", authScope: "control" }) },
         "@/lib/permissions": { hasPermission: () => true },
         "@/lib/tenant-request-routing": routing,
@@ -145,6 +146,7 @@ test("media routes preserve sanitized tenant context, and static uploads cannot 
 test("the durable worker endpoint reaches its own secret guard without a browser session; forged headers are stripped", async () => {
     const loaded = loadTsModule("src/proxy.ts", {
         "@/lib/platform-admin-policy": adminPolicy,
+        "@/lib/platform-support": { getPlatformSupportGrant: async () => null },
         "next-auth/jwt": { getToken: async () => null },
         "@/lib/permissions": { hasPermission: () => false },
         "@/lib/tenant-request-routing": routing,

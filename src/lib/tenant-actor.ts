@@ -112,6 +112,13 @@ export async function ensureTenantActor(
     }
 
     const role = tenantMembershipRoleToAppRole(access.role);
+    if (access.support?.mode === "READ_ONLY") {
+        // Pure inspection must not create/refresh operational staff in the customer's DB.
+        const linked = await tenantDb.user.findUnique({ where: { controlUserId }, select: { id: true } });
+        return { id: linked?.id || `support:${controlUserId}`, controlUserId, email: globalUser.email,
+            name: "Soporte de plataforma", role, permissions: [] };
+    }
+    if (access.support) globalUser.name = "Soporte de plataforma";
     const select = {
         id: true,
         controlUserId: true,

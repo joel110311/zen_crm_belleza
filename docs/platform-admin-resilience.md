@@ -24,13 +24,42 @@ No se modificaron permisos ni contraseñas de esas cuentas para resolverlo.
   únicamente después de validar las credenciales. No requiere crear un negocio,
   aceptar invitaciones ni registrar otro correo.
 - La identidad no tiene contraseña por correo ni acceso Google. No obtiene acceso
-  operativo a las APIs de negocios o legacy. El proxy también bloquea esos accesos.
+  legacy ni acceso operativo implícito por una cookie. Puede abrir explícitamente
+  cualquier negocio desde la sección **Revisar negocios** del panel.
 - Cambiar usuario/contraseña o vaciar la contraseña invalida las sesiones de este
   acceso en la siguiente comprobación de autenticación. Una revocación explícita
   del permiso en la base de control no se deshace al iniciar sesión.
-- El login del panel y el del CRM usan la misma sesión del navegador. Para operar
-  un negocio después de entrar como `adminjoel`, inicia sesión con la cuenta de ese
-  negocio, o utiliza otro perfil del navegador.
+- El login del panel y el del CRM usan la misma sesión del navegador. Para usar tu
+  cuenta normal después de `adminjoel`, vuelve a iniciar sesión o usa otro perfil.
+
+## Acceso de soporte a todos los negocios
+
+- Buscador paginado (50 por página), sin limitar el acceso a los últimos 30 registros.
+  Los negocios nuevos aparecen automáticamente; no se agregan membresías permanentes.
+- **Abrir CRM** abre la operación; **Revisar alta** abre el wizard existente sin
+  reiniciarlo. Si aún no está listo, **Ver preparación** muestra su estado sin abrir
+  una base incompleta. Los espacios suspendidos/archivados no se fuerzan a READY.
+- Por decisión del propietario, el modo predeterminado permite consultar y editar,
+  sin banner dentro del CRM. El formulario de entrada permite elegir solo consulta.
+- El motivo, operador, negocio, modo y vencimiento se registran en `AuditLog`.
+  Esto registra los accesos, no constituye auditoría detallada de todas las modificaciones.
+- Se usa `PlatformRuntimeSetting` para una sesión de soporte por operador y 30 minutos.
+  Abrir otro negocio sustituye el permiso anterior; las pestañas antiguas ya no tienen
+  acceso salvo membresía normal independiente. Volver al panel no revoca de inmediato
+  el permiso: vence automáticamente; el endpoint DELETE permite su revocación explícita.
+- Las credenciales rotadas, `securityVersion`, baja o revocación administrativa
+  invalidan el permiso en las siguientes comprobaciones. No se guarda la contraseña;
+  sólo una huella HMAC del conjunto de credenciales vinculada a la sesión.
+- El proxy protege APIs, archivos y Server Actions; la capa de datos vuelve a comprobar
+  el permiso antes de cargar credenciales del tenant. Sólo consulta bloquea mutaciones
+  HTTP y operaciones de escritura de la DAL. No crea personal local en ese modo.
+- Con edición se proyecta un actor local **Soporte de plataforma**, sin contraseña ni
+  especialista automático, para atribuir las operaciones; no se suplanta al propietario.
+- Este acceso otorga administración operativa del CRM, no convierte al operador en
+  propietario contractual: los flujos de pagos de suscripción reservados a OWNER
+  siguen siendo del cliente. Pruebas/planes se administran desde el panel de plataforma.
+- Las bases permanecen aisladas. Un acceso a otro slug, una cookie manipulada, un permiso
+  vencido o un fallo de conexión nunca cambian a la base legacy ni a la de otro negocio.
 
 ## Contención y recuperación
 
@@ -57,7 +86,8 @@ No se modificaron permisos ni contraseñas de esas cuentas para resolverlo.
 Las pruebas simulan autorización, rotación, fallos de conexión, límites simultáneos,
 transacciones activas y errores en tareas de un negocio. No provocan fallos en producción.
 También se verifican los destinos de login y el bloqueo de acceso operativo de la
-identidad dedicada. Ejecutar `npm test`, `npm run lint`, `npm run build`.
+identidad dedicada sin permiso de soporte, expiración, rotación y aislamiento entre
+negocios. Ejecutar `npm test`, `npm run lint`, `npm run build`.
 
 Este cambio no necesita nuevas migraciones. Desplegar una imagen identificada por
 commit en web y tenant worker; mantener PostgreSQL, Redis y gateway QR sin cambios.

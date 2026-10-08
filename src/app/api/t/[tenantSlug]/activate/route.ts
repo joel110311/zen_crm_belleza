@@ -6,7 +6,8 @@ export const runtime = "nodejs";
 
 export async function POST(request: Request, { params }: { params: Promise<{ tenantSlug: string }> }) {
     const { tenantSlug } = await params;
-    return withTenantApi(request, tenantSlug, { permission: "contacts.read" }, async (tenant) => {
+    // This POST changes only the browser's routing cookie, not customer data.
+    return withTenantApi(request, tenantSlug, { operation: "read", permission: "contacts.read" }, async (tenant) => {
         const response = NextResponse.json({ active: true });
         response.cookies.set(ACTIVE_TENANT_COOKIE, tenant.slug, {
             httpOnly: true,

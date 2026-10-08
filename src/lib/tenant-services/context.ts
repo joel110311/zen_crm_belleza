@@ -51,6 +51,7 @@ const ROLE_PERMISSIONS: Record<TenantRuntimeContext["role"], readonly TenantPerm
 };
 
 export function hasTenantPermission(context: TenantRuntimeContext, permission: TenantPermission) {
+    if (context.support?.mode === "READ_ONLY" && permission.endsWith(".write")) return false;
     return ROLE_PERMISSIONS[context.role].includes(permission);
 }
 

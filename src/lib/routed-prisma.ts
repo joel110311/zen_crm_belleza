@@ -70,7 +70,7 @@ class RoutedPrismaPromise<T> implements PromiseLike<T> {
 
     constructor(
         private readonly legacy: PrismaClient,
-        private readonly operation: TenantOperation,
+        readonly operation: TenantOperation,
         private readonly invoke: (client: PrismaClient) => PromiseLike<T>,
     ) {}
 
@@ -148,7 +148,8 @@ export function createRoutedPrismaClient(legacy: PrismaClient): PrismaClient {
                     input: unknown[] | ((transaction: unknown) => unknown),
                     options?: unknown,
                 ) => {
-                    const client = await selectPrisma(legacy, "write");
+                    const readOnlyBatch = Array.isArray(input) && input.every((item) => item instanceof RoutedPrismaPromise && item.operation === "read");
+                    const client = await selectPrisma(legacy, readOnlyBatch ? "read" : "write");
                     if (Array.isArray(input)) {
                         const operations = input.map((operation) => operation instanceof RoutedPrismaPromise
                             ? operation.runWith(client)

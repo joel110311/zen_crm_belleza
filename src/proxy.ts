@@ -2,6 +2,7 @@ import { getToken, type JWT } from "next-auth/jwt";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { ENVIRONMENT_ADMIN_ID } from "@/lib/platform-admin-policy";
+import { getPlatformSupportGrant } from "@/lib/platform-support";
 import { hasPermission, type PermissionKey } from "@/lib/permissions";
 import {
     ACTIVE_TENANT_COOKIE,
@@ -91,7 +92,9 @@ export async function proxy(req: NextRequest) {
 
     const tokenUserId = typeof token?.id === "string" && token.id ? token.id : null;
     const isControlSession = token?.authScope === "control";
-    const pathTenantSlug = tenantSlugFromPath(pathname);
+    const pathTenantSlug = tenantSlugFromPath(pathname)
+        || normalizeRequestTenantSlug(pathname.match(/^\/api\/t\/([^/]+)(?:\/|$)/)?.[1])
+        || normalizeRequestTenantSlug(pathname.match(/^\/onboarding\/([^/]+)(?:\/|$)/)?.[1]);
     const refererTenantSlug = (() => {
         const value = req.headers.get("referer");
         if (!value) return null;
@@ -113,13 +116,25 @@ export async function proxy(req: NextRequest) {
         forwardedHeaders.set(TENANT_USER_HEADER, tokenUserId);
     }
 
-    // The dedicated environment account controls the platform only. It must not inherit
-    // reception-role access to legacy API routes when no workspace cookie is present.
-    if (tokenUserId === ENVIRONMENT_ADMIN_ID && !isPlatformControlPath && !isPublicPath) {
-        if (pathname.startsWith("/api/") || pathname.startsWith("/uploads/")) {
-            return NextResponse.json({ error: "Este acceso es exclusivo del panel administrativo. Usa tu cuenta de negocio para entrar al CRM." }, { status: 403 });
+    // The environment account may operate only the explicitly selected support workspace.
+    // Validate the current grant AND the JWT credential epoch before forwarding any API,
+    // media or server action; stale cookies/JWTs never provide legacy or cross-tenant access.
+    if (tokenUserId && (tokenUserId === ENVIRONMENT_ADMIN_ID || token?.isPlatformAdmin === true) && !isPlatformControlPath && !isPublicPath) {
+        let grant;
+        try { grant = await getPlatformSupportGrant(tokenUserId); }
+        catch { return NextResponse.json({ error: "Soporte temporalmente no disponible. Vuelve al panel e intenta de nuevo." }, { status: 503 }); }
+        const authorized = activeTenantSlug && grant?.slug === activeTenantSlug
+            && (tokenUserId !== ENVIRONMENT_ADMIN_ID || grant.credentialVersion === token?.platformAdminCredentialVersion);
+        if (authorized) {
+            if (grant.mode === "READ_ONLY" && !["GET", "HEAD", "OPTIONS"].includes(req.method)) {
+                return NextResponse.json({ error: "Modo soporte de solo lectura. Abre una sesión con edición desde el panel para guardar cambios." }, { status: 403 });
+            }
+        } else if (tokenUserId === ENVIRONMENT_ADMIN_ID) {
+            if (pathname.startsWith("/api/") || pathname.startsWith("/uploads/")) {
+                return NextResponse.json({ error: "Abre este negocio en modo soporte desde el panel administrativo." }, { status: 403 });
+            }
+            return NextResponse.redirect(new URL("/control", req.url));
         }
-        return NextResponse.redirect(new URL("/control", req.url));
     }
 
     // Media authorizes session/tenant or a short-lived provider signature in its handler.

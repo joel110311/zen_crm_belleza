@@ -1,6 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { getTenantAccessForUser } from "@/lib/control-plane";
+import { normalizeRequestTenantSlug } from "@/lib/tenant-request-routing";
 import { TenantProvisioningRefresh } from "./tenant-provisioning-refresh";
 
 export const dynamic = "force-dynamic";
@@ -40,12 +41,10 @@ export default async function TenantOnboardingStatusPage({
         redirect("/login");
     }
 
-    let tenant;
-    try {
-        tenant = await getTenantAccessForUser(userId, tenantSlug);
-    } catch {
-        notFound();
-    }
+    const normalizedSlug = normalizeRequestTenantSlug(tenantSlug);
+    if (!normalizedSlug) notFound();
+    // Database failures belong to the application error boundary, not a fake missing account.
+    const tenant = await getTenantAccessForUser(userId, normalizedSlug);
 
     if (!tenant) {
         notFound();

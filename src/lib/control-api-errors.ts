@@ -1,7 +1,8 @@
 import "server-only";
 import { PlatformAdminAccessError } from "@/lib/platform-admin";
 
-export class ControlValidationError extends Error {}
+import { ControlValidationError } from "@/lib/control-validation-error";
+export { ControlValidationError } from "@/lib/control-validation-error";
 
 /** Only deliberate validation/access messages may reach the browser. */
 export function controlApiError(error: unknown) {
