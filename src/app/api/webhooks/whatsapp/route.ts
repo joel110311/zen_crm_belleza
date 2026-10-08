@@ -5,8 +5,12 @@ import { revalidatePath } from "next/cache";
 import { NextRequest, NextResponse } from "next/server";
 import { processInboundMessage } from "@/app/actions/chat";
 import { prisma } from "@/lib/db";
-import { fetchMetaMedia, getMetaWebhookVerifyToken, verifyMetaWebhookSignature } from "@/lib/meta-whatsapp";
+import { fetchMetaMedia, getMetaWebhookVerifyToken, verifyMetaWebhookSignature, patchLegacyMetaSync } from "@/lib/meta-whatsapp";
 import { MESSAGE_SOURCE_META } from "@/lib/message-source";
+import { normalizeMetaWebhook, webhookBodyHash } from "@/lib/tenant-webhook-payload";
+import { metaSyncedMessage } from "@/lib/meta-coexistence-webhook";
+import { storeMetaSyncedMessage, applyMetaContactSync, applyMetaMessageChange, applyMetaSyncedReaction } from "@/lib/meta-coexistence-processing";
+import type { QueuedWebhookPayload } from "@/lib/tenant-work-queue";
 
 type RecordValue = Record<string, unknown>;
 
@@ -88,6 +92,12 @@ async function handleMessagesValue(value: RecordValue) {
         const messageId = string(message.id);
         const type = string(message.type) || "text";
         if (!from || !messageId) continue;
+        if (type === "edit" || type === "revoke") {
+            const changed = metaSyncedMessage(message, sourceId);
+            if (changed?.targetProviderMessageId) await applyMetaMessageChange(prisma, changed, legacySyncMedia);
+            continue;
+        }
+        if (type === "unsupported") continue;
 
         if (type === "reaction") {
             const reaction = record(message.reaction);
@@ -137,6 +147,12 @@ async function handleMessagesValue(value: RecordValue) {
     }
 }
 
+async function legacySyncMedia(payload: QueuedWebhookPayload) {
+    const media = { type: payload.messageType || "text", mediaType: payload.mediaMimeType, mediaFileName: payload.mediaFileName };
+    if (!payload.providerMediaId) return media;
+    return { ...media, ...await persistMedia(payload.providerMediaId, payload.mediaFileName || "archivo") };
+}
+
 export async function GET(request: NextRequest) {
     const mode = request.nextUrl.searchParams.get("hub.mode");
     const token = request.nextUrl.searchParams.get("hub.verify_token") || "";
@@ -157,11 +173,27 @@ export async function POST(request: NextRequest) {
     try {
         const payload = JSON.parse(rawBody) as RecordValue;
         if (payload.object !== "whatsapp_business_account") return NextResponse.json({ ok: true, ignored: true });
+        const settings = await prisma.systemSettings.findFirst();
+        if (!settings?.whatsappPhoneNumberId || !settings.whatsappWabaId) return NextResponse.json({ ok: true, ignored: true });
+        const binding = { sourceId: settings.whatsappPhoneNumberId, wabaId: settings.whatsappWabaId };
+        for (const event of normalizeMetaWebhook(payload, webhookBodyHash(rawBody), binding)) {
+            if (event.sourceId !== binding.sourceId) continue;
+            const item = event.payload;
+            if (item.kind === "contacts") await applyMetaContactSync(prisma, item);
+            else if (item.kind === "history") for (const message of item.historyItems || []) {
+                if (message.kind === "message") await storeMetaSyncedMessage(prisma, message, legacySyncMedia);
+                else if (message.kind === "message_change") await applyMetaMessageChange(prisma, message, legacySyncMedia);
+                else if (message.kind === "reaction") await applyMetaSyncedReaction(prisma, message);
+            }
+            else if (item.kind === "message" && item.direction === "outbound") await storeMetaSyncedMessage(prisma, item, legacySyncMedia);
+            else if (item.kind === "sync") await patchLegacyMetaSync(settings.id, { ...(item.syncProgress !== undefined ? { historyProgress: item.syncProgress } : {}), ...(item.syncError ? { error: item.syncError } : {}) });
+            else if (item.kind === "channel" && ["PARTNER_REMOVED", "ACCOUNT_OFFBOARDED"].includes(item.channelEvent || "")) await prisma.systemSettings.update({ where: { id: settings.id }, data: { whatsappAccessToken: null, whatsappConnectedAt: null } });
+        }
         for (const rawEntry of Array.isArray(payload.entry) ? payload.entry : []) {
             const entry = record(rawEntry);
             for (const rawChange of Array.isArray(entry.changes) ? entry.changes : []) {
                 const change = record(rawChange);
-                if (change.field === "messages") await handleMessagesValue(record(change.value));
+                if (change.field === "messages" && string(record(record(change.value).metadata).phone_number_id) === binding.sourceId) await handleMessagesValue(record(change.value));
             }
         }
         revalidatePath("/dashboard/inbox");

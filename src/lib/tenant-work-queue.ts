@@ -3,7 +3,7 @@ import { Prisma, type PrismaClient, type WebhookProvider } from "@/generated/con
 import { getControlDb } from "@/lib/control-db";
 
 export type QueuedWebhookPayload = {
-    kind: "message" | "status" | "reaction" | "ignored";
+    kind: "message" | "status" | "reaction" | "ignored" | "history" | "contacts" | "channel" | "sync" | "message_change";
     sourceType: "meta" | "wuzapi";
     sourceId: string;
     providerMessageId?: string;
@@ -23,6 +23,15 @@ export type QueuedWebhookPayload = {
     mediaDownload?: { Url: string; DirectPath?: string; MediaKey: string; Mimetype: string; FileEncSHA256?: string; FileSHA256: string; FileLength: number };
     mediaBase64?: string;
     mediaRemoteUrl?: string;
+    isHistorical?: boolean;
+    mediaPlaceholder?: boolean;
+    historyItems?: QueuedWebhookPayload[];
+    contactItems?: Array<{ phone: string; name?: string; action: "add" | "remove"; occurredAt?: string }>;
+    wabaId?: string;
+    channelEvent?: string;
+    syncProgress?: number;
+    syncError?: string;
+    changeAction?: "edit" | "revoke";
 };
 
 export type WebhookIngestResult = {

@@ -7,7 +7,8 @@ import { decryptChannelSecret, encryptChannelSecret } from "@/lib/tenant-channel
 import { TenantServiceError } from "@/lib/tenant-services/context";
 import { normalizeMetaRecipient, normalizeWuzapiRecipient } from "@/lib/phone";
 import type { QueuedWebhookPayload } from "@/lib/tenant-work-queue";
-import { whatsappAudioOptions } from "@/lib/whatsapp-audio";
+import { whatsappAudioOptions, requireProviderMessageId } from "@/lib/whatsapp-audio";
+import type { MetaSignupMode } from "./meta-signup.ts";
 
 type ChannelStatePayload = {
     v: 1;
@@ -16,6 +17,7 @@ type ChannelStatePayload = {
     userId: string;
     provider: ChannelProvider;
     exp: number;
+    metaMode?: MetaSignupMode;
 };
 
 type MetaPlatformConfig = {
@@ -51,6 +53,7 @@ function decodeState(value: string): ChannelStatePayload {
         if (payload.v !== 1 || typeof payload.jti !== "string" || typeof payload.tenantId !== "string" || typeof payload.userId !== "string" || (payload.provider !== "META_CLOUD" && payload.provider !== "WUZAPI") || !Number.isSafeInteger(payload.exp)) {
             throw new Error("invalid");
         }
+        if (payload.metaMode !== undefined && !["cloud", "coexistence"].includes(payload.metaMode)) throw new Error("invalid mode");
         return payload as ChannelStatePayload;
     } catch {
         throw new TenantServiceError("FORBIDDEN", "El estado de conexión no es válido.");
@@ -112,7 +115,7 @@ function graphUrl(config: MetaPlatformConfig, resource: string) {
     return `https://graph.facebook.com/${config.graphApiVersion}/${resource.replace(/^\//, "")}`;
 }
 
-async function graphRequest<T>(config: MetaPlatformConfig, input: { resource: string; accessToken: string; method?: "GET" | "POST"; body?: Record<string, unknown> }) {
+async function graphRequest<T>(config: MetaPlatformConfig, input: { resource: string; accessToken: string; method?: "GET" | "POST" | "DELETE"; body?: Record<string, unknown> }) {
     const response = await fetch(graphUrl(config, input.resource), {
         method: input.method || "GET",
         headers: {
@@ -121,9 +124,10 @@ async function graphRequest<T>(config: MetaPlatformConfig, input: { resource: st
         },
         body: input.body ? JSON.stringify(input.body) : undefined,
         cache: "no-store",
+        signal: AbortSignal.timeout(30_000),
     });
     const payload = await response.json().catch(() => ({})) as { error?: { message?: string; error_user_msg?: string; code?: number } } & T;
-    if (!response.ok || payload.error) {
+    if (!response.ok || payload.error || (payload as { success?: boolean }).success === false) {
         throw new Error(payload.error?.error_user_msg || payload.error?.message || `Meta Graph API respondió ${response.status}.`);
     }
     return payload;
@@ -147,6 +151,9 @@ function serializeChannel(connection: {
     lastWebhookAt: Date | null;
     lastError: string | null;
     secretCiphertext: Uint8Array | null;
+    wabaId?: string | null;
+    isCoexistence?: boolean;
+    coexistenceSync?: unknown;
 }) {
     return {
         id: connection.id,
@@ -155,6 +162,9 @@ function serializeChannel(connection: {
         connectedAt: connection.connectedAt?.toISOString() || null,
         disconnectedAt: connection.disconnectedAt?.toISOString() || null,
         lastWebhookAt: connection.lastWebhookAt?.toISOString() || null,
+        requiresReconnect: connection.provider === "META_CLOUD" && !connection.wabaId,
+        isCoexistence: Boolean(connection.isCoexistence),
+        coexistenceSync: connection.coexistenceSync || null,
     };
 }
 
@@ -164,14 +174,14 @@ export async function listTenantChannels(tenantId: string) {
         orderBy: [{ provider: "asc" }, { createdAt: "asc" }],
         select: {
             id: true, provider: true, externalAccountId: true, status: true, connectedAt: true,
-            disconnectedAt: true, lastWebhookAt: true, lastError: true, secretCiphertext: true,
+            disconnectedAt: true, lastWebhookAt: true, lastError: true, secretCiphertext: true, wabaId: true, isCoexistence: true, coexistenceSync: true,
         },
     });
     return channels.map(serializeChannel);
 }
 
 /** Begins a single-use Embedded Signup ceremony; the browser receives no token or callback secret. */
-export async function beginMetaEmbeddedSignup(params: { tenantId: string; userId: string }) {
+export async function beginMetaEmbeddedSignup(params: { tenantId: string; userId: string; mode?: MetaSignupMode }) {
     const config = metaConfig();
     const expiresAt = new Date(Date.now() + 10 * 60_000);
     const payload: ChannelStatePayload = {
@@ -181,6 +191,7 @@ export async function beginMetaEmbeddedSignup(params: { tenantId: string; userId
         userId: params.userId,
         provider: "META_CLOUD",
         exp: Math.floor(expiresAt.getTime() / 1000),
+        metaMode: params.mode === "coexistence" ? "coexistence" : "cloud",
     };
     const state = encodeState(payload);
     await getControlDb().channelConnectionState.create({
@@ -198,6 +209,7 @@ export async function beginMetaEmbeddedSignup(params: { tenantId: string; userId
         appId: config.appId,
         configId: config.embeddedSignupConfigId,
         graphApiVersion: config.graphApiVersion,
+        mode: payload.metaMode,
     };
 }
 
@@ -226,24 +238,39 @@ export async function completeMetaEmbeddedSignup(params: {
     const connectionState = await verifyUnconsumedState({ state: params.state, tenantId: params.tenantId, userId: params.userId, provider: "META_CLOUD" });
     const code = text(params.code, "code", 4096);
     const wabaId = safeExternalAccountId(params.wabaId, "wabaId");
-    const phoneNumberId = safeExternalAccountId(params.phoneNumberId, "phoneNumberId");
+    const requestedPhoneId = typeof params.phoneNumberId === "string" && params.phoneNumberId.trim() ? safeExternalAccountId(params.phoneNumberId, "phoneNumberId") : "";
+    const requestedMode = decodeState(params.state).metaMode || "cloud";
     const businessId = typeof params.businessId === "string" ? params.businessId.trim().slice(0, 160) : "";
     const registrationPin = (typeof params.registrationPin === "string" ? params.registrationPin.trim() : process.env.META_WHATSAPP_REGISTRATION_PIN?.trim() || "");
-    if (registrationPin && !/^\d{6}$/.test(registrationPin)) throw new TenantServiceError("VALIDATION_ERROR", "El PIN de registro de WhatsApp debe contener seis dígitos.");
+    if (requestedMode === "cloud" && !/^\d{6}$/.test(registrationPin)) throw new TenantServiceError("VALIDATION_ERROR", "Captura el PIN de registro de WhatsApp de seis dígitos para completar la conexión.");
 
     const config = metaConfig();
     const routeToken = makeRouteToken();
     const callbackUrl = `${callbackBaseUrl()}/api/webhooks/tenant/meta/${routeToken}`;
     const accessToken = await exchangeMetaCode(config, code);
-    const phone = await graphRequest<{ display_phone_number?: string }>(config, {
-        resource: `${phoneNumberId}?fields=id,display_phone_number`,
-        accessToken,
+    const ownedPhones = await graphRequest<{ data?: Array<{ id: string; is_on_biz_app?: boolean; platform_type?: string }> }>(config, {
+        resource: `${wabaId}/phone_numbers?fields=id,is_on_biz_app,platform_type&limit=100`, accessToken,
     });
+    const candidates = (ownedPhones.data || []).filter(item => requestedPhoneId ? item.id === requestedPhoneId : item.is_on_biz_app === true && item.platform_type === "CLOUD_API");
+    if (!candidates.length) {
+        throw new TenantServiceError("FORBIDDEN", "El número seleccionado no pertenece a esa cuenta de WhatsApp.");
+    }
+    if (candidates.length !== 1) throw new TenantServiceError("CONFLICT", "Meta compartió varios números. Selecciona el número concreto al conectar; no elegiremos uno automáticamente.");
+    const phoneNumberId = candidates[0].id;
+    const phone = await graphRequest<{ display_phone_number?: string; is_on_biz_app?: boolean; platform_type?: string }>(config, {
+        resource: `${phoneNumberId}?fields=id,display_phone_number,is_on_biz_app,platform_type`, accessToken,
+    });
+    const isCoexistence = phone.is_on_biz_app === true && phone.platform_type === "CLOUD_API";
+    if (requestedMode === "coexistence" && !isCoexistence) throw new TenantServiceError("CONFLICT", "Meta no confirmó coexistencia para este número. No se registrará ni eliminará su cuenta del celular.");
     const encrypted = encryptChannelSecret(accessToken);
-    let reservation: { id: string };
+    let reservation: { id: string; priorSync?: unknown };
 
     try {
         reservation = await getControlDb().$transaction(async (tx) => {
+            const wabaConnection = await tx.channelConnection.findFirst({ where: { provider: "META_CLOUD", wabaId, externalAccountId: { not: phoneNumberId } } });
+            if (wabaConnection) {
+                throw new TenantServiceError("CONFLICT", "Esta cuenta de WhatsApp ya está vinculada a otro número del CRM. No se reemplazará su webhook.");
+            }
             const existing = await tx.channelConnection.findUnique({ where: { provider_externalAccountId: { provider: "META_CLOUD", externalAccountId: phoneNumberId } } });
             if (existing && existing.tenantId !== params.tenantId) {
                 throw new TenantServiceError("CONFLICT", "Este número de WhatsApp ya está conectado a otro negocio.");
@@ -254,12 +281,16 @@ export async function completeMetaEmbeddedSignup(params: {
                     tenantId: params.tenantId,
                     provider: "META_CLOUD",
                     externalAccountId: phoneNumberId,
+                    wabaId,
+                    isCoexistence,
                     status: "PENDING",
                     secretCiphertext: encrypted.ciphertext,
                     secretKeyVersion: encrypted.keyVersion,
                     routeSecretHash: channelRouteHash(routeToken),
                 },
                 update: {
+                    wabaId,
+                    isCoexistence,
                     status: "PENDING", secretCiphertext: encrypted.ciphertext, secretKeyVersion: encrypted.keyVersion,
                     routeSecretHash: channelRouteHash(routeToken), connectedAt: null, disconnectedAt: null, lastError: null,
                 },
@@ -270,8 +301,8 @@ export async function completeMetaEmbeddedSignup(params: {
                 data: { consumedAt: new Date() },
             });
             if (consumed.count !== 1) throw new TenantServiceError("CONFLICT", "Este estado de conexión ya fue usado o venció.");
-            return result;
-        });
+            return { ...result, priorSync: existing?.coexistenceSync };
+        }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
     } catch (error) {
         if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
             throw new TenantServiceError("CONFLICT", "Este número de WhatsApp ya está conectado a otro negocio.");
@@ -280,7 +311,7 @@ export async function completeMetaEmbeddedSignup(params: {
     }
 
     try {
-        await graphRequest<{ success?: boolean }>(config, {
+        const subscription = await graphRequest<{ success?: boolean }>(config, {
             resource: `${wabaId}/subscribed_apps`,
             accessToken,
             method: "POST",
@@ -289,11 +320,13 @@ export async function completeMetaEmbeddedSignup(params: {
                 verify_token: routeToken,
             },
         });
-        if (registrationPin) {
-            await graphRequest<{ success?: boolean }>(config, {
-                resource: `${phoneNumberId}/register`, accessToken, method: "POST",
-                body: { messaging_product: "whatsapp", pin: registrationPin },
-            });
+        if (subscription.success !== true) throw new Error("Meta no confirmó la suscripción del webhook.");
+        if (!isCoexistence) {
+            const registration = await graphRequest<{ success?: boolean }>(config, {
+            resource: `${phoneNumberId}/register`, accessToken, method: "POST",
+            body: { messaging_product: "whatsapp", pin: registrationPin },
+        });
+            if (registration.success !== true) throw new Error("Meta no confirmó el registro del número de WhatsApp.");
         }
     } catch (error) {
         await getControlDb().channelConnection.update({
@@ -311,15 +344,45 @@ export async function completeMetaEmbeddedSignup(params: {
         data: { status: "CONNECTED", connectedAt: new Date(), disconnectedAt: null, lastError: null },
         select: {
             id: true, provider: true, externalAccountId: true, status: true, connectedAt: true,
-            disconnectedAt: true, lastWebhookAt: true, lastError: true, secretCiphertext: true,
+            disconnectedAt: true, lastWebhookAt: true, lastError: true, secretCiphertext: true, wabaId: true, isCoexistence: true, coexistenceSync: true,
         },
     });
+    let syncWarning: string | null = null;
+    if (isCoexistence) {
+        const priorSync = reservation.priorSync && typeof reservation.priorSync === "object" ? reservation.priorSync as Record<string, unknown> : {};
+        // These one-shot calls must not be replayed automatically after an ambiguous failure.
+        for (const syncType of ["smb_app_state_sync", "history"] as const) {
+            if (priorSync[`${syncType}State`]) {
+                if (priorSync[`${syncType}State`] === "ERROR" || priorSync[`${syncType}State`] === "REQUESTING") syncWarning = "Una solicitud anterior de sincronización quedó sin confirmar. Revisa Meta antes de repetir un proceso de un solo uso.";
+                continue;
+            }
+            // An atomic claim also protects against reconnects from two browser tabs.
+            const claimed = await getControlDb().$executeRawUnsafe(`UPDATE "ChannelConnection" SET "coexistenceSync" = COALESCE("coexistenceSync", '{}'::jsonb) || $2::jsonb, "updatedAt" = NOW() WHERE "id" = $1 AND NOT (COALESCE("coexistenceSync", '{}'::jsonb) ? $3::text)`, connection.id, JSON.stringify({ [`${syncType}State`]: "REQUESTING" }), `${syncType}State`);
+            if (!claimed) continue;
+            try {
+                const sync = await graphRequest<{ request_id?: string }>(config, {
+                    resource: `${phoneNumberId}/smb_app_data`, accessToken, method: "POST",
+                    body: { messaging_product: "whatsapp", sync_type: syncType },
+                });
+                if (!sync.request_id) throw new Error("Meta no confirmó la solicitud de sincronización.");
+                await patchMetaConnectionSync(connection.id, { [`${syncType}State`]: "REQUESTED", [`${syncType}RequestId`]: sync.request_id, [`${syncType}RequestedAt`]: new Date().toISOString() });
+            } catch (error) {
+                syncWarning = error instanceof Error ? error.message : "No se pudo solicitar la sincronización de coexistencia.";
+                await patchMetaConnectionSync(connection.id, { [`${syncType}State`]: "ERROR", error: syncWarning });
+            }
+        }
+    }
     return {
         channel: serializeChannel(connection),
         displayPhoneNumber: phone.display_phone_number?.trim() || null,
         wabaId,
         businessId: businessId || null,
+        isCoexistence, syncWarning,
     };
+}
+
+export async function patchMetaConnectionSync(connectionId: string, patch: Record<string, unknown>) {
+    await getControlDb().$executeRawUnsafe(`UPDATE "ChannelConnection" SET "coexistenceSync" = COALESCE("coexistenceSync", '{}'::jsonb) || $2::jsonb, "updatedAt" = NOW() WHERE "id" = $1`, connectionId, JSON.stringify(patch));
 }
 
 type QrGatewayUser = { id?: string | number; name?: string; token?: string };
@@ -402,13 +465,13 @@ async function qrConnection(tenantId: string) {
 }
 
 function connectionToken(connection: { secretCiphertext: Uint8Array | null; secretKeyVersion: number | null }) {
-    if (!connection.secretCiphertext || !connection.secretKeyVersion) throw new Error("La conexión mediante QR no tiene una credencial válida.");
+    if (!connection.secretCiphertext || !connection.secretKeyVersion) throw new Error("El canal de WhatsApp no tiene una credencial válida.");
     return decryptChannelSecret(connection.secretCiphertext, connection.secretKeyVersion);
 }
 
-async function connectedTenantChannel(tenantId: string, provider: ChannelProvider) {
+async function connectedTenantChannel(tenantId: string, provider: ChannelProvider, sourceId?: string | null) {
     const connection = await getControlDb().channelConnection.findFirst({
-        where: { tenantId, provider, status: "CONNECTED" },
+        where: { tenantId, provider, status: "CONNECTED", ...(sourceId ? { externalAccountId: sourceId } : {}) },
         orderBy: { createdAt: "asc" },
     });
     if (!connection) {
@@ -419,15 +482,54 @@ async function connectedTenantChannel(tenantId: string, provider: ChannelProvide
     return connection;
 }
 
+export async function getTenantMetaSourceId(tenantId: string, sourceId?: string | null) {
+    return (await connectedTenantChannel(tenantId, "META_CLOUD", sourceId)).externalAccountId;
+}
+
+export async function sendTenantChannelTemplate(params: {
+    tenantId: string; sourceId?: string | null; to: string; templateName: string;
+    languageCode?: string; components?: Array<Record<string, unknown>>;
+}) {
+    const connection = await connectedTenantChannel(params.tenantId, "META_CLOUD", params.sourceId);
+    const payload = await graphRequest<{ messages?: Array<{ id?: string }> }>(metaConfig(), {
+        resource: `${connection.externalAccountId}/messages`, accessToken: connectionToken(connection), method: "POST",
+        body: { messaging_product: "whatsapp", recipient_type: "individual", to: normalizeMetaRecipient(params.to), type: "template",
+            template: { name: params.templateName, language: { code: params.languageCode || "es" }, ...(params.components?.length ? { components: params.components } : {}) } },
+    });
+    return { Id: requireProviderMessageId({ Id: payload.messages?.[0]?.id }) };
+}
+
+export async function manageTenantMetaTemplates(tenantId: string, operation: "list" | "create" | "delete", input: {
+    name?: string; category?: string; language?: string; components?: Array<Record<string, unknown>>;
+    allowCategoryChange?: boolean; limit?: number;
+} = {}) {
+    const connection = await connectedTenantChannel(tenantId, "META_CLOUD");
+    if (!connection.wabaId) throw new Error("Vuelve a conectar WhatsApp oficial para asociar su cuenta de plantillas a este negocio.");
+    const resource = `${connection.wabaId}/message_templates`;
+    if (operation === "list") {
+        const payload = await graphRequest<{ data?: Array<Record<string, unknown>>; paging?: Record<string, unknown> }>(metaConfig(), {
+            resource: `${resource}?fields=id,name,status,language,category,components&limit=${Math.min(100, Math.max(1, input.limit || 100))}`,
+            accessToken: connectionToken(connection),
+        });
+        return { items: (payload.data || []).map(item => ({ ...item, wabaId: connection.wabaId })), paging: payload.paging || null, wabaId: connection.wabaId };
+    }
+    return graphRequest<Record<string, unknown>>(metaConfig(), {
+        resource: operation === "delete" ? `${resource}?name=${encodeURIComponent(input.name || "")}` : resource,
+        accessToken: connectionToken(connection), method: operation === "delete" ? "DELETE" : "POST",
+        ...(operation === "create" ? { body: { name: input.name, category: input.category, language: input.language || "es", components: input.components, allow_category_change: input.allowCategoryChange === true } } : {}),
+    });
+}
+
 export async function sendTenantChannelText(params: {
     tenantId: string;
     sourceType: "meta" | "wuzapi";
     to: string;
     body: string;
+    sourceId?: string | null;
 }) {
     if (params.sourceType === "meta") {
         const phone = normalizeMetaRecipient(params.to);
-        const connection = await connectedTenantChannel(params.tenantId, "META_CLOUD");
+        const connection = await connectedTenantChannel(params.tenantId, "META_CLOUD", params.sourceId);
         const accessToken = connectionToken(connection);
         const payload = await graphRequest<{ messages?: Array<{ id?: string }> }>(metaConfig(), {
             resource: `${connection.externalAccountId}/messages`,
@@ -441,7 +543,7 @@ export async function sendTenantChannelText(params: {
                 text: { preview_url: false, body: params.body },
             },
         });
-        return { Id: payload.messages?.[0]?.id || null };
+        return { Id: requireProviderMessageId({ Id: payload.messages?.[0]?.id }) };
     }
 
     const phone = normalizeWuzapiRecipient(params.to);
@@ -464,11 +566,12 @@ export async function sendTenantChannelMedia(params: {
     caption?: string;
     fileName?: string;
     mimeType?: string;
+    sourceId?: string | null;
 }) {
     if (params.sourceType === "meta") {
         const phone = normalizeMetaRecipient(params.to);
         if (!params.link) throw new Error("La URL pública del archivo es obligatoria para WhatsApp oficial.");
-        const connection = await connectedTenantChannel(params.tenantId, "META_CLOUD");
+        const connection = await connectedTenantChannel(params.tenantId, "META_CLOUD", params.sourceId);
         const accessToken = connectionToken(connection);
         const media: Record<string, unknown> = { link: params.link };
         if (params.caption && params.mediaType !== "audio") media.caption = params.caption;
@@ -485,7 +588,7 @@ export async function sendTenantChannelMedia(params: {
                 [params.mediaType]: media,
             },
         });
-        return { Id: payload.messages?.[0]?.id || null };
+        return { Id: requireProviderMessageId({ Id: payload.messages?.[0]?.id }) };
     }
 
     if (!params.dataUrl) throw new Error("El archivo no está disponible para la conexión mediante QR.");
@@ -518,12 +621,15 @@ export async function sendTenantChannelMedia(params: {
     });
 }
 
-export async function sendTenantChannelReaction(params: { tenantId: string; sourceType: "meta" | "wuzapi"; to: string; providerMessageId: string; reaction: string | null; ownMessage?: boolean }) {
-    const connection = await connectedTenantChannel(params.tenantId, params.sourceType === "meta" ? "META_CLOUD" : "WUZAPI");
-    if (params.sourceType === "meta") return graphRequest(metaConfig(), {
-        resource: `${connection.externalAccountId}/messages`, accessToken: connectionToken(connection), method: "POST",
-        body: { messaging_product: "whatsapp", recipient_type: "individual", to: normalizeMetaRecipient(params.to), type: "reaction", reaction: { message_id: params.providerMessageId, emoji: params.reaction || "" } },
-    });
+export async function sendTenantChannelReaction(params: { tenantId: string; sourceType: "meta" | "wuzapi"; sourceId?: string | null; to: string; providerMessageId: string; reaction: string | null; ownMessage?: boolean }) {
+    const connection = await connectedTenantChannel(params.tenantId, params.sourceType === "meta" ? "META_CLOUD" : "WUZAPI", params.sourceType === "meta" ? params.sourceId : null);
+    if (params.sourceType === "meta") {
+        const payload = await graphRequest<{ messages?: Array<{ id?: string }> }>(metaConfig(), {
+            resource: `${connection.externalAccountId}/messages`, accessToken: connectionToken(connection), method: "POST",
+            body: { messaging_product: "whatsapp", recipient_type: "individual", to: normalizeMetaRecipient(params.to), type: "reaction", reaction: { message_id: params.providerMessageId, emoji: params.reaction || "" } },
+        });
+        return { Id: requireProviderMessageId({ Id: payload.messages?.[0]?.id }) };
+    }
     return qrGatewayRequest({ path: "/chat/react", token: connectionToken(connection), method: "POST",
         body: { Phone: normalizeWuzapiRecipient(params.to), Body: params.reaction || "", Id: params.ownMessage ? `me:${params.providerMessageId}` : params.providerMessageId } });
 }
@@ -693,8 +799,8 @@ export async function disconnectTenantQrConnection(tenantId: string) {
 export async function getChannelForRoute(provider: ChannelProvider, routeToken: string) {
     if (!/^[A-Za-z0-9_-]{32,128}$/.test(routeToken)) return null;
     return getControlDb().channelConnection.findFirst({
-        where: { provider, routeSecretHash: channelRouteHash(routeToken), status: "CONNECTED" },
-        select: { id: true, tenantId: true, provider: true, externalAccountId: true, status: true },
+        where: { provider, routeSecretHash: channelRouteHash(routeToken), status: provider === "META_CLOUD" ? { in: ["PENDING", "CONNECTED"] } : "CONNECTED" },
+        select: { id: true, tenantId: true, provider: true, externalAccountId: true, status: true, wabaId: true },
     });
 }
 

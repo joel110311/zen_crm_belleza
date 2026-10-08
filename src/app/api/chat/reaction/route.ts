@@ -54,6 +54,7 @@ export async function POST(request: NextRequest) {
             try {
                 await sendChannelReaction({
                         sourceType: existing.sourceType === "meta" ? "meta" : "wuzapi",
+                        sourceId: existing.sourceId || existing.conversation.sourceId,
                         to: existing.conversation.contact.phone,
                         reaction: nextReaction,
                         providerMessageId: existing.providerMessageId,

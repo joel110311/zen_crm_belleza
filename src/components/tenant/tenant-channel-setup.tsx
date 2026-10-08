@@ -4,11 +4,16 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 import { CheckCircle2, CreditCard, ExternalLink, Loader2, QrCode, RefreshCw, ShieldCheck, Smartphone, Unplug } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { metaSignupExtras, parseMetaSignupMessage, metaSignupFailure, isMetaSignupOrigin, type MetaSignupMode } from "@/lib/meta-signup";
 
 type Channel = {
     id: string;
     provider: "META_CLOUD" | "WUZAPI";
     status: string;
+    requiresReconnect?: boolean;
+    isCoexistence?: boolean;
+    coexistenceSync?: { historyState?: string; smb_app_state_syncState?: string; historyProgress?: number; error?: string } | null;
 };
 
 type QrSession = {
@@ -25,19 +30,6 @@ type MetaSdkWindow = Window & {
         login: (callback: (response: { authResponse?: { code?: string } }) => void, options: Record<string, unknown>) => void;
     };
 };
-
-function parseMetaMessage(data: unknown) {
-    const raw = typeof data === "string" ? (() => { try { return JSON.parse(data) as unknown; } catch { return null; } })() : data;
-    if (!raw || typeof raw !== "object") return null;
-    const value = raw as { type?: unknown; event?: unknown; data?: unknown };
-    if (value.type !== "WA_EMBEDDED_SIGNUP" || value.event !== "FINISH" || !value.data || typeof value.data !== "object") return null;
-    const details = value.data as { waba_id?: unknown; phone_number_id?: unknown; business_id?: unknown };
-    return {
-        wabaId: typeof details.waba_id === "string" ? details.waba_id : "",
-        phoneNumberId: typeof details.phone_number_id === "string" ? details.phone_number_id : "",
-        businessId: typeof details.business_id === "string" ? details.business_id : "",
-    };
-}
 
 async function responseBody(response: Response) {
     return await response.json().catch(() => ({})) as { data?: unknown; error?: { message?: string } };
@@ -60,6 +52,8 @@ export function TenantChannelSetup({
     const [busy, setBusy] = useState<"meta" | "qr" | "disconnect" | null>(null);
     const [qrSession, setQrSession] = useState<QrSession>({ configured: false, active: false, connected: false, phone: null, qrCode: null });
     const [qrRiskAccepted, setQrRiskAccepted] = useState(false);
+    const [registrationPin, setRegistrationPin] = useState("");
+    const [metaMode, setMetaMode] = useState<MetaSignupMode>("coexistence");
 
     const endpoint = `/api/t/${encodeURIComponent(tenantSlug)}/v1/channels`;
 
@@ -100,7 +94,7 @@ export function TenantChannelSetup({
         return () => window.clearInterval(timer);
     }, [enabled, qrSession.configured, qrSession.active]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    async function ensureFacebookSdk(appId: string) {
+    async function ensureFacebookSdk(appId: string, version: string) {
         const browser = window as MetaSdkWindow;
         if (!browser.FB) {
             await new Promise<void>((resolve, reject) => {
@@ -121,25 +115,30 @@ export function TenantChannelSetup({
             });
         }
         if (!browser.FB) throw new Error("Facebook no terminó de inicializarse.");
-        browser.FB.init({ appId, cookie: true, xfbml: false, version: "v26.0" });
+        browser.FB.init({ appId, cookie: true, xfbml: false, version });
         return browser.FB;
     }
 
     async function connectMeta() {
+        if (metaMode === "cloud" && !/^\d{6}$/.test(registrationPin)) {
+            setMessage("Captura un PIN de registro de seis dígitos. Consérvalo: Meta lo usa para la verificación en dos pasos.");
+            return;
+        }
         setBusy("meta");
         setMessage(null);
         try {
             const beginResponse = await fetch(`${endpoint}/meta/embedded-signup`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() },
-                body: "{}",
+                body: JSON.stringify({ mode: metaMode }),
             });
-            const begin = await responseBody(beginResponse) as { data?: { state?: string; appId?: string; configId?: string }; error?: { message?: string } };
+            const begin = await responseBody(beginResponse) as { data?: { state?: string; appId?: string; configId?: string; graphApiVersion?: string }; error?: { message?: string } };
             if (!beginResponse.ok || !begin.data?.state || !begin.data.appId || !begin.data.configId) throw new Error(begin.error?.message || "No fue posible iniciar Meta Embedded Signup.");
             const signupStart = {
                 state: begin.data.state,
                 appId: begin.data.appId,
                 configId: begin.data.configId,
+                graphApiVersion: begin.data.graphApiVersion || "v26.0",
             };
 
             const details = await new Promise<{ wabaId: string; phoneNumberId: string; businessId: string; code: string }>((resolve, reject) => {
@@ -153,16 +152,25 @@ export function TenantChannelSetup({
                     resolve({ ...signup, code });
                 };
                 const receive = (event: MessageEvent) => {
-                    if (!/^https:\/\/(www|web)\.facebook\.com$/i.test(event.origin)) return;
-                    signup = parseMetaMessage(event.data);
+                    if (!isMetaSignupOrigin(event.origin)) return;
+                    const failure = metaSignupFailure(event.data);
+                    if (failure && !settled) {
+                        settled = true;
+                        window.removeEventListener("message", receive);
+                        reject(new Error(failure));
+                        return;
+                    }
+                    const result = parseMetaSignupMessage(event.data);
+                    if (result) signup = result;
                     finish();
                 };
                 window.addEventListener("message", receive);
-                void ensureFacebookSdk(signupStart.appId).then((fb) => {
+                void ensureFacebookSdk(signupStart.appId, signupStart.graphApiVersion).then((fb) => {
                     fb.login((response) => {
                         code = response.authResponse?.code || "";
                         finish();
                         if (!code && !settled) {
+                            settled = true;
                             window.removeEventListener("message", receive);
                             reject(new Error("Meta no devolvió el código de autorización."));
                         }
@@ -170,14 +178,16 @@ export function TenantChannelSetup({
                         config_id: signupStart.configId,
                         response_type: "code",
                         override_default_response_type: true,
-                        extras: { setup: {} },
+                        extras: metaSignupExtras(metaMode),
                     });
                 }).catch((error) => {
+                    settled = true;
                     window.removeEventListener("message", receive);
                     reject(error);
                 });
                 window.setTimeout(() => {
                     if (!settled) {
+                        settled = true;
                         window.removeEventListener("message", receive);
                         reject(new Error("Meta no completó la conexión a tiempo."));
                     }
@@ -186,11 +196,14 @@ export function TenantChannelSetup({
             const completeResponse = await fetch(`${endpoint}/meta/complete`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() },
-                body: JSON.stringify({ state: signupStart.state, ...details }),
+                body: JSON.stringify({ state: signupStart.state, registrationPin, ...details }),
             });
-            const complete = await responseBody(completeResponse);
+            const complete = await responseBody(completeResponse) as { data?: { isCoexistence?: boolean; syncWarning?: string | null }; error?: { message?: string } };
             if (!completeResponse.ok) throw new Error(complete.error?.message || "Meta no pudo terminar la conexión.");
-            setMessage("La conexión oficial de WhatsApp quedó activa.");
+            setMessage(complete.data?.syncWarning ? `La conexión está activa, pero hay un problema de sincronización: ${complete.data.syncWarning}. No desconectes el celular; revisa la configuración de Meta.`
+                : complete.data?.isCoexistence ? "Coexistencia conectada. Estamos solicitando los contactos y el historial que autorizaste. Mantén WhatsApp Business abierto en el celular."
+                : "La conexión oficial de WhatsApp quedó activa.");
+            setRegistrationPin("");
             onConfigured?.("META_CLOUD");
             await refresh();
         } catch (error) {
@@ -253,14 +266,28 @@ export function TenantChannelSetup({
                 <div className="flex items-start justify-between gap-3"><span className="flex size-10 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-700"><ShieldCheck className="size-5" /></span>{official ? <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-semibold text-emerald-700"><CheckCircle2 className="size-3.5" />Activa</span> : <span className="rounded-full border px-2.5 py-1 text-xs text-muted-foreground">Oficial</span>}</div>
                 <h3 className="mt-4 font-semibold">Conexión oficial de WhatsApp</h3>
                 <p className="mt-1 flex-1 text-sm text-muted-foreground">Recomendada para operar con la plataforma oficial de Meta, plantillas aprobadas y mayor estabilidad.</p>
-                <Button type="button" className="mt-4 w-full" onClick={() => requestSetup("META_CLOUD", () => void connectMeta())} disabled={busy !== null || Boolean(official)}>{busy === "meta" ? <Loader2 className="mr-2 size-4 animate-spin" /> : <ShieldCheck className="mr-2 size-4" />}{official ? "Conexión activa" : "Conectar oficialmente"}</Button>
+                <div className="mt-3 space-y-2">
+                    <label className="flex items-start gap-2 text-sm"><input type="radio" name={`meta-mode-${tenantSlug}`} checked={metaMode === "coexistence"} onChange={() => setMetaMode("coexistence")} disabled={busy !== null} className="mt-1" />Mantener WhatsApp Business en mi celular (coexistencia)</label>
+                    <label className="flex items-start gap-2 text-sm"><input type="radio" name={`meta-mode-${tenantSlug}`} checked={metaMode === "cloud"} onChange={() => setMetaMode("cloud")} disabled={busy !== null} className="mt-1" />Conectar un número solo para API</label>
+                    {metaMode === "coexistence" ? <p className="text-xs text-muted-foreground">Conecta tu cuenta existente mediante Meta. No borres tu cuenta ni desinstales WhatsApp Business. El historial se importa solo si lo autorizas; tus mensajes del celular pausarán el bot en ese chat. Meta puede desvincular dispositivos adicionales durante la conexión.</p> : null}
+                </div>
+                {metaMode === "cloud" ? <div className="mt-3 space-y-2">
+                    <label htmlFor={`meta-pin-${tenantSlug}`} className="text-sm font-medium">PIN de registro de WhatsApp</label>
+                    <Input id={`meta-pin-${tenantSlug}`} type="password" inputMode="numeric" autoComplete="off" maxLength={6} value={registrationPin} onChange={event => setRegistrationPin(event.target.value.replace(/\D/g, ""))} placeholder="6 dígitos" disabled={busy !== null} />
+                    <p className="text-xs text-muted-foreground">Usa el PIN de verificación en dos pasos de este número, o define uno si es nuevo. Guárdalo en un lugar seguro; no es el código de SMS.</p>
+                </div> : null}
+                {official?.isCoexistence ? <p className="mt-2 text-xs text-emerald-700">API y WhatsApp Business del celular conectados al mismo número.</p> : null}
+                {official?.coexistenceSync ? <p className="mt-2 text-xs text-muted-foreground" role="status">{official.coexistenceSync.error ? `Sincronización: ${official.coexistenceSync.error}` : typeof official.coexistenceSync.historyProgress === "number" ? `Historial recibido de Meta: ${official.coexistenceSync.historyProgress}% · procesamiento por lotes.` : "Sincronización solicitada. Mantén WhatsApp Business abierto y usa Actualizar para revisar el estado."}</p> : null}
+                {official?.requiresReconnect ? <p className="mt-2 text-xs text-amber-700">Vuelve a conectar para habilitar las plantillas con las credenciales de este negocio.</p> : null}
+                <Button type="button" className="mt-4 w-full" onClick={() => requestSetup("META_CLOUD", () => void connectMeta())} disabled={busy !== null}>{busy === "meta" ? <Loader2 className="mr-2 size-4 animate-spin" /> : <ShieldCheck className="mr-2 size-4" />}{official ? "Revisar o reconectar con Meta" : metaMode === "coexistence" ? "Conectar y mantener mi celular" : "Conectar oficialmente"}</Button>
                 <div className="mt-4 rounded-xl border border-sky-500/25 bg-sky-500/5 p-3">
                     <div className="flex items-start gap-2.5">
                         <CreditCard className="mt-0.5 size-4 shrink-0 text-sky-700 dark:text-sky-300" aria-hidden="true" />
                         <div className="min-w-0">
-                            <p className="text-sm font-semibold">Para entregar mensajes de plantilla</p>
+                            <p className="text-sm font-semibold">Para entregar mensajes por API</p>
                             <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
                                 Meta necesita un método de pago válido asociado a la cuenta de WhatsApp de este negocio. La tarjeta se captura directamente en Meta y nunca se comparte con el CRM.
+                                {" "}Las tarifas de Meta son independientes del plan del CRM; responder dentro de 24 horas no implica uso ilimitado gratuito.
                             </p>
                         </div>
                     </div>

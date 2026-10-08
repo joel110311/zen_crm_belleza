@@ -19,6 +19,7 @@ export async function POST(request: NextRequest) {
 
         const buffer = Buffer.from(await file.arrayBuffer());
         const result = await importBulkCampaignContactsFromCsv(buffer, {
+            sourceType: formData.get("sourceType") === "meta" ? "meta" : "wuzapi",
             defaultStatus: typeof formData.get("defaultStatus") === "string"
                 ? String(formData.get("defaultStatus"))
                 : "lead",

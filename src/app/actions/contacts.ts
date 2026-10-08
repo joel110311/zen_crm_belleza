@@ -155,7 +155,7 @@ async function synchronizeClientRecords() {
     for (const patient of orphanPatients) {
         if (!patient.phone) continue;
         const contact = await prisma.contact.upsert({
-            where: { phone: patient.phone },
+            where: { phone_sourceType: { phone: patient.phone, sourceType: "wuzapi" } },
             create: {
                 phone: patient.phone,
                 name: patient.firstName,
@@ -173,7 +173,7 @@ async function synchronizeClientRecords() {
     }
 
     const contactsWithoutPatient = await prisma.contact.findMany({
-        where: { patients: { none: {} } },
+        where: { sourceType: "wuzapi", patients: { none: {} } },
         select: {
             id: true,
             name: true,

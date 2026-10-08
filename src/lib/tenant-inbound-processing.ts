@@ -6,6 +6,8 @@ import { getTenantPrismaManager } from "@/lib/tenant-prisma-manager";
 import { storeWuzapiOutboundEcho } from "@/lib/wuzapi-outbound-echo-runtime";
 import { resolveTenantInboundMedia } from "@/lib/tenant-inbound-media";
 import type { QueuedWebhookPayload } from "@/lib/tenant-work-queue";
+import { storeMetaSyncedMessage, applyMetaContactSync, applyMetaMessageChange, applyMetaSyncedReaction } from "@/lib/meta-coexistence-processing";
+import { patchMetaConnectionSync } from "@/lib/tenant-channels";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -30,17 +32,45 @@ export async function processTenantInboundWebhookEvent(tenantId: string, webhook
         select: { payload: true },
     });
     const payload = record(event?.payload);
-    if (!event || payload.kind !== "message") {
+    if (!event || !["message", "history", "contacts", "sync", "channel", "message_change"].includes(text(payload.kind))) {
         throw new Error("Inbound tenant webhook event was not found.");
+    }
+
+    if (payload.sourceType === "meta" && (payload.kind !== "message" || payload.direction === "outbound")) {
+        const sourceId = text(payload.sourceId, 160);
+        const connection = await controlDb.channelConnection.findFirst({ where: { tenantId, provider: "META_CLOUD", externalAccountId: sourceId } });
+        if (!connection) throw new Error("El evento no pertenece al canal oficial de este negocio.");
+        const typed = payload as QueuedWebhookPayload;
+        await controlDb.webhookEvent.update({ where: { id: webhookEventId }, data: { status: "PROCESSING", processingError: null } });
+        const tenantDb = await getTenantPrismaManager().getForTenant(tenantId);
+        const result = await runWithTenantPrisma(tenantDb, async () => {
+            const resolveMedia = (item: QueuedWebhookPayload) => resolveTenantInboundMedia(tenantId, `${webhookEventId}:${item.providerMessageId || "change"}`, item);
+            if (typed.kind === "contacts") return applyMetaContactSync(tenantDb, typed);
+            if (typed.kind === "message_change") return applyMetaMessageChange(tenantDb, typed, resolveMedia);
+            if (typed.kind === "history") {
+                for (const item of typed.historyItems || []) {
+                    if (item.sourceType !== "meta" || item.sourceId !== sourceId) throw new Error("El historial contiene un mensaje de otro canal.");
+                    if (item.kind === "message_change") await applyMetaMessageChange(tenantDb, item, resolveMedia);
+                    else if (item.kind === "message") await storeMetaSyncedMessage(tenantDb, item, resolveMedia);
+                    else if (item.kind === "reaction") await applyMetaSyncedReaction(tenantDb, item);
+                }
+            } else if (typed.kind === "message") return storeMetaSyncedMessage(tenantDb, typed, resolveMedia);
+            else if (typed.kind === "sync") {
+                if (typed.syncProgress !== undefined) await controlDb.$executeRawUnsafe(`UPDATE "ChannelConnection" SET "coexistenceSync" = COALESCE("coexistenceSync", '{}'::jsonb) || jsonb_build_object('historyProgress', GREATEST(COALESCE(("coexistenceSync"->>'historyProgress')::int, 0), $2::int)), "updatedAt" = NOW() WHERE "id" = $1`, connection.id, typed.syncProgress);
+                if (typed.syncError) await patchMetaConnectionSync(connection.id, { error: typed.syncError });
+            } else if (typed.kind === "channel" && ["PARTNER_REMOVED", "ACCOUNT_OFFBOARDED"].includes(typed.channelEvent || "")) {
+                await controlDb.channelConnection.update({ where: { id: connection.id }, data: { status: "DISCONNECTED", disconnectedAt: new Date(), lastError: typed.syncError || "El negocio desconectó la API desde WhatsApp Business." } });
+            }
+            return { duplicate: false };
+        }, tenantId);
+        await controlDb.webhookEvent.update({ where: { id: webhookEventId }, data: { status: "PROCESSED", processedAt: new Date(), processingError: null } });
+        return result;
     }
 
     const phone = text(payload.phone, 80).replace(/\D/g, "");
     const sourceType = payload.sourceType === "meta" ? "meta" : "wuzapi";
     const sourceId = text(payload.sourceId, 160);
     if (!phone || !sourceId) throw new Error("Inbound tenant webhook payload is invalid.");
-    if (payload.direction === "outbound" && sourceType !== "wuzapi") {
-        throw new Error("Only linked-device WuzAPI outbound echoes are supported.");
-    }
 
     await controlDb.webhookEvent.update({
         where: { id: webhookEventId },
@@ -49,7 +79,7 @@ export async function processTenantInboundWebhookEvent(tenantId: string, webhook
 
     const tenantDb = await getTenantPrismaManager().getForTenant(tenantId);
     const existing = payload.providerMessageId ? await tenantDb.message.findFirst({
-        where: { providerMessageId: text(payload.providerMessageId, 300), sourceType },
+        where: { providerMessageId: text(payload.providerMessageId, 300), sourceType, ...(sourceType === "meta" ? { sourceId } : {}) },
         select: { type: true, mediaUrl: true, mediaType: true, mediaFileName: true },
     }) : null;
     // Replays/echoes of an already stored attachment do not download another copy.

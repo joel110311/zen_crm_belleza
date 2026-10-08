@@ -43,7 +43,7 @@ test("outbound messages remain failed, not sent, if WhatsApp rejects or does not
     const loaded = loadTsModule("src/lib/outbound-messages.ts", {
         "@/lib/db": { prisma: {
             conversation: { findUnique: async () => ({ id: "chat", contact: { phone }, sourceType: "wuzapi", sourceId: "channel" }), update: async () => ({}) },
-            message: { create: async () => ({ id: "message" }), update: async ({ data }: { data: { status?: string; providerMessageId?: string } }) => { updates.push(data); return { id: "message", ...data }; } },
+            message: { create: async () => ({ id: "message" }), updateMany: async ({ where, data }: { where: { status: string }; data: { status: string } }) => { assert.equal(where.status, "sending"); updates.push(data); return { count: 1 }; }, update: async ({ data }: { data: { status?: string; providerMessageId?: string } }) => { updates.push(data); return { id: "message", ...data }; } },
         } },
         "@/lib/media-data-url": { resolveMediaToDataUrl: async () => ({ dataUrl: "data:audio/mpeg;base64,YWJj", mimeType: "audio/mpeg", fileName: "audio.mp3" }) },
         "@/lib/media-url": {},
@@ -61,7 +61,7 @@ test("outbound messages remain failed, not sent, if WhatsApp rejects or does not
     assert.equal(JSON.stringify(updates), JSON.stringify([{ status: "failed" }]));
     updates.length = 0; result = { Id: "native-id" };
     await send(params);
-    assert.equal(JSON.stringify(updates), JSON.stringify([{ status: "sent", providerMessageId: "native-id" }]));
+    assert.equal(JSON.stringify(updates), JSON.stringify([{ status: "sent" }, { providerMessageId: "native-id" }]));
     updates.length = 0; phone = null;
     await assert.rejects(send(params), /teléfono válido/);
     assert.equal(JSON.stringify(updates), JSON.stringify([{ status: "failed" }]));

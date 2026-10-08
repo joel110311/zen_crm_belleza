@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { ensurePermissionResponse } from "@/lib/authz";
-import { createMetaTemplate, deleteMetaTemplate, listMetaTemplates } from "@/lib/meta-whatsapp";
+import { createChannelTemplate as createMetaTemplate, deleteChannelTemplate as deleteMetaTemplate, listChannelTemplates as listMetaTemplates } from "@/lib/channel-delivery";
 
 export async function GET(request: NextRequest) {
     const session = await auth();

@@ -322,7 +322,7 @@ async function findMatchingContactByPhone(phone?: string | null) {
     if (!normalizedPhone) return null;
 
     const exact = await prisma.contact.findUnique({
-        where: { phone: normalizedPhone },
+        where: { phone_sourceType: { phone: normalizedPhone, sourceType: "wuzapi" } },
         select: { id: true },
     });
     if (exact) return exact;
@@ -331,7 +331,7 @@ async function findMatchingContactByPhone(phone?: string | null) {
     if (phoneClauses.length === 0) return null;
 
     return prisma.contact.findFirst({
-        where: { OR: phoneClauses },
+        where: { sourceType: "wuzapi", OR: phoneClauses },
         select: { id: true },
         orderBy: { updatedAt: "desc" },
     });
@@ -554,7 +554,7 @@ export async function savePatient(input: PatientFormInput) {
     try {
         const operationTimeZone = await getOperationTimeZone();
         const contact = await prisma.contact.upsert({
-            where: { phone },
+            where: { phone_sourceType: { phone, sourceType: "wuzapi" } },
             create: {
                 phone,
                 name: firstName,

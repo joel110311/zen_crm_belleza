@@ -71,7 +71,7 @@ async function graphRequest<T>(params: {
     return parseGraphResponse<T>(response);
 }
 
-export async function getMetaConfig(options: { requireSecrets?: boolean } = {}): Promise<MetaConfig> {
+export async function getMetaConfig(options: { requireSecrets?: boolean; requireRegistrationPin?: boolean } = {}): Promise<MetaConfig> {
     const settings = await getSystemSettingsOrDefaults();
     const config: MetaConfig = {
         appId: clean(settings.whatsappMetaAppId || process.env.META_APP_ID),
@@ -93,7 +93,7 @@ export async function getMetaConfig(options: { requireSecrets?: boolean } = {}):
             !config.webhookBaseUrl && "URL publica HTTPS",
         ].filter(Boolean);
         if (missing.length) throw new Error(`Falta configurar: ${missing.join(", ")}.`);
-        if (!/^\d{6}$/.test(config.registrationPin)) {
+        if (options.requireRegistrationPin !== false && !/^\d{6}$/.test(config.registrationPin)) {
             throw new Error("El PIN de registro de WhatsApp debe tener exactamente 6 digitos.");
         }
     }
@@ -105,7 +105,8 @@ export async function getMetaSessionSnapshot() {
     const settings = await getSystemSettingsOrDefaults();
     const config = await getMetaConfig({ requireSecrets: false });
     return {
-        metaConfigured: Boolean(config.appId && config.appSecret && config.configId && config.registrationPin && config.webhookVerifyToken && config.webhookBaseUrl),
+        metaConfigured: Boolean(config.appId && config.appSecret && config.configId && config.webhookVerifyToken && config.webhookBaseUrl),
+        isCoexistence: Boolean(settings.whatsappIsCoexistence),
         metaConnected: Boolean(settings.whatsappAccessToken && settings.whatsappPhoneNumberId && settings.whatsappWabaId),
         appId: config.appId || null,
         configId: config.configId || null,
@@ -141,22 +142,32 @@ export async function completeMetaEmbeddedSignup(params: {
     wabaId: string;
     phoneNumberId: string;
     businessId?: string | null;
+    mode?: "cloud" | "coexistence";
 }) {
-    const config = await getMetaConfig();
+    const config = await getMetaConfig({ requireRegistrationPin: params.mode !== "coexistence" });
     const exchanged = await exchangeAuthorizationCode(config, params.code);
     if (!exchanged.access_token) throw new Error("Meta no devolvio un token de acceso empresarial.");
 
+    const owned = await graphRequest<{ data?: Array<{ id: string; is_on_biz_app?: boolean; platform_type?: string }> }>({ version: config.graphApiVersion,
+        path: `${params.wabaId}/phone_numbers?fields=id,is_on_biz_app,platform_type&limit=100`, accessToken: exchanged.access_token });
+    const candidates = (owned.data || []).filter(item => params.phoneNumberId ? item.id === params.phoneNumberId : item.is_on_biz_app && item.platform_type === "CLOUD_API");
+    if (candidates.length !== 1) throw new Error("Meta no compartió un único número autorizado. Selecciona el número concreto; no elegiremos uno automáticamente.");
+    params = { ...params, phoneNumberId: candidates[0].id };
     const phone = await graphRequest<{
         id?: string;
         display_phone_number?: string;
         verified_name?: string;
         quality_rating?: string;
         code_verification_status?: string;
+        is_on_biz_app?: boolean;
+        platform_type?: string;
     }>({
         version: config.graphApiVersion,
-        path: `${params.phoneNumberId}?fields=id,display_phone_number,verified_name,quality_rating,code_verification_status`,
+        path: `${params.phoneNumberId}?fields=id,display_phone_number,verified_name,quality_rating,code_verification_status,is_on_biz_app,platform_type`,
         accessToken: exchanged.access_token,
     });
+    const isCoexistence = phone.is_on_biz_app === true && phone.platform_type === "CLOUD_API";
+    if (params.mode === "coexistence" && !isCoexistence) throw new Error("Meta no confirmó coexistencia. No se registrará ni eliminará tu cuenta del celular.");
 
     const subscription = await graphRequest<{ success?: boolean }>({
         version: config.graphApiVersion,
@@ -166,17 +177,18 @@ export async function completeMetaEmbeddedSignup(params: {
         body: {
             override_callback_uri: `${config.webhookBaseUrl}/api/webhooks/whatsapp`,
             verify_token: config.webhookVerifyToken,
-            fields: ["messages", "account_update", "message_template_status_update"],
         },
     });
 
-    const registration = await graphRequest<{ success?: boolean }>({
+    if (subscription.success !== true) throw new Error("Meta no confirmó la suscripción del webhook.");
+    const registration = isCoexistence ? null : await graphRequest<{ success?: boolean }>({
         version: config.graphApiVersion,
         path: `${params.phoneNumberId}/register`,
         accessToken: exchanged.access_token,
         method: "POST",
         body: { messaging_product: "whatsapp", pin: config.registrationPin },
     });
+    if (!isCoexistence && registration?.success !== true) throw new Error("Meta no confirmó el registro del número.");
 
     const existing = await prisma.systemSettings.findFirst();
     const data = {
@@ -186,12 +198,35 @@ export async function completeMetaEmbeddedSignup(params: {
         whatsappAccessToken: exchanged.access_token,
         whatsappBusinessId: clean(params.businessId) || null,
         whatsappConnectedAt: new Date(),
+        whatsappIsCoexistence: isCoexistence,
+        ...(existing?.whatsappPhoneNumberId !== params.phoneNumberId ? { whatsappCoexistenceSync: {} } : {}),
     };
     const settings = existing
         ? await prisma.systemSettings.update({ where: { id: existing.id }, data })
         : await prisma.systemSettings.create({ data });
 
-    return { settings, phone, subscription, registration };
+    let syncWarning: string | null = null;
+    if (isCoexistence) {
+        const previousSync = existing?.whatsappPhoneNumberId === params.phoneNumberId && existing?.whatsappCoexistenceSync && typeof existing.whatsappCoexistenceSync === "object" ? existing.whatsappCoexistenceSync as Record<string, unknown> : {};
+        for (const syncType of ["smb_app_state_sync", "history"]) {
+            if (previousSync[`${syncType}State`]) continue;
+            const claimed = await prisma.$executeRawUnsafe(`UPDATE "SystemSettings" SET "whatsappCoexistenceSync" = COALESCE("whatsappCoexistenceSync", '{}'::jsonb) || $2::jsonb WHERE "id" = $1 AND NOT (COALESCE("whatsappCoexistenceSync", '{}'::jsonb) ? $3::text)`, settings.id, JSON.stringify({ [`${syncType}State`]: "REQUESTING" }), `${syncType}State`);
+            if (!claimed) continue;
+            try {
+                const sync = await graphRequest<{ request_id?: string }>({ version: config.graphApiVersion, path: `${params.phoneNumberId}/smb_app_data`, accessToken: exchanged.access_token, method: "POST", body: { messaging_product: "whatsapp", sync_type: syncType } });
+                if (!sync.request_id) throw new Error("Meta no confirmó la solicitud de sincronización.");
+                await patchLegacyMetaSync(settings.id, { [`${syncType}State`]: "REQUESTED", [`${syncType}RequestId`]: sync.request_id });
+            } catch (error) {
+                syncWarning = error instanceof Error ? error.message : "No se pudo solicitar la sincronización.";
+                await patchLegacyMetaSync(settings.id, { [`${syncType}State`]: "ERROR", error: syncWarning });
+            }
+        }
+    }
+    return { settings, phone, subscription, registration, isCoexistence, syncWarning };
+}
+
+export async function patchLegacyMetaSync(settingsId: string, patch: Record<string, unknown>) {
+    await prisma.$executeRawUnsafe(`UPDATE "SystemSettings" SET "whatsappCoexistenceSync" = COALESCE("whatsappCoexistenceSync", '{}'::jsonb) || $2::jsonb WHERE "id" = $1`, settingsId, JSON.stringify(patch));
 }
 
 async function getConnectedCredentials() {

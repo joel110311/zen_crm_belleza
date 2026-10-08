@@ -401,7 +401,7 @@ export async function createPublicBooking(context: PublicPortalContext, request:
             const parsedPhone = parsePhoneByCountry(phone, context.settings.phoneDefaultCountry);
             const candidates = [...new Set([phone, parsedPhone.fullNumber, parsedPhone.nationalNumber].filter(Boolean))];
             const existingContact = await tx.contact.findFirst({
-                where: { OR: [{ phone: { in: candidates } }, ...(parsedPhone.nationalNumber.length >= 8 ? [{ phone: { endsWith: parsedPhone.nationalNumber } }] : [])] },
+                where: { sourceType: "wuzapi", OR: [{ phone: { in: candidates } }, ...(parsedPhone.nationalNumber.length >= 8 ? [{ phone: { endsWith: parsedPhone.nationalNumber } }] : [])] },
                 orderBy: { updatedAt: "desc" },
             });
             const contact = existingContact

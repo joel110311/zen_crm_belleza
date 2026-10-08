@@ -237,13 +237,13 @@ export function MetaTemplateSendModal({
             });
 
             const result = await response.json();
-            if (!response.ok) {
+            if (!response.ok || !result.success) {
                 throw new Error(result.error || "No se pudo enviar la plantilla.");
             }
 
             toast({
                 title: "Plantilla enviada",
-                description: "El mensaje plantilla se envio correctamente por WhatsApp API.",
+                description: "WhatsApp confirmó el envío. Si la ventana está cerrada, espera la respuesta del cliente para enviar mensajes libres.",
             });
 
             if (result.message) {

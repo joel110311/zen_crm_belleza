@@ -3,6 +3,7 @@ import { buildPhoneMatchClauses, isPlausiblePhoneDigits, normalizePhoneDigits } 
 import { decodeCsvBuffer, normalizeCsvCell, normalizeCsvHeader, parseCsvRows } from "@/lib/csv";
 
 type BulkCampaignCsvImportOptions = {
+    sourceType?: "wuzapi" | "meta";
     defaultStatus?: string;
     importTag?: string;
 };
@@ -106,6 +107,7 @@ export async function importBulkCampaignContactsFromCsv(
     options: BulkCampaignCsvImportOptions = {},
 ) {
     const normalizedOptions: Required<BulkCampaignCsvImportOptions> = {
+        sourceType: options.sourceType === "meta" ? "meta" : "wuzapi",
         defaultStatus: normalizeStatus(options.defaultStatus || "lead", "lead"),
         importTag: (options.importTag || "").trim(),
     };
@@ -123,6 +125,7 @@ export async function importBulkCampaignContactsFromCsv(
         for (const row of rows) {
             const existing = await tx.contact.findFirst({
                 where: {
+                    sourceType: normalizedOptions.sourceType,
                     OR: buildPhoneMatchClauses([row.phone]),
                 },
             });
@@ -131,6 +134,7 @@ export async function importBulkCampaignContactsFromCsv(
                 await tx.contact.create({
                     data: {
                         phone: row.phone,
+                        sourceType: normalizedOptions.sourceType,
                         name: row.name || null,
                         lastName: row.lastName || null,
                         email: row.email || null,

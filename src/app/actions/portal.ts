@@ -336,6 +336,7 @@ export async function bookPortalAppointment(input: PortalBookingInput) {
         const { patient, contact } = await prisma.$transaction(async (tx) => {
             const existingContact = await tx.contact.findFirst({
                 where: {
+                    sourceType: "wuzapi",
                     OR: [
                         { phone: { in: phoneCandidates } },
                         ...(parsedPhone.nationalNumber.length >= 8

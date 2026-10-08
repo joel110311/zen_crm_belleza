@@ -146,6 +146,7 @@ export async function refreshWhatsAppAvatarForContacts(
     const contacts = await prisma.contact.findMany({
         where: {
             id: { in: uniqueIds },
+            sourceType: "wuzapi",
         },
         select: {
             id: true,

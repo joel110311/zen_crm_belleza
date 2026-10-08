@@ -612,7 +612,7 @@ export function ContactsBulkCampaignDialog({
                     tags: [],
                     query: "",
                     limit: null,
-                    sourceType: form.sourceType === "meta" && form.type !== "template" ? "meta" : "any",
+                    sourceType: form.sourceType,
                     sourceId: form.sourceType === "meta" ? selectedChannel.sourceId || "" : "",
                     onlyOpenYCloudWindow: form.sourceType === "meta" && form.type !== "template",
                     lastInboundFrom: "",

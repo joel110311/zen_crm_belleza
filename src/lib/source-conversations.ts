@@ -2,6 +2,8 @@ import { prisma } from "@/lib/db";
 import { MESSAGE_SOURCE_WUZAPI, type MessageSourceType } from "@/lib/message-source";
 import { Prisma } from "@prisma/client";
 import { resolveAssignableTenantUserId } from "@/lib/user-assignment";
+import { ensureContactForChannel } from "@/lib/channel-contacts";
+import { resolveChannelSourceId } from "@/lib/channel-delivery";
 
 export async function findOrCreateActiveConversationForContactSource(params: {
     contactId: string;
@@ -13,7 +15,11 @@ export async function findOrCreateActiveConversationForContactSource(params: {
         sessionExpiresAt?: Date | null;
     };
 }) {
-    const sourceId = params.sourceId?.trim() || null;
+    const contact = await ensureContactForChannel(params.contactId, params.sourceType);
+    params = { ...params, contactId: contact.id };
+    const sourceId = params.sourceType === "meta"
+        ? params.sourceId?.trim() || await resolveChannelSourceId("meta")
+        : params.sourceId?.trim() || null;
 
     const findExistingConversation = () =>
         prisma.conversation.findFirst({

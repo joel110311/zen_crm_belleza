@@ -29,7 +29,10 @@ model User {
 
 model Contact {
   id                       String    @id @default(cuid())
-  phone                    String    @unique
+  phone                    String
+  sourceType               String    @default("wuzapi") @map("source_type")
+  providerContactUpdatedAt DateTime?
+  providerContactRemovedAt DateTime?
   name                     String?
   lastName                 String?
   email                    String?
@@ -53,6 +56,8 @@ model Contact {
   paymentLinks           PaymentLink[]
   deals                  Deal[]
   bulkCampaignRecipients BulkCampaignRecipient[]
+
+  @@unique([phone, sourceType])
 }
 
 model Conversation {
@@ -99,6 +104,8 @@ model Message {
   mediaType         String? // MIME type (image/jpeg, audio/ogg, etc.)
   mediaFileName     String? // Original filename for documents
   providerMessageId String? // Native WhatsApp/WuzAPI message id
+  providerChangedAt DateTime?
+  providerRevokedAt DateTime?
   reaction          String? // Emoji reaction (e.g., '👍', '❤️')
   botInputText       String?
   botAttribution     Json?
@@ -960,6 +967,8 @@ model SystemSettings {
   whatsappAccessToken                  String?
   whatsappBusinessId                   String?
   whatsappConnectedAt                  DateTime?
+  whatsappIsCoexistence                Boolean @default(false)
+  whatsappCoexistenceSync              Json?
   whatsappMetaAppId                    String?
   whatsappMetaAppSecret                String?
   whatsappEmbeddedSignupConfigId       String?

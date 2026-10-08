@@ -4,7 +4,6 @@ import {
     MESSAGE_SOURCE_META,
     MESSAGE_SOURCE_WUZAPI,
     normalizeMessageSourceType,
-    resolveMessageSourceId,
     type MessageSourceType,
 } from "@/lib/message-source";
 import {
@@ -16,7 +15,8 @@ import {
     findOrCreateActiveConversationForContact,
     sendOutboundConversationMessage,
 } from "@/lib/outbound-messages";
-import { sendMetaTemplateMessage } from "@/lib/meta-whatsapp";
+import { sendChannelTemplate as sendMetaTemplateMessage, resolveChannelSourceId } from "@/lib/channel-delivery";
+import { requireProviderMessageId } from "@/lib/whatsapp-audio";
 
 const DEFAULT_REMINDER_OFFSETS_MINUTES = [1440, 240];
 const MAX_REMINDER_ATTEMPTS = 3;
@@ -124,7 +124,7 @@ async function ensureAppointmentContact(appointment: NonNullable<ReminderAppoint
     }
 
     const contact = await prisma.contact.upsert({
-        where: { phone },
+        where: { phone_sourceType: { phone, sourceType: "wuzapi" } },
         create: {
             phone,
             name: appointment.patient?.firstName || null,
@@ -324,14 +324,13 @@ async function sendMetaReminder(params: {
         throw new Error(`Falta configurar la plantilla de WhatsApp API para ${reminderLabel(params.offsetMinutes)}.`);
     }
 
-    const sourceId = resolveMessageSourceId(MESSAGE_SOURCE_META, params.settings);
+    const sourceId = await resolveChannelSourceId(MESSAGE_SOURCE_META);
     const conversation = await findOrCreateActiveConversationForContactSource({
         contactId: params.contactId,
         sourceType: MESSAGE_SOURCE_META,
         sourceId,
         defaults: {
             botActive: false,
-            sessionExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
         },
     });
     const message = await prisma.message.create({
@@ -349,6 +348,7 @@ async function sendMetaReminder(params: {
 
     try {
         const result = await sendMetaTemplateMessage({
+            sourceId,
             to: params.phone,
             templateName,
             languageCode: reminderSettings.metaLanguage,
@@ -358,7 +358,7 @@ async function sendMetaReminder(params: {
             where: { id: message.id },
             data: {
                 status: "sent",
-                providerMessageId: result.Id || null,
+                providerMessageId: requireProviderMessageId(result),
             },
         });
 
@@ -366,7 +366,6 @@ async function sendMetaReminder(params: {
             where: { id: conversation.id },
             data: {
                 updatedAt: new Date(),
-                sessionExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
                 botActive: false,
             },
         });

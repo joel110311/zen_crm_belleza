@@ -11,13 +11,13 @@ import {
     type OutboundMessageType,
     sendOutboundConversationMessage,
 } from "@/lib/outbound-messages";
-import { sendMetaTemplateMessage } from "@/lib/meta-whatsapp";
+import { sendChannelTemplate as sendMetaTemplateMessage, resolveChannelSourceId } from "@/lib/channel-delivery";
+import { requireProviderMessageId } from "@/lib/whatsapp-audio";
 import { findOrCreateActiveConversationForContactSource } from "@/lib/source-conversations";
 import {
     MESSAGE_SOURCE_META,
     MESSAGE_SOURCE_WUZAPI,
     normalizeMessageSourceType,
-    resolveMessageSourceId,
     type MessageSourceType,
 } from "@/lib/message-source";
 import { getSystemSettingsOrDefaults } from "@/lib/system-settings";
@@ -41,7 +41,6 @@ const WORKER_LOCK_TTL_MS = 60_000;
 type BulkCampaignMessageType = OutboundMessageType | "template";
 const ALLOWED_CAMPAIGN_TYPES = new Set<BulkCampaignMessageType>(["text", "image", "document", "template"]);
 const YCLOUD_OPEN_WINDOW_GRACE_MS = 60_000;
-const YCLOUD_TEMPLATE_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 export type BulkCampaignVariantInput = {
     label: string;
@@ -354,7 +353,7 @@ export function normalizeBulkCampaignPayload(value: unknown): BulkCampaignUpsert
 
     const normalizedAudienceFilters = {
         ...audienceFilters,
-        sourceType: sourceType === MESSAGE_SOURCE_META && !isYCloudTemplate ? MESSAGE_SOURCE_META : audienceFilters.sourceType,
+        sourceType,
         sourceId: sourceType === MESSAGE_SOURCE_META && !isYCloudTemplate
             ? (sourceId || audienceFilters.sourceId) || ""
             : audienceFilters.sourceId,
@@ -464,7 +463,6 @@ function ensureCampaignCanLaunch(campaign: BulkCampaignRecord) {
 
 function needsYCloudAudienceConstraint(filters: BulkCampaignAudienceFilters) {
     return (
-        filters.sourceType === MESSAGE_SOURCE_META ||
         filters.onlyOpenYCloudWindow ||
         Boolean(filters.lastInboundFrom || filters.lastInboundTo)
     );
@@ -520,6 +518,7 @@ function buildAudienceWhere(
 
     return {
         ...(eligibleContactIds ? { id: { in: eligibleContactIds } } : {}),
+        ...(filters.sourceType !== "any" ? { sourceType: filters.sourceType } : {}),
         phone: {
             not: "",
         },
@@ -617,6 +616,7 @@ async function loadFilterAudienceContacts(
 async function loadSelectedAudienceContacts(
     selectedContactIds: string[],
     eligibleContactIds?: string[] | null,
+    sourceType?: string,
 ) {
     if (selectedContactIds.length === 0) {
         return [] as AudienceContactRecord[];
@@ -632,6 +632,7 @@ async function loadSelectedAudienceContacts(
 
     const contacts = await prisma.contact.findMany({
         where: {
+            ...(sourceType && sourceType !== "any" ? { sourceType } : {}),
             id: {
                 in: allowedIds,
             },
@@ -740,7 +741,7 @@ async function countAudienceContacts(filters: BulkCampaignAudienceFilters) {
         filters.mode === "selected"
             ? Promise.resolve([] as AudienceContactRecord[])
             : loadFilterAudienceContacts(filters, filters.limit ?? MAX_BULK_CAMPAIGN_AUDIENCE_LIMIT, eligibleYCloudContactIds),
-        loadSelectedAudienceContacts(filters.selectedContactIds, eligibleYCloudContactIds),
+        loadSelectedAudienceContacts(filters.selectedContactIds, eligibleYCloudContactIds, filters.sourceType),
     ]);
 
     const recipients = dedupePreviewRecipients([
@@ -758,25 +759,26 @@ async function countAudienceContacts(filters: BulkCampaignAudienceFilters) {
     };
 }
 
-async function findExistingContactForPhone(phone: string) {
+async function findExistingContactForPhone(phone: string, sourceType = "wuzapi") {
     const phoneClauses = buildPhoneMatchClauses([phone]);
     if (phoneClauses.length === 0) return null;
 
     return prisma.contact.findFirst({
         where: {
+            sourceType,
             OR: phoneClauses,
         },
     });
 }
 
-async function materializeManualAudienceContacts(entries: BulkCampaignManualEntry[]) {
+async function materializeManualAudienceContacts(entries: BulkCampaignManualEntry[], sourceType: MessageSourceType = "wuzapi") {
     const contacts: Contact[] = [];
 
     for (const entry of entries) {
         const normalizedPhone = normalizePhoneDigits(entry.phone);
         if (!normalizedPhone) continue;
 
-        const existing = await findExistingContactForPhone(normalizedPhone);
+        const existing = await findExistingContactForPhone(normalizedPhone, sourceType);
         if (existing) {
             const needsUpdate = (!existing.name && entry.name) || (!existing.company && entry.company);
             const contact = needsUpdate
@@ -795,19 +797,17 @@ async function materializeManualAudienceContacts(entries: BulkCampaignManualEntr
         const createdContact = await prisma.contact.create({
             data: {
                 phone: normalizedPhone,
+                sourceType,
                 name: entry.name || null,
                 company: entry.company || null,
                 status: "lead",
             },
         });
 
-        await prisma.conversation.create({
-            data: {
-                contactId: createdContact.id,
-                status: "active",
-                sourceType: "wuzapi",
-                botActive: true,
-            },
+        await findOrCreateActiveConversationForContactSource({
+            contactId: createdContact.id,
+            sourceType,
+            defaults: { botActive: true },
         });
 
         contacts.push(createdContact);
@@ -822,11 +822,11 @@ async function resolveBulkCampaignAudienceContacts(filters: BulkCampaignAudience
         filters.mode === "selected"
             ? Promise.resolve([] as AudienceContactRecord[])
             : loadFilterAudienceContacts(filters, filters.limit ?? MAX_BULK_CAMPAIGN_AUDIENCE_LIMIT, eligibleYCloudContactIds),
-        loadSelectedAudienceContacts(filters.selectedContactIds, eligibleYCloudContactIds),
+        loadSelectedAudienceContacts(filters.selectedContactIds, eligibleYCloudContactIds, filters.sourceType),
     ]);
 
     const crmContacts = mergeAudienceContactsByMode(filters.mode, filterContacts, selectedContacts);
-    const manualContacts = eligibleYCloudContactIds ? [] : await materializeManualAudienceContacts(filters.manualEntries);
+    const manualContacts = eligibleYCloudContactIds ? [] : await materializeManualAudienceContacts(filters.manualEntries, normalizeMessageSourceType(filters.sourceType));
     const deduped = new Map<string, Contact | AudienceContactRecord>();
 
     for (const contact of crmContacts) {
@@ -1183,6 +1183,7 @@ export async function startBulkCampaign(id: string) {
         campaign.audienceFilters,
         MAX_BULK_CAMPAIGN_AUDIENCE_LIMIT,
     );
+    filters.sourceType = normalizeMessageSourceType(campaign.sourceType);
     const contacts = await resolveBulkCampaignAudienceContacts(filters);
 
     if (contacts.length === 0) {
@@ -1699,7 +1700,7 @@ async function processClaimedCampaign(campaignId: string, lockId: string) {
 
         const settings = await getSystemSettingsOrDefaults();
         const campaignSourceType = normalizeMessageSourceType(campaign.sourceType);
-        const campaignSourceId = campaign.sourceId || resolveMessageSourceId(campaignSourceType, settings);
+        const campaignSourceId = await resolveChannelSourceId(campaignSourceType, campaign.sourceId);
         const campaignMessageType = normalizeCampaignType(campaign.type);
         const variant = chooseVariant(campaign.variants, campaignMessageType);
 
@@ -1746,6 +1747,7 @@ async function processClaimedCampaign(campaignId: string, lockId: string) {
                     });
 
                     const ycloudResult = await sendMetaTemplateMessage({
+                        sourceId: campaignSourceId,
                         to: recipient.contact.phone,
                         templateName: campaign.ycloudTemplateName || "",
                         languageCode: campaign.ycloudTemplateLanguage || "es",
@@ -1767,7 +1769,7 @@ async function processClaimedCampaign(campaignId: string, lockId: string) {
                             senderType: "human",
                             sourceType: MESSAGE_SOURCE_META,
                             sourceId: campaignSourceId,
-                            providerMessageId: ycloudResult.Id || null,
+                            providerMessageId: requireProviderMessageId(ycloudResult),
                         },
                     });
 
@@ -1775,7 +1777,6 @@ async function processClaimedCampaign(campaignId: string, lockId: string) {
                         where: { id: activeConversation.id },
                         data: {
                             updatedAt: new Date(),
-                            sessionExpiresAt: new Date(Date.now() + YCLOUD_TEMPLATE_WINDOW_MS),
                             botActive: true,
                         },
                     });

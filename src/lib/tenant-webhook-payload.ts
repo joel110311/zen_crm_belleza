@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { normalizeMetaCoexistenceChange, metaSyncedMessage } from "./meta-coexistence-webhook.ts";
 import type { QueuedWebhookPayload } from "@/lib/tenant-work-queue";
 
 type JsonRecord = Record<string, unknown>;
@@ -103,15 +104,18 @@ function metaMessageText(message: JsonRecord, type: string) {
 }
 
 /** Splits a Meta delivery into independently idempotent, tenant-safe envelopes. */
-export function normalizeMetaWebhook(payload: unknown, fallbackHash: string): Array<{ providerEventId: string; sourceId: string; payload: QueuedWebhookPayload }> {
+export function normalizeMetaWebhook(payload: unknown, fallbackHash: string, binding?: { wabaId?: string | null; sourceId: string }): Array<{ providerEventId: string; sourceId: string; payload: QueuedWebhookPayload }> {
     const result: Array<{ providerEventId: string; sourceId: string; payload: QueuedWebhookPayload }> = [];
     const root = record(payload);
     if (root.object !== "whatsapp_business_account") return result;
     for (const rawEntry of Array.isArray(root.entry) ? root.entry : []) {
         for (const rawChange of Array.isArray(record(rawEntry).changes) ? record(rawEntry).changes as unknown[] : []) {
             const change = record(rawChange);
-            if (change.field !== "messages") continue;
             const value = record(change.value);
+            if (change.field !== "messages") {
+                result.push(...normalizeMetaCoexistenceChange(string(change.field, 80), value, string(record(rawEntry).id, 160), fallbackHash, binding));
+                continue;
+            }
             const sourceId = string(record(value.metadata).phone_number_id, 160);
             if (!sourceId) continue;
             const contacts = new Map((Array.isArray(value.contacts) ? value.contacts : []).map((contact) => {
@@ -138,6 +142,15 @@ export function normalizeMetaWebhook(payload: unknown, fallbackHash: string): Ar
                 const phone = string(message.from, 80).replace(/\D/g, "");
                 const type = string(message.type, 40) || "text";
                 if (!providerMessageId || !phone) continue;
+                if (type === "edit" || type === "revoke") {
+                    const changed = metaSyncedMessage(message, sourceId);
+                    if (changed?.targetProviderMessageId) result.push({ sourceId, providerEventId: `meta:${sourceId}:change:${providerMessageId}`, payload: changed });
+                    continue;
+                }
+                if (type === "unsupported") {
+                    result.push({ sourceId, providerEventId: `meta:${sourceId}:unsupported:${providerMessageId}`, payload: { kind: "sync", sourceType: "meta", sourceId, syncError: "Meta no compartió este mensaje. Revísalo en WhatsApp Business del celular." } });
+                    continue;
+                }
                 if (type === "reaction") {
                     const reaction = record(message.reaction);
                     const targetProviderMessageId = string(reaction.message_id, 300);

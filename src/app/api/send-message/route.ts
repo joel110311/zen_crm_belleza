@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
             conversationId,
             content,
             type = "text",
-            sourceType = "wuzapi",
+            sourceType = null,
             sourceId = null,
             mediaUrl,
             mediaType,

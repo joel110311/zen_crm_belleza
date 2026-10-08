@@ -53,7 +53,7 @@ export async function sendOutboundConversationMessage(
         throw new Error("conversationId and content or mediaUrl are required");
     }
 
-    const selectedSourceType = normalizeMessageSourceType(params.sourceType);
+    let selectedSourceType = normalizeMessageSourceType(params.sourceType);
     const requestedSourceId = typeof params.sourceId === "string" && params.sourceId.trim()
         ? params.sourceId.trim()
         : null;
@@ -62,9 +62,10 @@ export async function sendOutboundConversationMessage(
         where: { id: params.conversationId },
         include: { contact: true },
     });
+    if (!params.sourceType && conversation) selectedSourceType = normalizeMessageSourceType(conversation.sourceType);
 
     const settings = await getSystemSettingsOrDefaults();
-    const selectedSourceId = conversation?.sourceType === selectedSourceType
+    let selectedSourceId = conversation?.sourceType === selectedSourceType
         ? conversation.sourceId || null
         : requestedSourceId || resolveMessageSourceId(selectedSourceType, settings);
 
@@ -115,6 +116,11 @@ export async function sendOutboundConversationMessage(
         }
     }
 
+    if (selectedSourceType === "meta" && (!conversation.sessionExpiresAt || conversation.sessionExpiresAt.getTime() <= Date.now())) {
+        throw new Error("La ventana de 24 horas de WhatsApp oficial está cerrada. Envía una plantilla aprobada y espera la respuesta del cliente.");
+    }
+    selectedSourceId = conversation.sourceId || selectedSourceId;
+
     const message = await prisma.message.create({
         data: {
             conversationId: conversation.id,
@@ -151,6 +157,7 @@ export async function sendOutboundConversationMessage(
             if (type === "text") {
                 const result = await sendChannelText({
                     sourceType: selectedSourceType,
+                    sourceId: selectedSourceId,
                     to: conversation.contact.phone,
                     body: content,
                 });
@@ -164,11 +171,13 @@ export async function sendOutboundConversationMessage(
 
                     result = await sendChannelMedia({
                         sourceType: "meta",
+                        sourceId: selectedSourceId,
                         to: conversation.contact.phone,
                         mediaType: type,
                         link: publicMediaUrl,
                         caption: content && content !== `[${type}]` ? content : undefined,
                         fileName: params.mediaFileName || undefined,
+                        mimeType: params.mediaType || undefined,
                     });
                 } else {
                     const resolvedMedia = await resolveMediaToDataUrl(params.mediaUrl, params.mediaType);
@@ -188,10 +197,10 @@ export async function sendOutboundConversationMessage(
 
             if (!providerMessageId) throw new Error("WhatsApp no confirmó el envío del mensaje.");
 
+            await prisma.message.updateMany({ where: { id: message.id, status: "sending" }, data: { status: "sent" } });
             const updatedMessage = await prisma.message.update({
                 where: { id: message.id },
                 data: {
-                    status: "sent",
                     providerMessageId,
                 },
             });
@@ -205,8 +214,8 @@ export async function sendOutboundConversationMessage(
 
         throw new Error("El contacto no tiene un teléfono válido para enviar por WhatsApp.");
     } catch (error) {
-        await prisma.message.update({
-            where: { id: message.id },
+        await prisma.message.updateMany({
+            where: { id: message.id, status: "sending" },
             data: { status: "failed" },
         });
 

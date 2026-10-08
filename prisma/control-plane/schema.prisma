@@ -648,6 +648,9 @@ model ChannelConnection {
   tenantId          String
   provider          ChannelProvider
   externalAccountId String
+  wabaId            String?
+  isCoexistence     Boolean                 @default(false)
+  coexistenceSync   Json?
   status            ChannelConnectionStatus @default(PENDING)
   secretCiphertext  Bytes?
   secretKeyVersion  Int?
@@ -662,6 +665,7 @@ model ChannelConnection {
 
   @@unique([provider, externalAccountId])
   @@index([tenantId, provider, status])
+  @@index([wabaId])
 }
 
 /**

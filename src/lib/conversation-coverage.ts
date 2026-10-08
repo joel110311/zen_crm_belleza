@@ -45,6 +45,7 @@ export async function backfillMissingActiveConversations(params?: { dryRun?: boo
 
     const missingContacts = await prisma.contact.findMany({
         where: {
+            sourceType: "wuzapi",
             conversations: {
                 none: {
                     status: "active",
@@ -64,6 +65,7 @@ export async function backfillMissingActiveConversations(params?: { dryRun?: boo
 
         for (const contactIdChunk of chunks) {
             const result = await prisma.conversation.createMany({
+                skipDuplicates: true,
                 data: contactIdChunk.map((contactId) => ({
                     contactId,
                     status: "active",

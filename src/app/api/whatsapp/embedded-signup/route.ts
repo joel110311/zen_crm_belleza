@@ -32,11 +32,12 @@ export async function POST(request: NextRequest) {
     const wabaId = text(body?.wabaId);
     const phoneNumberId = text(body?.phoneNumberId);
     const businessId = text(body?.businessId);
-    if (!code || !wabaId || !phoneNumberId) {
+    const mode = body?.mode === "coexistence" ? "coexistence" : "cloud";
+    if (!code || !wabaId || (!phoneNumberId && mode !== "coexistence")) {
         return NextResponse.json({ ok: false, error: "Meta no devolvio code, WABA ID y Phone Number ID completos." }, { status: 400 });
     }
     try {
-        const result = await completeMetaEmbeddedSignup({ code, wabaId, phoneNumberId, businessId: businessId || null });
+        const result = await completeMetaEmbeddedSignup({ code, wabaId, phoneNumberId, businessId: businessId || null, mode });
         revalidatePath("/dashboard/settings");
         revalidatePath("/dashboard/inbox");
         revalidatePath("/dashboard/templates");
@@ -48,6 +49,7 @@ export async function POST(request: NextRequest) {
             wabaId: result.settings.whatsappWabaId,
             subscription: result.subscription,
             registration: result.registration,
+            isCoexistence: result.isCoexistence, syncWarning: result.syncWarning,
         });
     } catch (error) {
         console.error("[Meta Embedded Signup]", error);

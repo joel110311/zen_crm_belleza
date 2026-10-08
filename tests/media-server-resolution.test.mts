@@ -5,6 +5,7 @@ import path from "node:path";
 import os from "node:os";
 import { loadTsModule } from "./helpers/load-ts-module.mts";
 import * as policy from "../src/lib/chat-media-policy.ts";
+import * as metaPolicy from "../src/lib/meta-media-policy.ts";
 
 test("QR resolution and AI transcription read owned local /api/media files, not the login page", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "crm-media-resolution-test-"));
@@ -36,6 +37,8 @@ test("official media URLs are signed only after owner validation; QR and reactio
     const filename = `private-t-${policy.tenantMediaNamespace("a")}-file.mp4`;
     const loaded = loadTsModule("src/lib/channel-delivery.ts", {
         "server-only": {}, "@/lib/chat-media-policy": policy,
+        "@/lib/system-settings": {}, "@/lib/message-source": {}, "@/lib/meta-media-policy": metaPolicy,
+        "node:fs/promises": { stat: async () => ({ size: 100 }), open: async () => ({ read: async () => {}, close: async () => {} }) },
         "@/lib/local-media-access": { assertLocalMediaOwnership: async () => { if (denyOwner) throw new Error("otro negocio"); } },
         "@/lib/active-tenant-context": { getActiveTenantRuntimeContext: async () => ({ tenantId: "a" }) },
         "@/lib/routed-prisma": { getScopedTenantId: () => null },

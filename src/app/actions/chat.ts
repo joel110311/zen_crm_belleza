@@ -30,7 +30,9 @@ import {
 } from "@/lib/bot-reply-outcome";
 import { normalizePhoneDigits } from "@/lib/phone";
 import { findAndConsolidateContact } from "@/lib/contact-deduplication";
+import { metaCustomerWindowExpiry } from "@/lib/meta-customer-window";
 import { sendChannelMedia, sendChannelText } from "@/lib/channel-delivery";
+import { sendOutboundConversationMessage } from "@/lib/outbound-messages";
 import {
     normalizeMessageSourceType,
     resolveMessageSourceId,
@@ -1075,8 +1077,11 @@ async function triggerHumanEscalation(params: {
 
     try {
         const source = await getAutomatedConversationSource(params.conversationId);
+        // A customer's service window does not authorize free-form alerts to staff.
+        if (source.sourceType === "meta") return;
         await sendChannelText({
             sourceType: source.sourceType,
+            sourceId: source.sourceId,
             to: escalationPhone,
             body: buildEscalationAlertMessage({
                 brandName: params.brandName,
@@ -1106,8 +1111,14 @@ async function getAutomatedConversationSource(conversationId: string): Promise<{
         select: {
             sourceType: true,
             sourceId: true,
+            sessionExpiresAt: true,
         },
     });
+
+    if (!conversation) throw new Error("La conversación ya no existe.");
+    if (conversation.sourceType === "meta" && (!conversation.sessionExpiresAt || conversation.sessionExpiresAt.getTime() <= Date.now())) {
+        throw new Error("La ventana de 24 horas de WhatsApp API está cerrada; se requiere una plantilla aprobada.");
+    }
 
     return {
         sourceType: normalizeMessageSourceType(conversation?.sourceType),
@@ -1234,6 +1245,7 @@ async function sendAutomatedBotText(params: {
         },
         send: () => sendChannelText({
             sourceType: source.sourceType,
+            sourceId: source.sourceId,
             to: params.phone,
             body: content,
         }),
@@ -1281,11 +1293,13 @@ async function sendAutomatedBotMedia(params: {
             send: async () => source.sourceType === "meta"
             ? await sendChannelMedia({
                 sourceType: "meta",
+                sourceId: source.sourceId,
                 to: params.phone,
                 mediaType: params.mediaCategory,
                 link: buildPublicMediaUrl(storedMediaUrl),
                 caption,
                 fileName: resolvedMedia.fileName,
+                mimeType: resolvedMedia.mimeType,
             })
             : await sendChannelMedia({
                 sourceType: "wuzapi",
@@ -2456,106 +2470,32 @@ export async function getMessages(conversationId: string) {
 
 export async function sendMessage(conversationId: string, content: string, direction: "inbound" | "outbound" = "outbound") {
     await requirePermission("chats.manage");
-    console.log("!!! [SendMessage] FUNCTION CALLED !!!", { conversationId, content, direction });
-    try {
-        // Get conversation with contact to get phone number
-        const conversation = await prisma.conversation.findUnique({
-            where: { id: conversationId },
-            include: { contact: true },
-        });
-
-        if (!conversation) {
-            throw new Error("Conversation not found");
-        }
-
-        const isHumanOutbound = direction === "outbound";
-        const sourceType = normalizeMessageSourceType(conversation.sourceType);
-        const sourceSettings = await getSystemSettingsOrDefaults();
-        const sourceId = conversation.sourceId || resolveMessageSourceId(sourceType, sourceSettings);
-
-        // Create message in database first
-        const message = await prisma.message.create({
-            data: {
-                conversationId,
-                content,
-                direction,
-                status: "sending",
-                type: "text",
-                senderType: isHumanOutbound ? "human" : null,
-                sourceType,
-                sourceId,
-            },
-        });
-
-        console.log("[SendMessage] Created message:", message.id);
-        console.log("[SendMessage] Direction:", direction);
-        console.log("[SendMessage] Contact phone:", conversation.contact?.phone);
-
-        // If outbound, send via WhatsApp QR gateway
-        if (direction === "outbound" && conversation.contact?.phone) {
-            console.log("[SendMessage] Attempting to send via WhatsApp...", sourceType);
-            try {
-                const result = await sendChannelText({
-                    sourceType,
-                    to: conversation.contact.phone,
-                    body: content,
-                });
-
-                // Update message status to sent
-                await prisma.message.update({
-                    where: { id: message.id },
-                    data: {
-                        status: result?.Id ? "sent" : "failed",
-                        providerMessageId: result?.Id || null,
-                    },
-                });
-            } catch (whatsappError) {
-                console.error("[SendMessage] WhatsApp send error:", whatsappError);
-                // Update message status to failed
-                await prisma.message.update({
-                    where: { id: message.id },
-                    data: { status: "failed" },
-                });
-            }
-        } else {
-            console.log("[SendMessage] Skipping WhatsApp transport - direction:", direction, "phone:", conversation.contact?.phone);
-            // For inbound or no phone, just mark as sent
-            await prisma.message.update({
-                where: { id: message.id },
-                data: { status: "sent" },
-            });
-        }
-
-        if (direction === "outbound" && conversation.contact?.id) {
-            void refreshWhatsAppAvatarForContact(conversation.contact.id).catch((avatarError) => {
-                console.warn("[SendMessage] Failed to refresh WhatsApp avatar", avatarError);
-            });
-        }
-
-        await prisma.conversation.update({
-            where: { id: conversationId },
-            data: {
-                updatedAt: new Date(),
-                botActive: isHumanOutbound ? false : conversation.botActive,
-            },
-        });
-
-        revalidatePath(`/dashboard/inbox`);
-        return message;
-    } catch (error) {
-        console.error("Failed to send message:", error);
-        throw new Error("Failed to send message");
+    if (direction === "outbound") {
+        const result = await sendOutboundConversationMessage({ conversationId, content });
+        revalidatePath("/dashboard/inbox");
+        return result.message;
     }
+    const conversation = await prisma.conversation.findUnique({ where: { id: conversationId } });
+    if (!conversation) throw new Error("La conversación ya no existe.");
+    const message = await prisma.message.create({ data: {
+        conversationId, content, direction: "inbound", status: "delivered", type: "text",
+        sourceType: conversation.sourceType, sourceId: conversation.sourceId,
+    } });
+    await prisma.conversation.update({ where: { id: conversationId }, data: { updatedAt: new Date() } });
+    revalidatePath("/dashboard/inbox");
+    return message;
 }
 
 export async function createConversation(contactId: string) {
     await requirePermission("chats.manage");
     try {
         const settings = await getSystemSettingsOrDefaults();
+        const contact = await prisma.contact.findUnique({ where: { id: contactId }, select: { sourceType: true } });
+        const sourceType = normalizeMessageSourceType(contact?.sourceType);
         const conversation = await findOrCreateActiveConversationForContactSource({
             contactId,
-            sourceType: "wuzapi",
-            sourceId: resolveMessageSourceId("wuzapi", settings),
+            sourceType,
+            sourceId: sourceType === "meta" ? null : resolveMessageSourceId(sourceType, settings),
         });
 
         revalidatePath('/dashboard/inbox');
@@ -2593,6 +2533,7 @@ export async function processInboundMessage(
                 where: {
                     providerMessageId,
                     sourceType: normalizedSourceType,
+                    ...(normalizedSourceType === "meta" ? { sourceId: inboundSourceId } : {}),
                 },
                 include: {
                     conversation: {
@@ -2621,12 +2562,15 @@ export async function processInboundMessage(
         const normalizedCustomerName = normalizeContactName(customerName);
 
         // Find or create contact by phone number
-        let contact = await findAndConsolidateContact([normalizedFrom]);
+        let contact = await findAndConsolidateContact([normalizedFrom], undefined, normalizedSourceType);
 
         if (!contact) {
-            contact = await prisma.contact.create({
-                data: {
+            contact = await prisma.contact.upsert({
+                where: { phone_sourceType: { phone: normalizedFrom, sourceType: normalizedSourceType } },
+                update: {},
+                create: {
                     phone: normalizedFrom,
+                    sourceType: normalizedSourceType,
                     name: normalizedCustomerName,
                     status: "lead",
                 },
@@ -2750,11 +2694,17 @@ export async function processInboundMessage(
             where: { id: conversation.id },
             data: {
                 updatedAt: messageOccurredAt && messageOccurredAt > conversation.updatedAt ? messageOccurredAt : new Date(),
-                ...(normalizedSourceType === "meta"
-                    ? { sessionExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000) }
-                    : {}),
             },
         });
+
+        if (normalizedSourceType === "meta") {
+            const expiry = metaCustomerWindowExpiry(messageOccurredAt);
+            // A late webhook must neither reopen an old window nor shorten a newer one.
+            await prisma.conversation.updateMany({
+                where: { id: conversation.id, OR: [{ sessionExpiresAt: null }, { sessionExpiresAt: { lt: expiry } }] },
+                data: { sessionExpiresAt: expiry },
+            });
+        }
 
         // â”€â”€ Ensure the contact already exists in the pipeline before evaluating stop rules â”€â”€
         try {

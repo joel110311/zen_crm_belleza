@@ -240,7 +240,7 @@ export function BulkCampaignManagerPanel() {
         tags: splitCommaSeparatedValues(form.audienceTags),
         query: form.audienceQuery,
         limit: form.audienceLimit.trim() ? Number.parseInt(form.audienceLimit, 10) : null,
-        sourceType: form.sourceType === "meta" && form.type !== "template" ? "meta" : "any",
+        sourceType: form.sourceType,
         sourceId: form.sourceType === "meta" ? selectedChannel?.sourceId || form.sourceId.trim() : form.sourceId.trim(),
         onlyOpenYCloudWindow: form.sourceType === "meta" && form.type !== "template" ? form.audienceOnlyOpenYCloudWindow : false,
         lastInboundFrom: form.audienceLastInboundFrom ? new Date(form.audienceLastInboundFrom).toISOString() : "",
@@ -498,6 +498,7 @@ export function BulkCampaignManagerPanel() {
             const formData = new FormData();
             formData.append("file", file);
             formData.append("defaultStatus", csvImportStatus);
+            formData.append("sourceType", form.sourceType);
             formData.append("importTag", csvImportTag.trim());
 
             const response = await fetch("/api/bulk-campaigns/import-csv", {

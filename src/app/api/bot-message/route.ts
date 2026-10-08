@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { normalizeMessageSourceType, resolveMessageSourceId } from "@/lib/message-source";
+import { normalizeMessageSourceType } from "@/lib/message-source";
+import { resolveChannelSourceId } from "@/lib/channel-delivery";
 import { findOrCreateActiveConversationForContactSource } from "@/lib/source-conversations";
 import { getSystemSettingsOrDefaults } from "@/lib/system-settings";
 import { consumeRateLimit, getBearerToken, getRequestIp, safeSecretEqual } from "@/lib/security";
@@ -62,12 +63,14 @@ export async function POST(request: NextRequest) {
         // Normalize phone (remove +, spaces, dashes)
         const phone = to.replace(/\D/g, "");
         const suffix10 = phone.slice(-10);
+        const normalizedSourceType = normalizeMessageSourceType(sourceType);
 
         console.log(`[Bot Message] Storing bot response to ${phone}: ${(textContent || type).substring(0, 50)}...`);
 
         // Find contact by phone number
         let contact = await prisma.contact.findFirst({
             where: {
+                sourceType: normalizedSourceType,
                 OR: [
                     { phone },
                     { phone: { endsWith: suffix10 } },
@@ -79,6 +82,7 @@ export async function POST(request: NextRequest) {
             contact = await prisma.contact.create({
                 data: {
                     phone,
+                    sourceType: normalizedSourceType,
                     status: "lead",
                 },
             });
@@ -86,8 +90,7 @@ export async function POST(request: NextRequest) {
         }
 
         settings ||= await getSystemSettingsOrDefaults();
-        const normalizedSourceType = normalizeMessageSourceType(sourceType);
-        const sourceId = resolveMessageSourceId(normalizedSourceType, settings);
+        const sourceId = await resolveChannelSourceId(normalizedSourceType);
         const conversation = await findOrCreateActiveConversationForContactSource({
             contactId: contact.id,
             sourceType: normalizedSourceType,

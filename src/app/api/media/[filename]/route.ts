@@ -12,7 +12,7 @@ const MIME_TYPES: Record<string, string> = {
     ".m4a": "audio/mp4",
     ".mp3": "audio/mpeg",
     ".ogg": "audio/ogg",
-    ".opus": "audio/ogg",
+    ".opus": "audio/ogg; codecs=opus",
     ".wav": "audio/wav",
     ".aac": "audio/aac",
     ".amr": "audio/amr",
@@ -102,7 +102,15 @@ async function buildMediaResponse(request: NextRequest, filename: string, includ
     const size = fs.statSync(filePath).size;
     const range = parseMediaRange(request.headers.get("range"), size);
     if (range === false) return new NextResponse(null, { status: 416, headers: { "Content-Range": `bytes */${size}` } });
-    const contentType = MIME_TYPES[ext] || MEDIA_MIME_BY_EXTENSION[ext.slice(1)] || "application/octet-stream";
+    let contentType = MIME_TYPES[ext] || MEDIA_MIME_BY_EXTENSION[ext.slice(1)] || "application/octet-stream";
+    if (ext === ".ogg") {
+        const descriptor = fs.openSync(filePath, "r");
+        try {
+            const header = Buffer.alloc(256);
+            fs.readSync(descriptor, header, 0, header.length, 0);
+            if (header.includes(Buffer.from("OpusHead"))) contentType = "audio/ogg; codecs=opus";
+        } finally { fs.closeSync(descriptor); }
+    }
     const disposition = INLINE_EXTENSIONS.has(ext) ? "inline" : "attachment";
     const body = includeBody ? Readable.toWeb(fs.createReadStream(filePath, range || undefined)) as ReadableStream<Uint8Array> : null;
     return new NextResponse(body, {

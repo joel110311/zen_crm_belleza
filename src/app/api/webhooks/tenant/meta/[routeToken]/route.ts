@@ -7,7 +7,7 @@ import { ingestTenantWebhook } from "@/lib/tenant-work-queue";
 import { normalizeMetaWebhook, webhookBodyHash } from "@/lib/tenant-webhook-payload";
 
 export const runtime = "nodejs";
-const maxWebhookBytes = 1_048_576;
+const maxWebhookBytes = 8_388_608; // History batches may contain thousands of messages; processing stays asynchronous.
 
 function verifyMetaSignature(rawBody: string, signature: string | null) {
     const secret = process.env.META_APP_SECRET?.trim() || "";
@@ -44,7 +44,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     const connection = await getChannelForRoute("META_CLOUD", routeToken);
-    const events = normalizeMetaWebhook(payload, webhookBodyHash(rawBody));
+    const events = normalizeMetaWebhook(payload, webhookBodyHash(rawBody), connection ? { wabaId: connection.wabaId, sourceId: connection.externalAccountId } : undefined);
     for (const event of events) {
         const belongsToConnection = Boolean(connection && event.sourceId === connection.externalAccountId);
         await ingestTenantWebhook({

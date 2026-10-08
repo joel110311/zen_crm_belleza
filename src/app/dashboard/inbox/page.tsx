@@ -3692,11 +3692,9 @@ export default function InboxPage() {
                         }
 
                         setMessages((prev) => mergeFetchedMessages(prev, [normalized]));
-                        const nextExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-                        setIsWindowOpen(true);
+                        // Sending a template does not open the customer service window.
                         setSelectedChat((prev) => prev ? {
                             ...prev,
-                            sessionExpiresAt: nextExpiry,
                             updatedAt: normalized.createdAt,
                             messages: [normalized],
                         } : prev);
@@ -3705,7 +3703,6 @@ export default function InboxPage() {
                                 conversation.id === selectedChat.id
                                     ? {
                                         ...conversation,
-                                        sessionExpiresAt: nextExpiry,
                                         updatedAt: normalized.createdAt,
                                         messages: [normalized],
                                     }

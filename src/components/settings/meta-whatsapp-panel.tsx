@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/use-toast";
+import { metaSignupExtras, metaSignupFailure, isMetaSignupOrigin, parseMetaSignupMessage, type MetaSignupMode } from "@/lib/meta-signup";
 
 type Session = {
     metaConfigured?: boolean;
@@ -21,7 +22,7 @@ type Session = {
     webhookUrl?: string | null;
 };
 
-type SignupData = { wabaId: string; phoneNumberId: string; businessId: string };
+type SignupData = NonNullable<ReturnType<typeof parseMetaSignupMessage>>;
 type FacebookLoginResponse = { authResponse?: { code?: string }; status?: string };
 type FacebookSdk = {
     init(options: { appId: string; cookie: boolean; xfbml: boolean; version: string }): void;
@@ -68,8 +69,10 @@ export function MetaWhatsAppPanel() {
     const [loading, setLoading] = useState(true);
     const [working, setWorking] = useState(false);
     const [saving, setSaving] = useState(false);
+    const [mode, setMode] = useState<MetaSignupMode>("coexistence");
     const [form, setForm] = useState({ appId: "", appSecret: "", configId: "", solutionId: "", graphApiVersion: "v26.0", registrationPin: "", webhookVerifyToken: "", webhookBaseUrl: "" });
     const signupData = useRef<SignupData | null>(null);
+    const signupError = useRef<string | null>(null);
 
     const refresh = useCallback(async () => {
         setLoading(true);
@@ -99,17 +102,11 @@ export function MetaWhatsAppPanel() {
     useEffect(() => { void refresh(); }, [refresh]);
     useEffect(() => {
         const handler = (event: MessageEvent) => {
-            if (!event.origin.endsWith("facebook.com")) return;
-            let payload = event.data;
-            if (typeof payload === "string") {
-                try { payload = JSON.parse(payload); } catch { return; }
-            }
-            if (!payload || payload.type !== "WA_EMBEDDED_SIGNUP" || payload.event !== "FINISH") return;
-            signupData.current = {
-                wabaId: String(payload.data?.waba_id || ""),
-                phoneNumberId: String(payload.data?.phone_number_id || ""),
-                businessId: String(payload.data?.business_id || ""),
-            };
+            if (!isMetaSignupOrigin(event.origin)) return;
+            const failure = metaSignupFailure(event.data);
+            if (failure) signupError.current = failure;
+            const result = parseMetaSignupMessage(event.data);
+            if (result) signupData.current = result;
         };
         window.addEventListener("message", handler);
         return () => window.removeEventListener("message", handler);
@@ -146,6 +143,7 @@ export function MetaWhatsAppPanel() {
     const connect = async () => {
         setWorking(true);
         signupData.current = null;
+        signupError.current = null;
         try {
             if (!(await save())) return;
             const configResponse = await fetch("/api/whatsapp/embedded-signup", { cache: "no-store" });
@@ -157,10 +155,11 @@ export function MetaWhatsAppPanel() {
                 window.FB?.login(async (response) => {
                     const code = response.authResponse?.code;
                     if (!code) { reject(new Error("Meta no devolvio el codigo de autorizacion o se cancelo el flujo.")); return; }
-                    for (let attempt = 0; attempt < 40 && !signupData.current; attempt += 1) {
+                    for (let attempt = 0; attempt < 40 && !signupData.current && !signupError.current; attempt += 1) {
                         await new Promise((wait) => window.setTimeout(wait, 250));
                     }
-                    if (!signupData.current?.wabaId || !signupData.current.phoneNumberId) {
+                    if (signupError.current) { reject(new Error(signupError.current)); return; }
+                    if (!signupData.current?.wabaId || (!signupData.current.phoneNumberId && signupData.current.mode !== "coexistence")) {
                         reject(new Error("Meta no devolvio los identificadores del numero seleccionado.")); return;
                     }
                     const result = await fetch("/api/whatsapp/embedded-signup", {
@@ -170,15 +169,16 @@ export function MetaWhatsAppPanel() {
                     });
                     const payload = await result.json();
                     if (!result.ok) { reject(new Error(payload.error || "No se pudo finalizar la conexion.")); return; }
+                    if (payload.syncWarning) toast({ title: "Conectado; sincronización pendiente", description: payload.syncWarning, variant: "destructive" });
                     resolve();
                 }, {
                     config_id: config.configId,
                     response_type: "code",
                     override_default_response_type: true,
-                    extras: { setup: config.solutionId ? { solutionID: config.solutionId } : {} },
+                    extras: metaSignupExtras(mode, config.solutionId),
                 });
             });
-            toast({ title: "WhatsApp oficial conectado", description: "El numero quedo registrado y el webhook suscrito." });
+            toast({ title: "WhatsApp oficial conectado", description: "Webhook suscrito. En coexistencia, conserva WhatsApp Business abierto mientras se sincronizan los datos autorizados." });
             await refresh();
         } catch (error) {
             toast({ title: "No se pudo conectar", description: error instanceof Error ? error.message : "Error desconocido", variant: "destructive" });
@@ -223,12 +223,13 @@ export function MetaWhatsAppPanel() {
             ) : null}
 
             <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2 md:col-span-2"><Label>Forma de conexión oficial</Label><select className="w-full rounded-xl border bg-background p-2 text-sm" value={mode} onChange={e => setMode(e.target.value === "cloud" ? "cloud" : "coexistence")} disabled={working}><option value="coexistence">API + WhatsApp Business en el celular</option><option value="cloud">Número solo para API</option></select><p className="text-xs text-muted-foreground">Coexistencia conserva tu cuenta del celular. No borres la cuenta ni desinstales la app; el historial requiere tu autorización en Meta.</p></div>
                 <div className="space-y-2"><Label>Meta App ID</Label><Input value={form.appId} onChange={(e) => field("appId", e.target.value)} placeholder="App ID" /></div>
                 <div className="space-y-2"><Label>App Secret</Label><Input type="password" value={form.appSecret} onChange={(e) => field("appSecret", e.target.value)} placeholder="Dejar vacio para conservarlo" /></div>
                 <div className="space-y-2"><Label>Configuration ID (v4)</Label><Input value={form.configId} onChange={(e) => field("configId", e.target.value)} /></div>
                 <div className="space-y-2"><Label>Solution ID (Tech Provider)</Label><Input value={form.solutionId} onChange={(e) => field("solutionId", e.target.value)} /></div>
                 <div className="space-y-2"><Label>Version Graph API</Label><Input value={form.graphApiVersion} onChange={(e) => field("graphApiVersion", e.target.value)} /></div>
-                <div className="space-y-2"><Label>PIN de registro (6 digitos)</Label><Input type="password" inputMode="numeric" maxLength={6} value={form.registrationPin} onChange={(e) => field("registrationPin", e.target.value.replace(/\D/g, ""))} placeholder="Dejar vacio para conservarlo" /></div>
+                {mode === "cloud" ? <div className="space-y-2"><Label>PIN de registro (6 digitos)</Label><Input type="password" inputMode="numeric" maxLength={6} value={form.registrationPin} onChange={(e) => field("registrationPin", e.target.value.replace(/\D/g, ""))} placeholder="Dejar vacio para conservarlo" /></div> : null}
                 <div className="space-y-2"><Label>Token de verificacion del webhook</Label><Input type="password" value={form.webhookVerifyToken} onChange={(e) => field("webhookVerifyToken", e.target.value)} placeholder="Dejar vacio para conservarlo" /></div>
                 <div className="space-y-2"><Label>URL publica del CRM</Label><Input value={form.webhookBaseUrl} onChange={(e) => field("webhookBaseUrl", e.target.value)} placeholder="https://crm.tudominio.com" /></div>
             </div>

@@ -133,12 +133,19 @@ async function applyStatus(db, event) {
     const status = ["sent", "delivered", "read", "failed"].includes(payload.messageStatus) ? payload.messageStatus : "sent";
     if (!providerMessageId) return;
     const updated = await db.query(
-        `UPDATE "Message" SET "status" = $3
+        `UPDATE "Message" SET "status" = CASE
+              WHEN "status" = 'read' THEN 'read'
+              WHEN "status" = 'delivered' AND $3 <> 'read' THEN 'delivered'
+              WHEN "status" = 'failed' AND $3 = 'sent' THEN 'failed'
+              ELSE $3 END
           WHERE "id" = (
-              SELECT "id" FROM "Message" WHERE "source_type" = $1 AND "providerMessageId" = $2 ORDER BY "createdAt" DESC LIMIT 1
+              SELECT "id" FROM "Message" WHERE "source_type" = $1 AND "providerMessageId" = $2
+              AND ($1 <> 'meta' OR "source_id" IS NOT DISTINCT FROM $4)
+              ORDER BY "createdAt" DESC LIMIT 1
           ) RETURNING "conversationId"`,
-        [sourceType, providerMessageId, status],
+        [sourceType, providerMessageId, status, text(payload.sourceId, 160) || null],
     );
+    if (!updated.rowCount) throw new Error("Receipt arrived before its WhatsApp message was persisted; retry required.");
     if (updated.rowCount) await db.query(`UPDATE "Conversation" SET "updatedAt" = NOW() WHERE "id" = $1`, [updated.rows[0].conversationId]);
 }
 
@@ -150,10 +157,13 @@ async function applyReaction(db, event) {
     const updated = await db.query(
         `UPDATE "Message" SET "reaction" = $3
           WHERE "id" = (
-              SELECT "id" FROM "Message" WHERE "source_type" = $1 AND "providerMessageId" = $2 ORDER BY "createdAt" DESC LIMIT 1
+              SELECT "id" FROM "Message" WHERE "source_type" = $1 AND "providerMessageId" = $2
+              AND ($1 <> 'meta' OR "source_id" IS NOT DISTINCT FROM $4)
+              ORDER BY "createdAt" DESC LIMIT 1
           ) RETURNING "conversationId"`,
-        [sourceType, targetId, typeof payload.reaction === "string" ? payload.reaction.slice(0, 32) : null],
+        [sourceType, targetId, typeof payload.reaction === "string" ? payload.reaction.slice(0, 32) : null, text(payload.sourceId, 160) || null],
     );
+    if (!updated.rowCount) throw new Error("Reaction arrived before its WhatsApp message was persisted; retry required.");
     if (updated.rowCount) await db.query(`UPDATE "Conversation" SET "updatedAt" = NOW() WHERE "id" = $1`, [updated.rows[0].conversationId]);
 }
 
@@ -168,7 +178,7 @@ async function processWebhookEvent(work) {
     if (event.tenantId !== work.tenantId) throw new Error("Webhook work item tenant mismatch.");
     await control.query(`UPDATE "WebhookEvent" SET "status" = 'PROCESSING', "processingError" = NULL WHERE "id" = $1`, [event.id]);
     // Both directions use the same tenant-scoped contact/conversation resolver.
-    if (event.payload?.kind === "message") {
+    if (["message", "history", "contacts", "sync", "channel", "message_change"].includes(event.payload?.kind)) {
         const internalUrl = process.env.TENANT_WEB_INTERNAL_URL?.trim()?.replace(/\/+$/, "") || "";
         const secret = process.env.SECURITY_HASH_SALT?.trim() || "";
         if (!internalUrl || !secret) throw new Error("Tenant message processing endpoint is not configured.");
@@ -189,6 +199,7 @@ async function processWebhookEvent(work) {
         try {
             if (event.payload?.kind === "status") await applyStatus(db, event);
             else if (event.payload?.kind === "reaction") await applyReaction(db, event);
+            else if (event.payload?.kind !== "ignored") throw new Error("Unsupported webhook event kind; refusing to discard it.");
         } finally {
             await db.end();
         }

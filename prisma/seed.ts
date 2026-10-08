@@ -45,7 +45,7 @@ async function main() {
 
     // Create a test contact (Joel Venegas)
     const contact = await prisma.contact.upsert({
-        where: { phone: "524772683928" },
+        where: { phone_sourceType: { phone: "524772683928", sourceType: "wuzapi" } },
         update: {},
         create: {
             phone: "524772683928",

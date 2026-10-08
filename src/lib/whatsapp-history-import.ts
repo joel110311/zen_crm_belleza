@@ -251,6 +251,7 @@ async function importDirectChatHistory(params: {
     await prisma.$transaction(async (tx) => {
         const contact = await tx.contact.findFirst({
             where: {
+                sourceType: "wuzapi",
                 OR: buildPhoneMatchClauses([phone]),
             },
         });

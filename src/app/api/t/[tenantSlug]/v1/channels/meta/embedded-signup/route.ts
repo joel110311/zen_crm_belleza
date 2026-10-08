@@ -13,7 +13,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ ten
     return withTenantApi(request, tenantSlug, { operation: "write", permission: "channels.write" }, async (tenant) => {
         const body = asRecord(await readTenantJson(request));
         return runTenantMutation(tenant, request, { action: "begin-meta-embedded-signup", ...body }, async () => {
-            return beginMetaEmbeddedSignup({ tenantId: tenant.tenantId, userId: tenant.actor.controlUserId || "" });
+            return beginMetaEmbeddedSignup({ tenantId: tenant.tenantId, userId: tenant.actor.controlUserId || "", mode: body.mode === "coexistence" ? "coexistence" : "cloud" });
         });
     });
 }

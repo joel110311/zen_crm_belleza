@@ -3,6 +3,7 @@ import { buildPhoneMatchClauses, extractNational10 } from "./phone.ts";
 export type DeduplicationContact = {
     id: string;
     phone: string;
+    sourceType?: string;
     name?: string | null;
     lastName?: string | null;
     email?: string | null;
@@ -25,11 +26,16 @@ export type DeduplicationContact = {
         id: string;
         sourceType?: string | null;
         sourceId?: string | null;
+        status?: string;
+        botActive?: boolean;
+        assignedUserId?: string | null;
+        sessionExpiresAt?: Date | null;
         messages?: Array<{ id: string }>;
     }>;
 };
 
 export type PrismaLikeClient = {
+    $transaction?: <T>(operation: (tx: PrismaLikeClient) => Promise<T>) => Promise<T>;
     contact: {
         findMany: (args: Record<string, unknown>) => Promise<DeduplicationContact[]>;
         findFirst?: (args: Record<string, unknown>) => Promise<DeduplicationContact | null>;
@@ -111,16 +117,26 @@ export async function mergeDuplicateContactRecords(
     duplicates: DeduplicationContact[],
     db: PrismaLikeClient,
 ) {
+    if (db.$transaction) {
+        return db.$transaction(tx => mergeContactsInTransaction(primary, duplicates, tx));
+    }
+    return mergeContactsInTransaction(primary, duplicates, db);
+}
+
+async function mergeContactsInTransaction(primary: DeduplicationContact, duplicates: DeduplicationContact[], db: PrismaLikeClient) {
+    const primaryConversations = primary.conversations || [];
     for (const dup of duplicates) {
         if (dup.id === primary.id) continue;
+        if ((dup.sourceType || "wuzapi") !== (primary.sourceType || "wuzapi")) continue;
+        // Old mixed-channel records must be split by migration, never merged here.
+        if ([...(primary.conversations || []), ...(dup.conversations || [])].some(c => (c.sourceType || "wuzapi") !== (primary.sourceType || "wuzapi"))) continue;
 
         const dupConversations = dup.conversations || [];
-        const primaryConversations = primary.conversations || [];
 
         for (const dupConv of dupConversations) {
             const matchingPrimaryConv = primaryConversations.find(
-                (pc) => pc.sourceType === dupConv.sourceType && (!pc.sourceId || pc.sourceId === dupConv.sourceId),
-            ) || primaryConversations[0];
+                (pc) => pc.sourceType === dupConv.sourceType && (pc.sourceId || null) === (dupConv.sourceId || null) && (pc.status || "active") === (dupConv.status || "active"),
+            );
 
             if (matchingPrimaryConv && matchingPrimaryConv.id !== dupConv.id) {
                 // Transfer messages to matching conversation
@@ -133,33 +149,41 @@ export async function mergeDuplicateContactRecords(
                     await db.bulkCampaignRecipient.updateMany({
                         where: { conversationId: dupConv.id },
                         data: { conversationId: matchingPrimaryConv.id },
-                    }).catch(() => {});
+                    });
                 }
+                await db.conversation.update({ where: { id: matchingPrimaryConv.id }, data: {
+                    ...(dupConv.botActive === false ? { botActive: false } : {}),
+                    ...(!matchingPrimaryConv.assignedUserId && dupConv.assignedUserId ? { assignedUserId: dupConv.assignedUserId } : {}),
+                    ...(dupConv.sessionExpiresAt && dupConv.sessionExpiresAt > (matchingPrimaryConv.sessionExpiresAt || new Date(0)) ? { sessionExpiresAt: dupConv.sessionExpiresAt } : {}),
+                } });
                 // Delete duplicate conversation
                 await db.conversation.delete({
                     where: { id: dupConv.id },
-                }).catch((err) => {
-                    console.warn("[Deduplication] Could not delete dup conversation:", dupConv.id, err);
                 });
             } else {
                 // Re-link orphan conversation to primary contact
                 await db.conversation.update({
                     where: { id: dupConv.id },
                     data: { contactId: primary.id },
-                }).catch(() => {});
+                });
+                primaryConversations.push(dupConv);
             }
         }
 
         // Re-link relations
-        if (db.appointment) await db.appointment.updateMany({ where: { contactId: dup.id }, data: { contactId: primary.id } }).catch(() => {});
-        if (db.patient) await db.patient.updateMany({ where: { contactId: dup.id }, data: { contactId: primary.id } }).catch(() => {});
-        if (db.deal) await db.deal.updateMany({ where: { contactId: dup.id }, data: { contactId: primary.id } }).catch(() => {});
-        if (db.cashMovement) await db.cashMovement.updateMany({ where: { contactId: dup.id }, data: { contactId: primary.id } }).catch(() => {});
-        if (db.paymentLink) await db.paymentLink.updateMany({ where: { contactId: dup.id }, data: { contactId: primary.id } }).catch(() => {});
-        if (db.bulkCampaignRecipient) await db.bulkCampaignRecipient.updateMany({ where: { contactId: dup.id }, data: { contactId: primary.id } }).catch(() => {});
+        if (db.appointment) await db.appointment.updateMany({ where: { contactId: dup.id }, data: { contactId: primary.id } });
+        if (db.patient) await db.patient.updateMany({ where: { contactId: dup.id }, data: { contactId: primary.id } });
+        if (db.deal) await db.deal.updateMany({ where: { contactId: dup.id }, data: { contactId: primary.id } });
+        if (db.cashMovement) await db.cashMovement.updateMany({ where: { contactId: dup.id }, data: { contactId: primary.id } });
+        if (db.paymentLink) await db.paymentLink.updateMany({ where: { contactId: dup.id }, data: { contactId: primary.id } });
+        if (db.bulkCampaignRecipient) await db.bulkCampaignRecipient.updateMany({ where: { contactId: dup.id }, data: { contactId: primary.id } });
 
         // Inherit fields if primary was missing them
         const updates: Record<string, unknown> = {};
+        if (!primary.bulkCampaignOptOutAt && dup.bulkCampaignOptOutAt) {
+            updates.bulkCampaignOptOutAt = dup.bulkCampaignOptOutAt;
+            updates.bulkCampaignOptOutReason = dup.bulkCampaignOptOutReason;
+        }
         if (!primary.name && dup.name) updates.name = dup.name;
         if (!primary.lastName && dup.lastName) updates.lastName = dup.lastName;
         if (!primary.email && dup.email) updates.email = dup.email;
@@ -172,14 +196,12 @@ export async function mergeDuplicateContactRecords(
             await db.contact.update({
                 where: { id: primary.id },
                 data: updates,
-            }).catch(() => {});
+            });
         }
 
         // Delete duplicate contact
         await db.contact.delete({
             where: { id: dup.id },
-        }).catch((err) => {
-            console.warn("[Deduplication] Could not delete duplicate contact:", dup.id, err);
         });
     }
 }
@@ -191,6 +213,7 @@ export async function mergeDuplicateContactRecords(
 export async function findAndConsolidateContact(
     phoneCandidates: string[],
     customDb?: unknown,
+    sourceType = "wuzapi",
 ) {
     const db = (customDb || (await getDefaultDb())) as PrismaLikeClient | null;
     if (!db) return null;
@@ -198,7 +221,7 @@ export async function findAndConsolidateContact(
     if (clauses.length === 0) return null;
 
     const contacts = await db.contact.findMany({
-        where: { OR: clauses },
+        where: { sourceType, OR: clauses },
         include: {
             conversations: {
                 include: {
@@ -224,6 +247,7 @@ export async function findAndConsolidateContact(
         const last4 = national10.slice(-4);
         const potentialContacts = await db.contact.findMany({
             where: {
+                sourceType,
                 phone: { contains: last4 },
                 id: { notIn: contacts.map((c) => c.id) },
             },
@@ -278,7 +302,7 @@ export async function findAndConsolidateContact(
  * sharing the same 10-digit national number.
  */
 export async function consolidateConversationsList(
-    conversations: Array<{ id: string; contact?: { id?: string | null; phone?: string | null } | null }>,
+    conversations: Array<{ id: string; sourceType?: string; contact?: { id?: string | null; phone?: string | null; sourceType?: string } | null }>,
     customDb?: unknown,
 ): Promise<boolean> {
     if (!conversations || conversations.length <= 1) return false;
@@ -291,22 +315,24 @@ export async function consolidateConversationsList(
         const phone = conv.contact?.phone;
         const nat10 = extractNational10(phone);
         if (nat10 && nat10.length === 10) {
-            const list = nationalMap.get(nat10) || [];
+            const key = `${conv.contact?.sourceType || conv.sourceType || "wuzapi"}:${nat10}`;
+            const list = nationalMap.get(key) || [];
             if (conv.contact?.id && !list.includes(conv.contact.id)) {
                 list.push(conv.contact.id);
             }
-            nationalMap.set(nat10, list);
+            nationalMap.set(key, list);
         }
     }
 
     let anyMerged = false;
-    for (const [nat10, contactIds] of nationalMap.entries()) {
+    for (const [key, contactIds] of nationalMap.entries()) {
         if (contactIds.length > 1) {
             try {
-                await findAndConsolidateContact([nat10], db);
+                const [sourceType, nat10] = key.split(":");
+                await findAndConsolidateContact([nat10], db, sourceType);
                 anyMerged = true;
             } catch (err) {
-                console.warn("[Deduplication] Failed to consolidate for nat10:", nat10, err);
+                console.warn("[Deduplication] Failed to consolidate for channel/phone:", key, err);
             }
         }
     }

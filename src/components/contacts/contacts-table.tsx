@@ -62,6 +62,7 @@ type ClientAppointment = {
 
 type ContactTableItem = {
     id: string;
+    sourceType?: string;
     name: string | null;
     lastName: string | null;
     phone: string | null;
@@ -449,6 +450,9 @@ export function ContactsTable({ contacts }: ContactsPageProps) {
                                     <TableCell>
                                         <div className="block min-w-[210px]">
                                             <span className="block truncate font-semibold text-foreground">{fullName}</span>
+                                            <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-primary/5 px-2 py-0.5 text-xs text-primary">
+                                                <WhatsAppIcon className="h-3 w-3" /> {contact.sourceType === "meta" ? "WhatsApp API oficial" : "WhatsApp QR"}
+                                            </span>
                                             <span className="mt-1 inline-flex items-center gap-1.5 whitespace-nowrap text-sm text-muted-foreground">
                                                 <Phone className="h-3.5 w-3.5" /> {contact.phone || "Sin teléfono"}
                                             </span>

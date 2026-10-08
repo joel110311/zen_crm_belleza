@@ -95,7 +95,7 @@ export async function sharePortalByWhatsApp(input: SharePortalInput) {
         }
 
         contact = await prisma.contact.findUnique({
-            where: { phone },
+            where: { phone_sourceType: { phone, sourceType: "wuzapi" } },
             select: { id: true, name: true, lastName: true, phone: true },
         });
 
