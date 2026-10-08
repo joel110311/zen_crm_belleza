@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getControlDb } from "@/lib/control-db";
-import { PlatformAdminAccessError, requirePlatformAdmin } from "@/lib/platform-admin";
+import { requirePlatformAdmin } from "@/lib/platform-admin";
+import { controlApiError, ControlValidationError } from "@/lib/control-api-errors";
 import { isSameApplicationOrigin } from "@/lib/security";
 import { normalizeChatModelSelection, SUPPORTED_CHAT_MODELS } from "@/lib/ai/models";
 import { PLATFORM_AI_RUNTIME_KEY } from "@/lib/ai/platform-runtime";
@@ -12,27 +13,28 @@ export const runtime = "nodejs";
 
 function integer(value: unknown, minimum: number, maximum: number) {
     const parsed = Number(value);
-    if (!Number.isSafeInteger(parsed) || parsed < minimum || parsed > maximum) throw new Error("El valor numérico no es válido.");
+    if (!Number.isSafeInteger(parsed) || parsed < minimum || parsed > maximum) throw new ControlValidationError("El valor numérico no es válido.");
     return parsed;
 }
 
 function cleanText(value: unknown, maximum: number, required = false) {
     const result = typeof value === "string" ? value.trim().slice(0, maximum) : "";
-    if (required && !result) throw new Error("Completa los campos requeridos.");
+    if (required && !result) throw new ControlValidationError("Completa los campos requeridos.");
     return result;
 }
 
 function responseForError(error: unknown) {
-    if (error instanceof PlatformAdminAccessError) return NextResponse.json({ error: error.message }, { status: error.status });
-    const message = error instanceof Error ? error.message : "No fue posible guardar el cambio.";
-    return NextResponse.json({ error: message }, { status: 400 });
+    const { status, message } = controlApiError(error);
+    if (status >= 500) console.error("[ControlAPI] Request failed", { status });
+    return NextResponse.json({ error: message }, { status, headers: status === 503 ? { "Retry-After": "5" } : undefined });
 }
 
 export async function PATCH(request: NextRequest) {
     if (!isSameApplicationOrigin(request)) return NextResponse.json({ error: "Origen no permitido." }, { status: 403 });
     try {
         const admin = await requirePlatformAdmin();
-        const body = await request.json() as Record<string, unknown>;
+        const body = await request.json().catch(() => { throw new ControlValidationError("El cuerpo JSON no es válido."); }) as Record<string, unknown>;
+        if (!body || typeof body !== "object" || Array.isArray(body)) throw new ControlValidationError("El cuerpo JSON no es válido.");
         const action = cleanText(body.action, 60, true);
         const db = getControlDb();
 
@@ -40,7 +42,7 @@ export async function PATCH(request: NextRequest) {
             const requestedModel = cleanText(body.chatModel, 120, true);
             const chatModel = normalizeChatModelSelection(requestedModel);
             if (!SUPPORTED_CHAT_MODELS.some((model) => model.id === requestedModel) || chatModel !== requestedModel) {
-                throw new Error("El modelo seleccionado no está permitido.");
+                throw new ControlValidationError("El modelo seleccionado no está permitido.");
             }
             await db.$transaction(async (tx) => {
                 await tx.platformRuntimeSetting.upsert({
@@ -63,12 +65,12 @@ export async function PATCH(request: NextRequest) {
 
         if (action === "billing-runtime") {
             const environment = cleanText(body.mercadoPagoEnvironment, 20, true);
-            if (!["test", "production"].includes(environment)) throw new Error("Selecciona un entorno válido.");
+            if (!["test", "production"].includes(environment)) throw new ControlValidationError("Selecciona un entorno válido.");
             const state = await getMercadoPagoControlState();
             const ready = state.applicationIdConfigured && (environment === "production"
                 ? state.productionAccessTokenConfigured && state.productionWebhookSecretConfigured
                 : state.testAccessTokenConfigured && state.testWebhookSecretConfigured);
-            if (!ready) throw new Error(`Carga en Portainer las credenciales de ${environment === "production" ? "producción" : "prueba"} antes de activarlas.`);
+            if (!ready) throw new ControlValidationError(`Carga en Portainer las credenciales de ${environment === "production" ? "producción" : "prueba"} antes de activarlas.`);
             await db.$transaction(async (tx) => {
                 await tx.platformRuntimeSetting.upsert({
                     where: { key: PLATFORM_BILLING_RUNTIME_KEY },
@@ -96,13 +98,13 @@ export async function PATCH(request: NextRequest) {
             if (proxyUrl) {
                 let parsed: URL;
                 try { parsed = new URL(proxyUrl); }
-                catch { throw new Error("La dirección del proxy no es válida."); }
+                catch { throw new ControlValidationError("La dirección del proxy no es válida."); }
                 if (!["http:", "https:", "socks5:"].includes(parsed.protocol) || !parsed.hostname || !parsed.port) {
-                    throw new Error("El proxy debe incluir protocolo, host y puerto.");
+                    throw new ControlValidationError("El proxy debe incluir protocolo, host y puerto.");
                 }
             }
             const current = await db.tenantQrChannelConfiguration.findUnique({ where: { tenantId } });
-            if (enabled && !proxyUrl && (clear || !current?.proxyUrlCiphertext)) throw new Error("Captura la dirección del proxy antes de activarlo.");
+            if (enabled && !proxyUrl && (clear || !current?.proxyUrlCiphertext)) throw new ControlValidationError("Captura la dirección del proxy antes de activarlo.");
             const encrypted = proxyUrl ? encryptChannelSecret(proxyUrl) : null;
             await db.$transaction(async (tx) => {
                 await tx.tenant.findUniqueOrThrow({ where: { id: tenantId }, select: { id: true } });
@@ -129,7 +131,7 @@ export async function PATCH(request: NextRequest) {
             const warningHours = integer(body.warningHours, 24, 168);
             const finalWarningHours = integer(body.finalWarningHours, 1, 48);
             const graceDays = integer(body.graceDays, 0, 30);
-            if (finalWarningHours >= warningHours) throw new Error("El aviso final debe ocurrir después del primer aviso.");
+            if (finalWarningHours >= warningHours) throw new ControlValidationError("El aviso final debe ocurrir después del primer aviso.");
             await db.$transaction(async (tx) => {
                 const current = await tx.trialPolicy.findFirst({ where: { isDefault: true, isActive: true }, orderBy: { version: "desc" } });
                 await tx.trialPolicy.updateMany({ where: { isDefault: true }, data: { isDefault: false } });
@@ -176,7 +178,7 @@ export async function PATCH(request: NextRequest) {
             const reason = cleanText(body.reason, 300, true);
             await db.$transaction(async (tx) => {
                 const trial = await tx.trial.findUnique({ where: { tenantId }, select: { id: true, endsAt: true } });
-                if (!trial) throw new Error("Este negocio no tiene una prueba que pueda extenderse.");
+                if (!trial) throw new ControlValidationError("Este negocio no tiene una prueba que pueda extenderse.");
                 const base = trial.endsAt > new Date() ? trial.endsAt : new Date();
                 const endsAt = new Date(base.getTime() + days * 24 * 60 * 60 * 1_000);
                 await tx.trial.update({ where: { id: trial.id }, data: { endsAt, status: "ACTIVE", expiredAt: null, warningSentAt: null, finalWarningAt: null } });
@@ -188,12 +190,12 @@ export async function PATCH(request: NextRequest) {
         }
 
         if (action === "retry-selection") {
-            if (!isStripeBillingEnabled()) throw new Error("Las activaciones de Stripe están pausadas. Utiliza Mercado Pago.");
+            if (!isStripeBillingEnabled()) throw new ControlValidationError("Las activaciones de Stripe están pausadas. Utiliza Mercado Pago.");
             const tenantId = cleanText(body.tenantId, 100, true);
             const reason = cleanText(body.reason, 300, true);
             await db.$transaction(async (tx) => {
                 const selection = await tx.billingSelection.findUnique({ where: { tenantId } });
-                if (!selection || selection.status !== "FAILED") throw new Error("No existe una activación fallida para reintentar.");
+                if (!selection || selection.status !== "FAILED") throw new ControlValidationError("No existe una activación fallida para reintentar.");
                 await tx.billingSelection.update({ where: { id: selection.id }, data: { status: "SCHEDULED", scheduledFor: new Date(), lastError: null } });
                 await tx.auditLog.create({ data: { tenantId, actorUserId: admin.id, action: "billing_selection.retried", resourceType: "BillingSelection", resourceId: selection.id, metadata: { reason } } });
             });

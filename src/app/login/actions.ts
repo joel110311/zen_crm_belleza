@@ -16,7 +16,7 @@ export async function loginAction(
         const legacyRequest = isLegacyApplicationRequest(requestHeaders);
         const requestedRedirect = String(formData.get("redirectTo") || "");
         if (process.env.MULTITENANT_AUTH_ENABLED === "true" && !legacyRequest) {
-            formData.set("redirectTo", /^\/(?:onboarding|t|tenants)(?:\/|$)/.test(requestedRedirect) ? requestedRedirect : "/tenants");
+            formData.set("redirectTo", requestedRedirect === "/control" || /^\/(?:onboarding|t|tenants)(?:\/|$)/.test(requestedRedirect) ? requestedRedirect : "/tenants");
         } else if (legacyRequest) {
             const safePath = requestedRedirect.startsWith("/") && !requestedRedirect.startsWith("//")
                 ? requestedRedirect
@@ -46,7 +46,7 @@ export async function googleLoginAction(formData: FormData) {
     }
 
     const requestedRedirect = String(formData.get("redirectTo") || "");
-    const redirectTo = /^\/(?:onboarding|t|tenants)(?:\/|$)/.test(requestedRedirect)
+    const redirectTo = requestedRedirect === "/control" || /^\/(?:onboarding|t|tenants)(?:\/|$)/.test(requestedRedirect)
         ? requestedRedirect
         : "/tenants";
     await signIn("google", { redirectTo });

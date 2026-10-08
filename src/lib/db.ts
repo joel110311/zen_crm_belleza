@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { Prisma, PrismaClient } from "@prisma/client";
-import { Pool } from "pg";
+import { createRuntimePool } from "@/lib/runtime-pool";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { createRoutedPrismaClient } from "@/lib/routed-prisma";
 
@@ -29,7 +29,7 @@ try {
                 },
             });
         } else {
-            const pool = new Pool({ connectionString });
+            const pool = createRuntimePool(connectionString, "legacy", 10);
             const adapter = new PrismaPg(pool);
             prismaInstance = new PrismaClient({ adapter, log: prismaLogLevels });
         }

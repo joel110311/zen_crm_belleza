@@ -2,6 +2,7 @@ import "dotenv/config";
 import crypto from "node:crypto";
 import os from "node:os";
 import { Pool } from "pg";
+import { runIsolatedWorkspaceTasks } from "./lib/workspace-task-isolation.mjs";
 
 const controlUrl = process.env.CONTROL_DATABASE_URL?.trim();
 if (!controlUrl) throw new Error("CONTROL_DATABASE_URL is required by the tenant worker.");
@@ -12,7 +13,12 @@ const maxClaimBatch = boundedInteger("TENANT_WORKER_MAX_DRAIN", 100, 1, 2_000);
 const maxScheduledTenants = boundedInteger("TENANT_WORKER_MAX_SCHEDULED_TENANTS", 100, 1, 2_000);
 const drain = process.argv.includes("--drain");
 const once = process.argv.includes("--once");
-const control = new Pool({ connectionString: controlUrl, max: 4 });
+function runtimePool(connectionString, max, scope) {
+    const pool = new Pool({ connectionString, max, connectionTimeoutMillis: 5_000, statement_timeout: 60_000, idle_in_transaction_session_timeout: 60_000 });
+    pool.on("error", () => console.error("[TenantWorker] Idle database connection failed", { scope }));
+    return pool;
+}
+const control = runtimePool(controlUrl, 4, "control");
 
 function boundedInteger(name, fallback, minimum, maximum) {
     const value = Number.parseInt(process.env[name] || "", 10);
@@ -119,7 +125,7 @@ async function tenantPool(tenantId) {
     );
     const database = rows[0];
     if (!database || database.status !== "READY") throw new Error("Tenant database is unavailable to the worker.");
-    return new Pool({ connectionString: decryptTenantRuntimeUrl(database.runtimeUrlCiphertext, database.runtimeSecretKeyVersion), max: 1 });
+    return runtimePool(decryptTenantRuntimeUrl(database.runtimeUrlCiphertext, database.runtimeSecretKeyVersion), 1, "tenant");
 }
 
 function text(value, maximum = 4_000) {
@@ -287,8 +293,7 @@ async function processScheduledTenantWork() {
         [maxScheduledTenants],
     );
 
-    let processed = 0;
-    for (const tenant of rows) {
+    const result = await runIsolatedWorkspaceTasks(rows, async (tenant) => {
         const response = await fetch(`${internalUrl}/api/internal/tenant-scheduled-work`, {
             method: "POST",
             headers: {
@@ -305,10 +310,12 @@ async function processScheduledTenantWork() {
         if (!result?.success) {
             throw new Error("Tenant scheduled work returned an invalid response.");
         }
-        processed += 1;
-    }
-
-    return processed;
+    }, (tenant) => {
+        // Provider responses/errors may contain credentials; log only the isolated identity.
+        console.error("[TenantWorker] Scheduled workspace work failed; continuing other workspaces", { tenantId: tenant.id });
+    });
+    if (result.failed) console.error("[TenantWorker] Scheduled pass has failures", result);
+    return result.processed;
 }
 
 async function run() {

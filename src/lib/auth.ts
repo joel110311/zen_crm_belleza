@@ -6,9 +6,10 @@ import { prisma } from "@/lib/db";
 import { getActiveTenantAccessSubject } from "@/lib/active-tenant-context";
 import { getControlDb } from "@/lib/control-db";
 import { normalizePermissions, normalizeRole } from "@/lib/permissions";
-import { consumeRateLimit, getRequestIp, resetRateLimit } from "@/lib/security";
+import { consumeRateLimit, consumeSharedRateLimit, getRequestIp, resetRateLimit } from "@/lib/security";
 import { isLegacyApplicationRequest, isTrustedApplicationRedirect } from "@/lib/application-host";
 import { isGoogleSignInEnabled } from "@/lib/google-signin";
+import { authorizeEnvironmentPlatformAdmin, environmentAdminCredentialVersion, ENVIRONMENT_ADMIN_ID } from "@/lib/environment-platform-admin";
 
 const AUTH_RATE_LIMIT = { limit: 8, windowMs: 15 * 60 * 1000 };
 
@@ -27,6 +28,7 @@ type AuthIdentity = {
 type SessionIdentity = Omit<AuthIdentity, "passwordHash">;
 
 type AuthUserClaims = {
+    platformAdminCredentialVersion?: unknown;
     role?: unknown;
     permissions?: unknown;
     authScope?: unknown;
@@ -185,6 +187,23 @@ export const { handlers, signIn, signOut, auth } = NextAuth(() => ({
     trustHost: true,
     providers: [
         Credentials({
+            id: "platform-admin",
+            name: "Administración de plataforma",
+            credentials: { username: { label: "Usuario", type: "text" }, password: { label: "Contraseña", type: "password" } },
+            async authorize(credentials, request) {
+                if (!isControlPlaneAuthEnabled() || isLegacyApplicationRequest(request.headers)) return null;
+                if (!environmentAdminCredentialVersion()) return null;
+                const ip = getRequestIp(request.headers);
+                const key = `platform-admin:${ip}`;
+                if (!consumeRateLimit(key, AUTH_RATE_LIMIT).allowed) return null;
+                const shared = await consumeSharedRateLimit({ scope: "platform-admin-login", identifiers: [ip], ...AUTH_RATE_LIMIT });
+                if (!shared.allowed) return null;
+                const user = await authorizeEnvironmentPlatformAdmin(credentials?.username, credentials?.password);
+                if (user) resetRateLimit(key);
+                return user;
+            },
+        }),
+        Credentials({
             name: "credentials",
             credentials: {
                 email: { label: "Email", type: "email" },
@@ -279,12 +298,25 @@ export const { handlers, signIn, signOut, auth } = NextAuth(() => ({
                 token.authScope = userClaims.authScope === "control" ? "control" : "legacy";
                 token.securityVersion = typeof userClaims.securityVersion === "number" ? userClaims.securityVersion : 0;
                 token.isPlatformAdmin = userClaims.isPlatformAdmin === true;
+                token.platformAdminCredentialVersion = userClaims.platformAdminCredentialVersion;
                 // user.name is guaranteed non-null from authorize()
                 token.name = user.name;
             }
 
             // Keep session claims synced with DB so profile/role edits show up after re-login.
             if (token.id) {
+                // Rotating/removing Portainer credentials immediately revokes dedicated admin JWTs.
+                if (token.id === ENVIRONMENT_ADMIN_ID && (!environmentAdminCredentialVersion() || token.platformAdminCredentialVersion !== environmentAdminCredentialVersion())) {
+                    delete token.id;
+                    delete token.role;
+                    delete token.permissions;
+                    delete token.authScope;
+                    delete token.securityVersion;
+                    delete token.isPlatformAdmin;
+                    delete token.platformAdminCredentialVersion;
+                    token.name = "Sesión administrativa revocada";
+                    return token;
+                }
                 try {
                     const scope = token.authScope === "control" ? "control" : "legacy";
                     const dbUser = await refreshAuthIdentity(token.id as string, scope);

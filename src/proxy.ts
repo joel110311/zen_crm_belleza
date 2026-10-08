@@ -1,6 +1,7 @@
 import { getToken, type JWT } from "next-auth/jwt";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { ENVIRONMENT_ADMIN_ID } from "@/lib/platform-admin-policy";
 import { hasPermission, type PermissionKey } from "@/lib/permissions";
 import {
     ACTIVE_TENANT_COOKIE,
@@ -64,7 +65,7 @@ export async function proxy(req: NextRequest) {
     // The canonical application URL is the public acquisition page.  It must
     // bypass this authentication middleware just like /signup; otherwise the
     // page component never gets a chance to render the registration CTA.
-    const isPublicPath = pathname === "/" || publicPaths.some((path) => pathname.startsWith(path));
+    const isPublicPath = pathname === "/" || pathname === "/control/login" || publicPaths.some((path) => pathname.startsWith(path));
 
     // Try both cookie names (HTTPS uses __Secure- prefix, HTTP uses plain)
     // Behind reverse proxies like Traefik, the internal request may be HTTP
@@ -104,10 +105,21 @@ export async function proxy(req: NextRequest) {
     const cookieTenantSlug = normalizeRequestTenantSlug(req.cookies.get(ACTIVE_TENANT_COOKIE)?.value);
     const activeTenantSlug = pathTenantSlug || refererTenantSlug || cookieTenantSlug;
 
-    if (tokenUserId && isControlSession && activeTenantSlug) {
+    const isPlatformControlPath = pathname === "/control" || pathname.startsWith("/control/")
+        || pathname === "/api/control" || pathname.startsWith("/api/control/");
+    if (tokenUserId && isControlSession && activeTenantSlug && !isPlatformControlPath) {
         forwardedHeaders.set(TENANT_SCOPE_HEADER, "control");
         forwardedHeaders.set(TENANT_SLUG_HEADER, activeTenantSlug);
         forwardedHeaders.set(TENANT_USER_HEADER, tokenUserId);
+    }
+
+    // The dedicated environment account controls the platform only. It must not inherit
+    // reception-role access to legacy API routes when no workspace cookie is present.
+    if (tokenUserId === ENVIRONMENT_ADMIN_ID && !isPlatformControlPath && !isPublicPath) {
+        if (pathname.startsWith("/api/") || pathname.startsWith("/uploads/")) {
+            return NextResponse.json({ error: "Este acceso es exclusivo del panel administrativo. Usa tu cuenta de negocio para entrar al CRM." }, { status: 403 });
+        }
+        return NextResponse.redirect(new URL("/control", req.url));
     }
 
     // Media authorizes session/tenant or a short-lived provider signature in its handler.
@@ -125,12 +137,13 @@ export async function proxy(req: NextRequest) {
 
     // Tenant API routes enforce authentication and membership themselves. Keep their stable
     // JSON 401/403/404 contract instead of converting failures into an HTML login redirect.
-    if (pathname.startsWith("/api/t/")) {
+    if (pathname.startsWith("/api/t/") || pathname.startsWith("/api/control/")) {
         return nextWithSanitizedHeaders();
     }
 
     // If not authenticated, redirect to login
     if (!tokenUserId) {
+        if (isPlatformControlPath) return NextResponse.redirect(new URL("/control/login", req.url));
         const loginUrl = new URL("/login", req.url);
         loginUrl.searchParams.set("redirectTo", pathname);
         return NextResponse.redirect(loginUrl);

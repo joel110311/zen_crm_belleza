@@ -59,6 +59,7 @@ function normalizeControlUserInput(input: CreateControlUserInput) {
     if (!/^\S+@\S+\.\S+$/.test(email)) {
         throw new Error("El correo electrónico no es válido.");
     }
+    if (email.endsWith("@platform.invalid")) throw new Error("Este correo está reservado para la administración interna.");
 
     if (password.length < 12 || password.length > 128) {
         throw new Error("La contraseña debe tener entre 12 y 128 caracteres.");

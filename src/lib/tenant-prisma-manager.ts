@@ -1,7 +1,8 @@
 import "server-only";
 import { Prisma, PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
-import { Pool } from "pg";
+import type { Pool } from "pg";
+import { createRuntimePool } from "@/lib/runtime-pool";
 import { getControlDb } from "@/lib/control-db";
 import { decryptTenantRuntimeUrl } from "@/lib/tenant-credentials";
 
@@ -43,6 +44,7 @@ export class TenantDatabaseUnavailableError extends Error {
 export class TenantPrismaManager {
     private readonly entries = new Map<string, CachedTenantClient>();
     private readonly pendingClients = new Map<string, Promise<PrismaClient>>();
+    private readonly reservedClients = new Set<string>();
     private readonly maxClients = readBoundedInteger("TENANT_PRISMA_MAX_CLIENTS", 20, 1, 100);
     private readonly idleTtlMs = readBoundedInteger("TENANT_PRISMA_IDLE_TTL_MS", 300_000, 1_000, 3_600_000);
     private readonly poolMax = readBoundedInteger("TENANT_PRISMA_POOL_MAX", 5, 1, 20);
@@ -106,13 +108,15 @@ export class TenantPrismaManager {
             record.runtimeUrlCiphertext,
             record.runtimeSecretKeyVersion,
         );
-        const pool = new Pool({ connectionString: runtimeUrl, max: this.poolMax });
-        const adapter = new PrismaPg(pool);
-        const client = new PrismaClient({ adapter, log: this.logLevels });
-
+        // Reserve before network I/O, so simultaneous workspace startups cannot exceed the cap.
+        await this.reserveClient(record.tenantId);
+        let pool: Pool | undefined;
+        let client: PrismaClient | undefined;
         try {
+            pool = createRuntimePool(runtimeUrl, "tenant", this.poolMax);
+            const adapter = new PrismaPg(pool);
+            client = new PrismaClient({ adapter, log: this.logLevels });
             await client.$queryRaw`SELECT 1`;
-            await this.evictToLimit();
             this.entries.set(record.tenantId, {
                 client,
                 pool,
@@ -120,35 +124,43 @@ export class TenantPrismaManager {
             });
             return client;
         } catch (error) {
-            await client.$disconnect().catch(() => {});
-            await pool.end().catch(() => {});
-            throw error;
+            await client?.$disconnect().catch(() => {});
+            await pool?.end().catch(() => {});
+            const code = error && typeof error === "object" ? Reflect.get(error, "code") : undefined;
+            console.error("[TenantDatabase] Connection failed", { tenantId: record.tenantId, code: typeof code === "string" && /^[A-Z0-9_]{2,40}$/.test(code) ? code : "DATABASE_ERROR" });
+            throw new TenantDatabaseUnavailableError("La base del negocio no está disponible temporalmente. Vuelve a intentarlo.");
+        } finally {
+            this.reservedClients.delete(record.tenantId);
         }
     }
 
     private async evictExpiredEntries(): Promise<void> {
         const now = Date.now();
-        const expired = [...this.entries.entries()].filter(([, entry]) => entry.expiresAt <= now);
+        const expired = [...this.entries.entries()].filter(([, entry]) => entry.expiresAt <= now && this.isIdle(entry));
 
         for (const [tenantId, entry] of expired) {
+            // Closing a previous pool yields: another request may have refreshed this one.
+            if (this.entries.get(tenantId) !== entry || entry.expiresAt > Date.now() || !this.isIdle(entry)) continue;
             this.entries.delete(tenantId);
             await this.disconnectEntry(entry);
         }
     }
 
-    private async evictToLimit(): Promise<void> {
-        while (this.entries.size >= this.maxClients) {
-            const oldest = this.entries.entries().next().value as
-                | [string, CachedTenantClient]
-                | undefined;
-
-            if (!oldest) {
-                return;
-            }
-
-            this.entries.delete(oldest[0]);
-            await this.disconnectEntry(oldest[1]);
+    private async reserveClient(tenantId: string): Promise<void> {
+        if (this.entries.size + this.reservedClients.size >= this.maxClients) {
+            // Do not kill another workspace's connection/transaction to make room.
+            const idle = [...this.entries.entries()].find(([, entry]) => this.isIdle(entry));
+            if (!idle) throw new TenantDatabaseUnavailableError("El negocio está ocupado temporalmente. Vuelve a intentarlo en unos momentos.");
+            this.entries.delete(idle[0]);
+            this.reservedClients.add(tenantId);
+            await this.disconnectEntry(idle[1]);
+            return;
         }
+        this.reservedClients.add(tenantId);
+    }
+
+    private isIdle(entry: CachedTenantClient): boolean {
+        return entry.pool.waitingCount === 0 && entry.pool.totalCount === entry.pool.idleCount;
     }
 
     private async disconnectEntry(entry: CachedTenantClient): Promise<void> {

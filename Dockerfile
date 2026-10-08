@@ -70,6 +70,7 @@ COPY --from=builder /app/scripts/migrate-control-plane.mjs ./migrate-control-pla
 COPY --from=builder /app/scripts/migrate-existing-tenants.mjs ./migrate-existing-tenants.mjs
 COPY --from=builder /app/scripts/provision-tenant.mjs ./provision-tenant.mjs
 COPY --from=builder /app/scripts/tenant-work-worker.mjs ./tenant-work-worker.mjs
+COPY --from=builder /app/scripts/lib ./lib
 COPY --from=builder /app/scripts/account-deletion-worker.mjs ./account-deletion-worker.mjs
 COPY --from=builder /app/scripts/billing-lifecycle-worker.mjs ./billing-lifecycle-worker.mjs
 

@@ -128,7 +128,7 @@ export function Sidebar({ className, initialBranding }: React.HTMLAttributes<HTM
 
     const canShowNavItem = (item: SidebarNavItem) => {
         if (item.tenantOnly && !tenantSlug) return false;
-        if (item.platformOnly && (tenantSlug || !sessionUser?.isPlatformAdmin)) return false;
+        if (item.platformOnly && !sessionUser?.isPlatformAdmin) return false;
         if (sessionLoading) return !item.permission;
         return !item.permission || hasPermission(sessionUser, item.permission);
     };

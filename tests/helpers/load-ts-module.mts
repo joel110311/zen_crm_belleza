@@ -9,7 +9,7 @@ export function loadTsModule(relativePath: string, mocks: Record<string, unknown
     const filename = path.resolve(relativePath);
     const require = createRequire(filename);
     const code = ts.transpileModule(fs.readFileSync(filename, "utf8"), { compilerOptions: {
-        module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true,
+        module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true, jsx: ts.JsxEmit.ReactJSX,
     } }).outputText;
     const loadedModule = { exports: {} as Record<string, unknown> };
     vm.runInNewContext(code, {

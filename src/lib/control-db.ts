@@ -1,7 +1,8 @@
 import "server-only";
 import { Prisma, PrismaClient } from "@/generated/control-plane";
 import { PrismaPg } from "@prisma/adapter-pg";
-import { Pool } from "pg";
+import type { Pool } from "pg";
+import { boundedDatabaseInteger, createRuntimePool } from "@/lib/runtime-pool";
 
 type ControlPlaneGlobals = {
     controlPrisma?: PrismaClient;
@@ -28,7 +29,7 @@ export function getControlDb(): PrismaClient {
         throw new Error("CONTROL_DATABASE_URL is required to access the platform control plane.");
     }
 
-    const pool = new Pool({ connectionString });
+    const pool = createRuntimePool(connectionString, "control", boundedDatabaseInteger("CONTROL_DATABASE_POOL_MAX", 10, 1, 30));
     const adapter = new PrismaPg(pool);
     const client = new PrismaClient({ adapter, log: prismaLogLevels });
 

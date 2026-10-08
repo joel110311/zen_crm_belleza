@@ -1,4 +1,5 @@
-import { notFound, redirect } from "next/navigation";
+import Link from "next/link";
+import { redirect } from "next/navigation";
 import { CommerceControlCenter } from "@/components/control/commerce-control-center";
 import { getControlDb } from "@/lib/control-db";
 import { PlatformAdminAccessError, requirePlatformAdmin } from "@/lib/platform-admin";
@@ -10,7 +11,11 @@ export const dynamic = "force-dynamic";
 
 export default async function ControlCenterPage() {
     try { await requirePlatformAdmin(); }
-    catch (error) { if (error instanceof PlatformAdminAccessError && error.status === 401) redirect("/login?redirectTo=%2Fcontrol"); notFound(); }
+    catch (error) {
+        if (!(error instanceof PlatformAdminAccessError)) throw error;
+        if (error.status === 401) redirect("/control/login");
+        return <main className="flex min-h-dvh items-center justify-center bg-background px-5"><section className="w-full max-w-lg rounded-2xl border bg-card p-8" role="alert"><p className="text-sm font-semibold text-primary">Administración de plataforma</p><h1 className="mt-3 text-2xl font-semibold">Esta cuenta no tiene acceso administrativo</h1><p className="mt-4 text-muted-foreground">El panel está disponible, pero requiere una cuenta administradora de la plataforma. Ser propietario de un negocio no concede ese permiso.</p><div className="mt-6 flex flex-wrap gap-3"><Link className="rounded-full bg-primary px-5 py-3 text-primary-foreground" href="/control/login">Entrar como administrador</Link><Link className="rounded-full border px-5 py-3" href="/">Volver a mis negocios</Link></div></section></main>;
+    }
 
     const db = getControlDb();
     const now = new Date();
