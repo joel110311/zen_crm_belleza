@@ -76,6 +76,8 @@ function unwrapWuzapiMessage(value: unknown): JsonRecord {
         "ephemeralMessage",
         "viewOnceMessage",
         "viewOnceMessageV2",
+        "viewOnceMessageV2Extension",
+        "documentWithCaptionMessage",
     ]) {
         const wrapped = nested(message, wrapper);
         const inner = field(wrapped, "message");
@@ -91,6 +93,11 @@ function metaMessageText(message: JsonRecord, type: string) {
         const interactive = record(message.interactive);
         return string(record(interactive.button_reply).title) || string(record(interactive.list_reply).title) || "[Respuesta interactiva]";
     }
+    if (type === "location") {
+        const location = record(message.location);
+        return `[Ubicación] ${string(location.name)} ${string(location.address)} https://maps.google.com/?q=${Number(location.latitude)},${Number(location.longitude)}`.trim();
+    }
+    if (type === "contacts") return `[Contacto]\n${JSON.stringify(message.contacts).slice(0, 3500)}`;
     const media = record(message[type]);
     return string(media.caption) || `[${type}]`;
 }
@@ -142,7 +149,7 @@ export function normalizeMetaWebhook(payload: unknown, fallbackHash: string): Ar
                     });
                     continue;
                 }
-                const messageType = (["image", "video", "audio", "document"].includes(type) ? type : "text") as QueuedWebhookPayload["messageType"];
+                const messageType = (type === "sticker" ? "image" : ["image", "video", "audio", "document"].includes(type) ? type : "text") as QueuedWebhookPayload["messageType"];
                 const media = record(message[type]);
                 result.push({
                     providerEventId: `meta:message:${providerMessageId}`,
@@ -180,11 +187,20 @@ function wuzapiText(message: JsonRecord) {
         field(nested(message, "documentMessage"), "caption"),
         field(nested(message, "documentMessage"), "fileName"),
     ];
-    return candidates.map((value) => string(value)).find(Boolean) || "";
+    const body = candidates.map((value) => string(value)).find(Boolean);
+    if (body) return body;
+    const location = nested(message, "locationMessage");
+    if (Object.keys(location).length) return `[Ubicación] ${string(field(location, "name"))} ${string(field(location, "address"))} https://maps.google.com/?q=${Number(field(location, "degreesLatitude"))},${Number(field(location, "degreesLongitude"))}`.trim();
+    const contact = nested(message, "contactMessage");
+    if (Object.keys(contact).length) return `[Contacto] ${string(field(contact, "displayName"))}\n${string(field(contact, "vcard"), 3500)}`;
+    const contacts = field(nested(message, "contactsArrayMessage"), "contacts");
+    if (Array.isArray(contacts)) return `[Contactos]\n${JSON.stringify(contacts).slice(0, 3500)}`;
+    return "";
 }
 
 function wuzapiMessageType(message: JsonRecord): QueuedWebhookPayload["messageType"] {
     if (field(message, "imageMessage")) return "image";
+    if (field(message, "stickerMessage")) return "image";
     if (field(message, "videoMessage")) return "video";
     if (field(message, "audioMessage")) return "audio";
     if (field(message, "documentMessage")) return "document";
@@ -254,8 +270,12 @@ function resolveWuzapiPhone(info: JsonRecord, fromMe: boolean) {
 
 /** Normalizes the supported WuzAPI webhook variants without importing the legacy webhook route. */
 export function normalizeWuzapiWebhook(payload: unknown, externalAccountId: string, fallbackHash: string): { providerEventId: string; payload: QueuedWebhookPayload } {
-    const root = record(payload);
-    const event = record(root.event);
+    let root = record(payload);
+    const jsonData = field(root, "jsonData");
+    if (typeof jsonData === "string") {
+        try { root = { ...root, ...record(JSON.parse(jsonData)) }; } catch { /* invalid envelope is ignored below */ }
+    }
+    const event = nested(root, "event");
     const rawInfo = record(field(event, "Info") || field(root, "Info"));
     const info = { ...nested(rawInfo, "MessageSource"), ...rawInfo };
     const message = unwrapWuzapiMessage(event.Message || event.message || root.Message || root.message);
@@ -268,9 +288,18 @@ export function normalizeWuzapiWebhook(payload: unknown, externalAccountId: stri
         ? field(info, "RecipientName") || field(info, "RecipientPushName")
         : field(info, "PushName") || field(event, "PushName") || field(root, "PushName"), 160) || undefined;
     const messageType = wuzapiMessageType(message);
-    const media = nested(message, `${messageType}Message`);
+    const isSticker = Boolean(field(message, "stickerMessage"));
+    const media = nested(message, isSticker ? "stickerMessage" : `${messageType}Message`);
+    const reaction = nested(message, "reactionMessage");
+    const reactionTarget = string(field(nested(reaction, "key"), "id"), 300);
+    if (phone && !isNonDirectWuzapiChat(info) && reactionTarget) return {
+        providerEventId: `wuzapi:reaction:${externalAccountId}:${rawId || fallbackHash}`,
+        payload: { kind: "reaction", sourceType: "wuzapi", sourceId: externalAccountId, providerMessageId: rawId || undefined, targetProviderMessageId: reactionTarget, reaction: string(field(reaction, "text"), 32) || null },
+    };
+    const mediaDownload = wuzapiDownloadDescriptor(media);
+    const s3 = nested(root, "s3");
     const content = wuzapiText(message)
-        || (messageType === "image" ? "[Imagen]"
+        || (isSticker ? "[Sticker]" : messageType === "image" ? "[Imagen]"
             : messageType === "video" ? "[Video]"
                 : messageType === "audio" ? "[Audio]"
                     : messageType === "document" ? "[Documento]"
@@ -283,12 +312,28 @@ export function normalizeWuzapiWebhook(payload: unknown, externalAccountId: stri
             ? {
                 kind: "message", sourceType: "wuzapi", sourceId: externalAccountId, providerMessageId: rawId || undefined,
                 phone, contactName, content, messageType,
-                mediaMimeType: string(field(media, "mimetype"), 160) || undefined,
-                mediaFileName: string(field(media, "fileName"), 255) || undefined,
+                mediaMimeType: string(field(media, "mimetype") || field(root, "mimeType") || field(s3, "mimeType"), 160) || undefined,
+                mediaFileName: string(field(media, "fileName") || field(root, "fileName") || field(s3, "fileName"), 255) || undefined,
+                ...(mediaDownload ? { mediaDownload, mediaDownloadKind: isSticker ? "sticker" : messageType as "image" | "audio" | "video" | "document" } : {}),
+                ...(!mediaDownload && string(field(root, "base64"), 25 * 1024 * 1024) ? { mediaBase64: string(field(root, "base64"), 25 * 1024 * 1024) } : {}),
+                ...(string(field(s3, "url"), 4000) ? { mediaRemoteUrl: string(field(s3, "url"), 4000) } : {}),
                 direction: fromMe ? "outbound" : "inbound", occurredAt: asTimestamp(info.Timestamp || info.timestamp || event.Timestamp || event.timestamp),
             }
             : { kind: "ignored", sourceType: "wuzapi", sourceId: externalAccountId },
     };
+}
+
+/** Same download fields as zen_crm_go, retained for tenant-scoped authenticated download. */
+function wuzapiDownloadDescriptor(media: JsonRecord): QueuedWebhookPayload["mediaDownload"] | undefined {
+    const Url = string(field(media, "URL"));
+    const MediaKey = string(field(media, "mediaKey"), 300);
+    const Mimetype = string(field(media, "mimetype"), 160);
+    const FileSHA256 = string(field(media, "fileSHA256"), 300);
+    const FileLength = Number(field(media, "fileLength"));
+    if (!Url || !MediaKey || !Mimetype || !FileSHA256 || !Number.isSafeInteger(FileLength) || FileLength <= 0) return undefined;
+    return { Url, MediaKey, Mimetype, FileSHA256, FileLength,
+        DirectPath: string(field(media, "directPath")) || undefined,
+        FileEncSHA256: string(field(media, "fileEncSHA256"), 300) || undefined };
 }
 
 export function webhookBodyHash(value: string) {

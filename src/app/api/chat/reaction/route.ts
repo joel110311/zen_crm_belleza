@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { sendWuzapiReaction } from "@/lib/wuzapi";
-import { sendMetaReaction } from "@/lib/meta-whatsapp";
+import { sendChannelReaction } from "@/lib/channel-delivery";
 import { auth } from "@/lib/auth";
 import { ensurePermissionResponse } from "@/lib/authz";
 
@@ -53,20 +52,13 @@ export async function POST(request: NextRequest) {
 
         if ((nextReaction || shouldSyncClear) && existing.providerMessageId && existing.conversation.contact?.phone) {
             try {
-                if (existing.sourceType === "meta") {
-                    await sendMetaReaction({
+                await sendChannelReaction({
+                        sourceType: existing.sourceType === "meta" ? "meta" : "wuzapi",
                         to: existing.conversation.contact.phone,
                         reaction: nextReaction,
                         providerMessageId: existing.providerMessageId,
-                    });
-                } else {
-                    await sendWuzapiReaction({
-                        phone: existing.conversation.contact.phone,
-                        reaction: nextReaction || "",
-                        providerMessageId: existing.providerMessageId,
                         ownMessage: existing.direction === "outbound",
-                    });
-                }
+                });
                 whatsappSynced = true;
             } catch (error) {
                 console.error("[Reaction API] WhatsApp sync error:", error);

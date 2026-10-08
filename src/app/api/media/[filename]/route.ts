@@ -3,6 +3,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
+import { Readable } from "node:stream";
+import { auth } from "@/lib/auth";
+import { getActiveTenantRuntimeContext } from "@/lib/active-tenant-context";
+import { MEDIA_MIME_BY_EXTENSION, mediaOwnedByTenant, parseMediaRange, safeMediaFilename, verifyMediaDownload } from "@/lib/chat-media-policy";
 
 const MIME_TYPES: Record<string, string> = {
     ".m4a": "audio/mp4",
@@ -55,21 +59,35 @@ function buildMissingMediaPlaceholderSvg(label: string) {
 `.trim();
 }
 
-async function buildMediaResponse(filename: string, includeBody: boolean) {
+async function buildMediaResponse(request: NextRequest, filename: string, includeBody: boolean) {
 
     // Security: only allow alphanumeric, dash, underscore, dot
-    if (!/^[\w\-\.]+$/.test(filename) || filename === "." || filename === "..") {
-        return new NextResponse(null, { status: 204 });
+    if (!safeMediaFilename(filename)) {
+        return new NextResponse(null, { status: 404 });
     }
 
     const filePath = path.join(process.cwd(), "public", "uploads", filename);
     const ext = path.extname(filename).toLowerCase();
 
+    // Public brand/service images retain their historical public contract. Chat uploads
+    // and incoming media use private-* names and require tenant ownership or a signed URL.
+    const publicImage = IMAGE_EXTENSIONS.has(ext) && !filename.startsWith("private-");
+    if (!publicImage && !verifyMediaDownload(filename, request.nextUrl.searchParams)) {
+        const session = await auth();
+        if (!session?.user) return new NextResponse(null, { status: 401 });
+        try {
+            const tenant = await getActiveTenantRuntimeContext("read");
+            if (!tenant && (session.user as { authScope?: string }).authScope === "control") return new NextResponse(null, { status: 404 });
+            if (!mediaOwnedByTenant(filename, tenant?.tenantId || null)) return new NextResponse(null, { status: 404 });
+            if (filename.startsWith("private-legacy-") && (tenant || (session.user as { authScope?: string }).authScope === "control")) return new NextResponse(null, { status: 404 });
+        } catch { return new NextResponse(null, { status: 404 }); }
+    }
+
     if (!fs.existsSync(filePath)) {
-        if (IMAGE_EXTENSIONS.has(ext)) {
+        if (publicImage && !request.nextUrl.searchParams.has("signature")) {
             const svg = buildMissingMediaPlaceholderSvg("Archivo no disponible");
 
-            return new NextResponse(svg, {
+            return new NextResponse(includeBody ? svg : null, {
                 status: 200,
                 headers: {
                     "Content-Type": "image/svg+xml; charset=utf-8",
@@ -78,20 +96,22 @@ async function buildMediaResponse(filename: string, includeBody: boolean) {
             });
         }
 
-        return new NextResponse(null, { status: 204 });
+        return new NextResponse(null, { status: 404 });
     }
 
-    const fileBuffer = fs.readFileSync(filePath);
-    const contentType = MIME_TYPES[ext] || "application/octet-stream";
+    const size = fs.statSync(filePath).size;
+    const range = parseMediaRange(request.headers.get("range"), size);
+    if (range === false) return new NextResponse(null, { status: 416, headers: { "Content-Range": `bytes */${size}` } });
+    const contentType = MIME_TYPES[ext] || MEDIA_MIME_BY_EXTENSION[ext.slice(1)] || "application/octet-stream";
     const disposition = INLINE_EXTENSIONS.has(ext) ? "inline" : "attachment";
-
-    console.log(`[MEDIA] Serving ${filename} as ${contentType} (${fileBuffer.length} bytes)`);
-
-    return new NextResponse(includeBody ? fileBuffer : null, {
-        status: 200,
+    const body = includeBody ? Readable.toWeb(fs.createReadStream(filePath, range || undefined)) as ReadableStream<Uint8Array> : null;
+    return new NextResponse(body, {
+        status: range ? 206 : 200,
         headers: {
             "Content-Type": contentType,
-            "Content-Length": fileBuffer.length.toString(),
+            "Content-Length": String(range ? range.end - range.start + 1 : size),
+            "Accept-Ranges": "bytes",
+            ...(range ? { "Content-Range": `bytes ${range.start}-${range.end}/${size}` } : {}),
             "Content-Disposition": `${disposition}; filename="${filename}"`,
             "Cache-Control": "private, no-store",
             "X-Content-Type-Options": "nosniff",
@@ -101,17 +121,17 @@ async function buildMediaResponse(filename: string, includeBody: boolean) {
 }
 
 export async function GET(
-    _request: NextRequest,
+    request: NextRequest,
     { params }: { params: Promise<{ filename: string }> }
 ) {
     const { filename } = await params;
-    return buildMediaResponse(filename, true);
+    return buildMediaResponse(request, filename, true);
 }
 
 export async function HEAD(
-    _request: NextRequest,
+    request: NextRequest,
     { params }: { params: Promise<{ filename: string }> }
 ) {
     const { filename } = await params;
-    return buildMediaResponse(filename, false);
+    return buildMediaResponse(request, filename, false);
 }

@@ -3,9 +3,11 @@ import "server-only";
 import { getActiveTenantRuntimeContext } from "@/lib/active-tenant-context";
 import { getScopedTenantId } from "@/lib/routed-prisma";
 import { isMultitenantRuntimeEnabled } from "@/lib/multitenant-features";
-import { sendMetaMediaMessage, sendMetaTextMessage } from "@/lib/meta-whatsapp";
-import { sendTenantChannelMedia, sendTenantChannelText } from "@/lib/tenant-channels";
-import { sendWuzapiMediaMessage, sendWuzapiTextMessage } from "@/lib/wuzapi";
+import { sendMetaMediaMessage, sendMetaReaction, sendMetaTextMessage } from "@/lib/meta-whatsapp";
+import { sendTenantChannelMedia, sendTenantChannelReaction, sendTenantChannelText } from "@/lib/tenant-channels";
+import { sendWuzapiMediaMessage, sendWuzapiReaction, sendWuzapiTextMessage } from "@/lib/wuzapi";
+import { localMediaFilename, signMediaDownload } from "@/lib/chat-media-policy";
+import { assertLocalMediaOwnership } from "@/lib/local-media-access";
 
 export async function resolveDeliveryTenantId() {
     const scoped = getScopedTenantId();
@@ -44,6 +46,16 @@ export async function sendChannelMedia(params: {
     fileName?: string;
     mimeType?: string;
 }) {
+    if (params.link) {
+        const base = process.env.APP_BASE_URL || process.env.AUTH_URL || process.env.NEXTAUTH_URL;
+        const filename = localMediaFilename(params.link, base);
+        if (filename) {
+            await assertLocalMediaOwnership(filename);
+            const link = new URL(params.link, base);
+            link.search = signMediaDownload(filename);
+            params = { ...params, link: link.toString() };
+        }
+    }
     const tenantId = await resolveDeliveryTenantId();
     if (tenantId) return sendTenantChannelMedia({ tenantId, ...params });
     if (params.sourceType === "meta") {
@@ -65,4 +77,11 @@ export async function sendChannelMedia(params: {
         fileName: params.fileName,
         mimeType: params.mimeType,
     });
+}
+
+export async function sendChannelReaction(params: { sourceType: "meta" | "wuzapi"; to: string; providerMessageId: string; reaction: string | null; ownMessage?: boolean }) {
+    const tenantId = await resolveDeliveryTenantId();
+    if (tenantId) return sendTenantChannelReaction({ tenantId, ...params });
+    return params.sourceType === "meta" ? sendMetaReaction(params)
+        : sendWuzapiReaction({ phone: params.to, providerMessageId: params.providerMessageId, reaction: params.reaction || "", ownMessage: params.ownMessage });
 }

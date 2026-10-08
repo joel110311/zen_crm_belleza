@@ -1,8 +1,9 @@
 import { mkdtemp, readFile, rm, writeFile } from "fs/promises";
 import os from "os";
 import path from "path";
-import { spawn } from "child_process";
-import ffmpegPath from "ffmpeg-static";
+import { runMediaFfmpeg } from "@/lib/ffmpeg-runtime";
+import { localMediaFilename } from "@/lib/chat-media-policy";
+import { assertLocalMediaOwnership } from "@/lib/local-media-access";
 
 const MIME_BY_EXTENSION: Record<string, string> = {
     ".jpg": "image/jpeg",
@@ -183,21 +184,15 @@ function isHttpUrl(value: string) {
     return /^https?:\/\//i.test(value);
 }
 
-function localUploadPathFromUrl(mediaUrl: string) {
-    const fileName = fileNameFromUrl(mediaUrl);
-    return path.join(process.cwd(), "public", "uploads", fileName);
-}
-
 async function convertAudioBufferToOgg(
     buffer: Buffer,
     fileName: string,
     mimeType: string,
 ) {
-    if (!mimeType.startsWith("audio/") || !ffmpegPath) {
+    if (!mimeType.startsWith("audio/")) {
         return null;
     }
 
-    const ffmpegExecutable = ffmpegPath;
     const tempDir = await mkdtemp(path.join(os.tmpdir(), "zencrm-audio-"));
     const inputExtension = path.extname(fileName) || ".bin";
     const inputPath = path.join(tempDir, `input${inputExtension}`);
@@ -206,8 +201,7 @@ async function convertAudioBufferToOgg(
     try {
         await writeFile(inputPath, buffer);
 
-        await new Promise<void>((resolve, reject) => {
-            const process = spawn(ffmpegExecutable, [
+        await runMediaFfmpeg([
                 "-y",
                 "-i",
                 inputPath,
@@ -218,21 +212,7 @@ async function convertAudioBufferToOgg(
                 "-vbr",
                 "on",
                 outputPath,
-            ]);
-
-            let stderr = "";
-            process.stderr.on("data", (chunk) => {
-                stderr += chunk.toString();
-            });
-            process.on("error", reject);
-            process.on("close", (code) => {
-                if (code === 0) {
-                    resolve();
-                    return;
-                }
-                reject(new Error(stderr || `FFmpeg termino con codigo ${code}`));
-            });
-        });
+        ]);
 
         const convertedBuffer = await readFile(outputPath);
         return {
@@ -250,7 +230,8 @@ async function finalizeMedia(
     fileName: string,
     mimeType: string,
 ) {
-    const convertedAudio = await convertAudioBufferToOgg(buffer, fileName, mimeType).catch(() => null);
+    // A failed conversion must not silently send a mislabeled/unplayable voice note.
+    const convertedAudio = await convertAudioBufferToOgg(buffer, fileName, mimeType);
     const finalBuffer = convertedAudio?.buffer || buffer;
     const finalFileName = convertedAudio?.fileName || fileName;
     const finalMimeType = convertedAudio?.mimeType || mimeType;
@@ -278,9 +259,11 @@ export async function resolveMediaToDataUrl(
     const fileName = fileNameFromUrl(mediaUrl);
     const mimeType = inferMimeType(fileName, explicitMimeType);
 
-    if (mediaUrl.includes("/uploads/") || mediaUrl.startsWith("/")) {
-        const buffer = await readFile(localUploadPathFromUrl(mediaUrl));
-        return finalizeMedia(buffer, fileName, mimeType);
+    const localFileName = localMediaFilename(mediaUrl, process.env.APP_BASE_URL || process.env.AUTH_URL || process.env.NEXTAUTH_URL);
+    if (localFileName) {
+        await assertLocalMediaOwnership(localFileName);
+        const buffer = await readFile(path.join(process.cwd(), "public", "uploads", localFileName));
+        return finalizeMedia(buffer, localFileName, mimeType);
     }
 
     if (isHttpUrl(mediaUrl)) {
@@ -315,6 +298,7 @@ export async function resolveMediaToDataUrl(
 
         const finalResponseMimeType = response.headers.get("content-type") || responseMimeType;
         const finalNormalizedMimeType = finalResponseMimeType.split(";")[0]?.trim().toLowerCase() || mimeType;
+        if (finalNormalizedMimeType === "text/html") throw new Error("El enlace devolvió una página web, no el archivo multimedia.");
         const contentDispositionFileName = inferFileNameFromContentDisposition(
             response.headers.get("content-disposition"),
         );

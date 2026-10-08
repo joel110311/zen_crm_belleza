@@ -8,7 +8,7 @@ import { enqueueTenantWebhookRetry, ingestTenantWebhook } from "@/lib/tenant-wor
 import { normalizeWuzapiWebhook, webhookBodyHash } from "@/lib/tenant-webhook-payload";
 
 export const runtime = "nodejs";
-const maxWebhookBytes = 1_048_576;
+const maxWebhookBytes = 25 * 1024 * 1024;
 
 function hasValidWuzapiSignature(rawBody: string, request: Request) {
     const key = (process.env.MULTITENANT_WUZAPI_WEBHOOK_HMAC_KEY || process.env.WUZAPI_GLOBAL_HMAC_KEY || "").trim();

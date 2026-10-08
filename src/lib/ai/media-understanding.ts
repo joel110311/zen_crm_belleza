@@ -5,6 +5,8 @@ import { callGeminiGenerateContent, getOpenAIClient, transcribeAudioBuffer } fro
 import { prisma } from "@/lib/db";
 import { resolveChatModelSelection } from "@/lib/ai/models";
 import { resolveAiProviderKey } from "@/lib/ai/provider-keys";
+import { localMediaFilename } from "@/lib/chat-media-policy";
+import { assertLocalMediaOwnership } from "@/lib/local-media-access";
 
 type InboundMediaContextInput = {
     text: string;
@@ -19,11 +21,13 @@ function isPlaceholderText(text: string) {
     return /^\[[^\]]+\]$/u.test(trimmed);
 }
 
-async function readMediaBuffer(mediaUrl?: string | null) {
+export async function readMediaBuffer(mediaUrl?: string | null) {
     if (!mediaUrl) return null;
 
-    if (mediaUrl.startsWith("/uploads/")) {
-        const filePath = path.join(process.cwd(), "public", mediaUrl.replace(/^\//, ""));
+    const filename = localMediaFilename(mediaUrl, process.env.APP_BASE_URL || process.env.AUTH_URL || process.env.NEXTAUTH_URL);
+    if (filename) {
+        await assertLocalMediaOwnership(filename);
+        const filePath = path.join(process.cwd(), "public", "uploads", filename);
         return readFile(filePath);
     }
 

@@ -2604,6 +2604,11 @@ export async function processInboundMessage(
             });
 
             if (duplicatedMessage) {
+                if (!duplicatedMessage.mediaUrl && media?.mediaUrl) {
+                    await prisma.message.update({ where: { id: duplicatedMessage.id }, data: {
+                        mediaUrl: media.mediaUrl, mediaType: media.mediaType, mediaFileName: media.mediaFileName,
+                    } });
+                }
                 return {
                     contact: duplicatedMessage.conversation.contact,
                     conversation: duplicatedMessage.conversation,

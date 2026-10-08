@@ -19,6 +19,10 @@ export type QueuedWebhookPayload = {
     providerMediaId?: string;
     mediaMimeType?: string;
     mediaFileName?: string;
+    mediaDownloadKind?: "image" | "audio" | "video" | "document" | "sticker";
+    mediaDownload?: { Url: string; DirectPath?: string; MediaKey: string; Mimetype: string; FileEncSHA256?: string; FileSHA256: string; FileLength: number };
+    mediaBase64?: string;
+    mediaRemoteUrl?: string;
 };
 
 export type WebhookIngestResult = {

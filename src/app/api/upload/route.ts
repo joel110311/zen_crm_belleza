@@ -3,9 +3,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { writeFile, mkdir, stat, unlink } from "fs/promises";
 import path from "path";
 import { existsSync } from "fs";
-import { spawn } from "child_process";
-import ffmpegStaticPath from "ffmpeg-static";
+import { runMediaFfmpeg } from "@/lib/ffmpeg-runtime";
+import { MEDIA_MIME_BY_EXTENSION, mediaCategory as getMediaCategory, tenantMediaNamespace } from "@/lib/chat-media-policy";
 import crypto from "crypto";
+import sharp from "sharp";
 import { auth } from "@/lib/auth";
 import { getActiveTenantRuntimeContext } from "@/lib/active-tenant-context";
 import { getSessionAccessSubject, getSessionUserId } from "@/lib/authz";
@@ -22,6 +23,7 @@ const ALLOWED_EXTENSIONS = new Set([
     ".mp3", ".ogg", ".opus", ".wav", ".m4a", ".aac", ".amr",
     ...VIDEO_EXTENSIONS,
     ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".csv", ".txt",
+    ".ppt", ".pptx", ".zip", ".rar",
 ]);
 const BLOCKED_MIME_TYPES = new Set([
     "text/html",
@@ -30,10 +32,6 @@ const BLOCKED_MIME_TYPES = new Set([
     "text/javascript",
     "application/xhtml+xml",
 ]);
-
-function isMp4Video(fileName: string, mimeType: string) {
-    return mimeType === "video/mp4" || path.extname(fileName).toLowerCase() === ".mp4";
-}
 
 async function removeIfExists(filePath: string) {
     try {
@@ -44,10 +42,7 @@ async function removeIfExists(filePath: string) {
 }
 
 async function transcodeVideoToMp4(inputPath: string, outputPath: string) {
-    const ffmpegExecutable = ffmpegStaticPath || "ffmpeg";
-
-    await new Promise<void>((resolve, reject) => {
-        const process = spawn(/* turbopackIgnore: true */ ffmpegExecutable, [
+    await runMediaFfmpeg([
             "-y",
             "-i",
             inputPath,
@@ -68,21 +63,7 @@ async function transcodeVideoToMp4(inputPath: string, outputPath: string) {
             "-movflags",
             "+faststart",
             outputPath,
-        ]);
-
-        let stderr = "";
-        process.stderr.on("data", (chunk) => {
-            stderr += chunk.toString();
-        });
-        process.on("error", reject);
-        process.on("close", (code) => {
-            if (code === 0) {
-                resolve();
-                return;
-            }
-            reject(new Error(stderr || `FFmpeg termino con codigo ${code}`));
-        });
-    });
+    ]);
 }
 
 export async function POST(request: NextRequest) {
@@ -106,11 +87,13 @@ export async function POST(request: NextRequest) {
         const tenantRuntime = await getActiveTenantRuntimeContext("write");
 
         const formData = await request.formData();
-        const file = formData.get("file") as File;
+        const file = formData.get("file");
 
-        if (!file) {
+        if (!(file instanceof File)) {
             return NextResponse.json({ error: "No file provided" }, { status: 400 });
         }
+        if (!file.size) return NextResponse.json({ error: "El archivo está vacío." }, { status: 400 });
+        const isPrivateChat = formData.get("purpose") === "chat";
 
         if (file.size > MAX_UPLOAD_BYTES) {
             return NextResponse.json(
@@ -120,8 +103,13 @@ export async function POST(request: NextRequest) {
         }
 
         const originalExt = path.extname(file.name).toLowerCase();
-        const normalizedMimeType = file.type.toLowerCase().split(";")[0].trim();
-        const isVideo = VIDEO_EXTENSIONS.has(originalExt) || normalizedMimeType.startsWith("video/");
+        const claimedMimeType = file.type.toLowerCase().split(";")[0].trim();
+        const normalizedMimeType = (!claimedMimeType || claimedMimeType === "application/octet-stream")
+            ? MEDIA_MIME_BY_EXTENSION[originalExt.slice(1)] || "application/octet-stream" : claimedMimeType;
+        // A WebM voice recording is audio, not video: preserve the actual container until conversion.
+        const isAudio = normalizedMimeType.startsWith("audio/");
+        const isVideo = !isAudio && (VIDEO_EXTENSIONS.has(originalExt) || normalizedMimeType.startsWith("video/") || (isPrivateChat && normalizedMimeType === "image/gif"));
+        const isImage = !isVideo && normalizedMimeType.startsWith("image/");
 
         if (!ALLOWED_EXTENSIONS.has(originalExt) || BLOCKED_MIME_TYPES.has(normalizedMimeType)) {
             return NextResponse.json(
@@ -146,43 +134,37 @@ export async function POST(request: NextRequest) {
         const originalBuffer = Buffer.from(await file.arrayBuffer());
 
         // Generate unique filename
-        const ext = isVideo ? ".mp4" : originalExt;
+        const ext = isVideo ? ".mp4" : isAudio ? ".ogg" : isImage && normalizedMimeType === "image/webp" ? ".png" : originalExt;
         // Keep legacy installations compatible while making every new multitenant object
         // unambiguously owned by one business, even on the temporary shared volume fallback.
         const tenantNamespace = tenantRuntime
-            ? crypto.createHash("sha256").update(tenantRuntime.tenantId).digest("hex").slice(0, 16)
+            ? tenantMediaNamespace(tenantRuntime.tenantId)
             : null;
-        const uniqueName = `${tenantNamespace ? `t-${tenantNamespace}-` : ""}${crypto.randomUUID()}${ext}`;
+        const uniqueName = `${isPrivateChat ? "private-" : ""}${tenantNamespace ? `t-${tenantNamespace}-` : isPrivateChat ? "legacy-" : ""}${crypto.randomUUID()}${ext}`;
         const filePath = path.join(uploadsDir, uniqueName);
 
         let returnedFileName = file.name;
-        let returnedMimeType = file.type;
+        let returnedMimeType = normalizedMimeType;
 
         if (isVideo) {
-            const shouldTranscode = !isMp4Video(file.name, file.type) || originalBuffer.length > MAX_WHATSAPP_VIDEO_BYTES;
+            // MP4 is a container, not a codec guarantee. Normalize even small HEVC/AV1 MP4s.
             const inputPath = path.join(
                 uploadsDir,
                 `${crypto.randomUUID()}-input${originalExt || ".video"}`,
             );
 
-            if (shouldTranscode) {
+            try {
                 await writeFile(inputPath, originalBuffer);
-
-                try {
-                    await transcodeVideoToMp4(inputPath, filePath);
-                } catch (conversionError) {
-                    console.error("[Upload] Video conversion error:", conversionError);
-                    await removeIfExists(filePath);
-
-                    return NextResponse.json(
-                        { error: "No pude convertir el video a MP4 compatible con WhatsApp." },
-                        { status: 400 },
-                    );
-                } finally {
-                    await removeIfExists(inputPath);
-                }
-            } else {
-                await writeFile(filePath, originalBuffer);
+                await transcodeVideoToMp4(inputPath, filePath);
+            } catch (conversionError) {
+                console.error("[Upload] Video conversion error:", conversionError);
+                await removeIfExists(filePath);
+                return NextResponse.json(
+                    { error: "No pude convertir el video a MP4 compatible con WhatsApp." },
+                    { status: 400 },
+                );
+            } finally {
+                await removeIfExists(inputPath);
             }
 
             const videoStats = await stat(filePath);
@@ -197,19 +179,38 @@ export async function POST(request: NextRequest) {
 
             returnedFileName = `${path.parse(file.name).name || "video"}.mp4`;
             returnedMimeType = "video/mp4";
+        } else if (isAudio) {
+            const inputPath = path.join(uploadsDir, `${crypto.randomUUID()}-input${originalExt}`);
+            try {
+                await writeFile(inputPath, originalBuffer);
+                await runMediaFfmpeg(["-y", "-i", inputPath, "-vn", "-c:a", "libopus", "-b:a", "32k", "-ac", "1", filePath]);
+                returnedMimeType = "audio/ogg";
+                returnedFileName = `${path.parse(file.name).name || "audio"}.ogg`;
+                if ((await stat(filePath)).size > 16 * 1024 * 1024) throw new Error("audio_too_large");
+            } catch (error) {
+                await removeIfExists(filePath);
+                if (error instanceof Error && error.message === "audio_too_large") return NextResponse.json({ error: "El audio final supera el límite de 16MB de WhatsApp." }, { status: 413 });
+                return NextResponse.json({ error: "No se pudo convertir el audio a una nota de voz compatible con WhatsApp." }, { status: 422 });
+            } finally { await removeIfExists(inputPath); }
+        } else if (isImage && normalizedMimeType === "image/webp") {
+            await writeFile(filePath, await sharp(originalBuffer, { limitInputPixels: 40_000_000 }).rotate().png().toBuffer());
+            returnedMimeType = "image/png";
+            returnedFileName = `${path.parse(file.name).name || "imagen"}.png`;
         } else {
             // Write file to disk
             await writeFile(filePath, originalBuffer);
+        }
+
+        if (isPrivateChat && isImage && (await stat(filePath)).size > 5 * 1024 * 1024) {
+            await removeIfExists(filePath);
+            return NextResponse.json({ error: "WhatsApp acepta imágenes de hasta 5MB. Reduce el tamaño o envíala como documento." }, { status: 413 });
         }
 
         // Return the media API URL so external providers can download it reliably.
         const publicUrl = `/api/media/${uniqueName}`;
 
         // Determine media type category
-        let mediaCategory = "document";
-        if (file.type.startsWith("image/")) mediaCategory = "image";
-        else if (file.type.startsWith("audio/")) mediaCategory = "audio";
-        else if (file.type.startsWith("video/")) mediaCategory = "video";
+        const mediaCategory = isVideo ? "video" : getMediaCategory(returnedMimeType);
 
         console.log("[Upload] File saved:", uniqueName, "type:", mediaCategory);
 
@@ -223,7 +224,7 @@ export async function POST(request: NextRequest) {
     } catch (error) {
         console.error("[Upload] Error:", error);
         return NextResponse.json(
-            { error: "Failed to upload file" },
+            { error: "No se pudo subir el archivo. Revisa su tamaño y vuelve a intentarlo." },
             { status: 500 }
         );
     }

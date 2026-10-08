@@ -6,6 +6,7 @@ import { hashSecurityIdentifier, safeSecretEqual } from "@/lib/security";
 import { decryptChannelSecret, encryptChannelSecret } from "@/lib/tenant-channel-secrets";
 import { TenantServiceError } from "@/lib/tenant-services/context";
 import { normalizeMetaRecipient, normalizeWuzapiRecipient } from "@/lib/phone";
+import type { QueuedWebhookPayload } from "@/lib/tenant-work-queue";
 
 type ChannelStatePayload = {
     v: 1;
@@ -497,6 +498,10 @@ export async function sendTenantChannelMedia(params: {
         : params.mediaType === "audio" ? "/chat/send/audio"
             : params.mediaType === "video" ? "/chat/send/video"
                 : "/chat/send/document";
+    // Match the working document encoder in zen_crm_go; keep the real MIME separately.
+    const dataUrl = params.mediaType === "document"
+        ? `data:application/octet-stream;base64,${params.dataUrl.slice(params.dataUrl.indexOf(",") + 1)}`
+        : params.dataUrl;
     return qrGatewayRequest<{ Id?: string }>({
         path: endpoint,
         token: connectionToken(connection),
@@ -504,12 +509,67 @@ export async function sendTenantChannelMedia(params: {
         body: {
             Phone: phone,
             Caption: params.caption || "",
-            [field]: params.dataUrl,
+            [field]: dataUrl,
             MimeType: params.mimeType,
             ...(params.mediaType === "document" ? { FileName: params.fileName || "archivo" } : {}),
             ...(params.mediaType === "audio" ? { PTT: true } : {}),
         },
     });
+}
+
+export async function sendTenantChannelReaction(params: { tenantId: string; sourceType: "meta" | "wuzapi"; to: string; providerMessageId: string; reaction: string | null; ownMessage?: boolean }) {
+    const connection = await connectedTenantChannel(params.tenantId, params.sourceType === "meta" ? "META_CLOUD" : "WUZAPI");
+    if (params.sourceType === "meta") return graphRequest(metaConfig(), {
+        resource: `${connection.externalAccountId}/messages`, accessToken: connectionToken(connection), method: "POST",
+        body: { messaging_product: "whatsapp", recipient_type: "individual", to: normalizeMetaRecipient(params.to), type: "reaction", reaction: { message_id: params.providerMessageId, emoji: params.reaction || "" } },
+    });
+    return qrGatewayRequest({ path: "/chat/react", token: connectionToken(connection), method: "POST",
+        body: { Phone: normalizeWuzapiRecipient(params.to), Body: params.reaction || "", Id: params.ownMessage ? `me:${params.providerMessageId}` : params.providerMessageId } });
+}
+
+/** Source ID and tenant ID must both match; never use the legacy token to fetch tenant media. */
+export async function downloadTenantChannelMedia(tenantId: string, payload: QueuedWebhookPayload) {
+    const connection = await getControlDb().channelConnection.findFirst({ where: {
+        tenantId, provider: payload.sourceType === "meta" ? "META_CLOUD" : "WUZAPI", externalAccountId: payload.sourceId,
+    } });
+    if (!connection) throw new Error("El archivo no pertenece a un canal de este negocio.");
+    const token = connectionToken(connection);
+    if (payload.sourceType === "wuzapi") {
+        if (!payload.mediaDownload || !payload.mediaDownloadKind) throw new Error("WhatsApp no proporcionó los datos para descargar el archivo.");
+        if (payload.mediaDownload.FileLength > 100 * 1024 * 1024) throw new Error("El archivo recibido supera 100MB.");
+        const downloaded = await qrGatewayRequest<{ Data?: string; Mimetype?: string }>({
+            path: `/chat/download${payload.mediaDownloadKind}`, token, method: "POST", body: payload.mediaDownload,
+        });
+        if (!downloaded.Data) throw new Error("El canal no devolvió el archivo multimedia.");
+        const base64 = downloaded.Data.includes(",") ? downloaded.Data.slice(downloaded.Data.indexOf(",") + 1) : downloaded.Data;
+        return { buffer: Buffer.from(base64, "base64"), mimeType: downloaded.Mimetype || payload.mediaMimeType || "application/octet-stream" };
+    }
+    if (!payload.providerMediaId || !/^[\w-]+$/.test(payload.providerMediaId)) throw new Error("Falta el identificador del archivo de WhatsApp oficial.");
+    const media = await graphRequest<{ url?: string; mime_type?: string }>(metaConfig(), { resource: payload.providerMediaId, accessToken: token });
+    const url = new URL(media.url || "");
+    if (url.protocol !== "https:" || !/(^|\.)(facebook\.com|fbcdn\.net|fbsbx\.com)$/.test(url.hostname)) throw new Error("Meta devolvió una URL multimedia no válida.");
+    const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` }, redirect: "error", cache: "no-store", signal: AbortSignal.timeout(30_000) });
+    if (!response.ok) throw new Error(`No se pudo descargar el archivo de Meta (${response.status}).`);
+    return { buffer: await readLimitedMediaResponse(response), mimeType: media.mime_type || payload.mediaMimeType || "application/octet-stream" };
+}
+
+async function readLimitedMediaResponse(response: Response) {
+    const maximum = 100 * 1024 * 1024;
+    if (Number(response.headers.get("content-length")) > maximum) throw new Error("El archivo recibido supera 100MB.");
+    if (!response.body) throw new Error("El archivo recibido está vacío.");
+    const reader = response.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let size = 0;
+    try {
+        for (;;) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            size += value.byteLength;
+            if (size > maximum) throw new Error("El archivo recibido supera 100MB.");
+            chunks.push(value);
+        }
+    } finally { await reader.cancel(); }
+    return Buffer.concat(chunks);
 }
 
 async function synchronizeQrStatus(connection: { id: string }, status: QrGatewayStatus) {

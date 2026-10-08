@@ -24,11 +24,12 @@ export async function persistWuzapiOutboundEcho(input: WuzapiOutboundEcho, deps:
     const name = input.contactName?.trim().replace(/\s+/g, " ");
     const contactName = name && !/^(unknown|desconocido|sin nombre|null|undefined|n\/a|na)$/i.test(name) ? name : undefined;
 
-    async function acknowledge(message: { id: string; conversationId: string; senderType: string | null; providerMessageId: string | null; status: string }) {
+    async function acknowledge(message: { id: string; conversationId: string; senderType: string | null; providerMessageId: string | null; status: string; mediaUrl?: string | null }) {
         await db.message.update({ where: { id: message.id }, data: {
             ...(!["delivered", "read"].includes(message.status) ? { status: "sent" } : {}),
             ...(!message.providerMessageId && input.providerMessageId ? { providerMessageId: input.providerMessageId } : {}),
             ...(input.occurredAt ? { createdAt: input.occurredAt } : {}),
+            ...(!message.mediaUrl && input.media?.mediaUrl ? { mediaUrl: input.media.mediaUrl, mediaType: input.media.mediaType, mediaFileName: input.media.mediaFileName } : {}),
         } });
         await db.conversation.update({ where: { id: message.conversationId }, data: {
             updatedAt: new Date(),

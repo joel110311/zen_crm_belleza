@@ -178,7 +178,7 @@ export async function sendOutboundConversationMessage(
                         dataUrl: resolvedMedia.dataUrl,
                         caption: content && content !== `[${type}]` ? content : undefined,
                         fileName: params.mediaFileName || resolvedMedia.fileName,
-                        mimeType: params.mediaType || resolvedMedia.mimeType,
+                        mimeType: resolvedMedia.mimeType,
                     });
                 }
 

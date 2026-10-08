@@ -3,6 +3,8 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   output: 'standalone',
   experimental: {
+    // Multipart overhead must fit too; the route still enforces its 100MB file limit.
+    proxyClientMaxBodySize: '105mb',
     serverActions: {
       bodySizeLimit: '10mb',
     },

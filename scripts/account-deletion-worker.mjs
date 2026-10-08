@@ -94,7 +94,7 @@ export async function deleteLocalUploads(directory, tenantId) {
     if (root === path.parse(root).root) throw new Error("unsafe_uploads_directory");
     const prefix = `t-${crypto.createHash("sha256").update(tenantId).digest("hex").slice(0,16)}-`;
     for (const name of await readdir(root)) {
-        if (!name.startsWith(prefix)) continue;
+        if (!name.startsWith(prefix) && !name.startsWith(`private-${prefix}`)) continue;
         const target = path.resolve(root, name);
         if (path.dirname(target) !== root) throw new Error("unsafe_upload_path");
         const stat = await lstat(target).catch((error) => { if (error.code !== "ENOENT") throw error; return null; });

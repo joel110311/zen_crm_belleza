@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { sendOutboundConversationMessage } from "@/lib/outbound-messages";
+import { ensurePermissionResponse } from "@/lib/authz";
 
 export async function POST(request: NextRequest) {
     try {
         const session = await auth();
+        const denied = ensurePermissionResponse(session, "chats.manage");
+        if (denied) return denied;
         const currentUser = session?.user as { id?: string } | undefined;
         const body = await request.json();
         const {

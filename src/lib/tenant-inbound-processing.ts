@@ -4,6 +4,8 @@ import { getControlDb } from "@/lib/control-db";
 import { runWithTenantPrisma } from "@/lib/routed-prisma";
 import { getTenantPrismaManager } from "@/lib/tenant-prisma-manager";
 import { storeWuzapiOutboundEcho } from "@/lib/wuzapi-outbound-echo-runtime";
+import { resolveTenantInboundMedia } from "@/lib/tenant-inbound-media";
+import type { QueuedWebhookPayload } from "@/lib/tenant-work-queue";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -46,6 +48,15 @@ export async function processTenantInboundWebhookEvent(tenantId: string, webhook
     });
 
     const tenantDb = await getTenantPrismaManager().getForTenant(tenantId);
+    const existing = payload.providerMessageId ? await tenantDb.message.findFirst({
+        where: { providerMessageId: text(payload.providerMessageId, 300), sourceType },
+        select: { type: true, mediaUrl: true, mediaType: true, mediaFileName: true },
+    }) : null;
+    // Replays/echoes of an already stored attachment do not download another copy.
+    const media = existing?.mediaUrl ? {
+        type: existing.type, mediaUrl: existing.mediaUrl,
+        mediaType: existing.mediaType || undefined, mediaFileName: existing.mediaFileName || undefined,
+    } : await resolveTenantInboundMedia(tenantId, webhookEventId, payload as QueuedWebhookPayload);
     const result = await runWithTenantPrisma(
         tenantDb,
         () => payload.direction === "outbound"
@@ -54,17 +65,13 @@ export async function processTenantInboundWebhookEvent(tenantId: string, webhook
                 sourceId, providerMessageId: text(payload.providerMessageId, 300) || undefined,
                 contactName: text(payload.contactName, 160) || undefined,
                 occurredAt: text(payload.occurredAt, 80) ? new Date(text(payload.occurredAt, 80)) : undefined,
-                media: { type: text(payload.messageType, 40) || "text", mediaType: text(payload.mediaMimeType, 160) || undefined, mediaFileName: text(payload.mediaFileName, 255) || undefined },
+                media,
             })
             : processInboundMessage(
             phone,
             text(payload.content) || "[Mensaje de WhatsApp]",
             text(payload.contactName, 160) || undefined,
-            {
-                type: text(payload.messageType, 40) || "text",
-                mediaType: text(payload.mediaMimeType, 160) || undefined,
-                mediaFileName: text(payload.mediaFileName, 255) || undefined,
-            },
+            media,
             text(payload.providerMessageId, 300) || undefined,
             undefined,
             {

@@ -182,6 +182,8 @@ async function processWebhookEvent(work) {
             signal: AbortSignal.timeout(90_000),
         });
         if (!response.ok) throw new Error(`Tenant message processing returned HTTP ${response.status}.`);
+        const result = await response.json().catch(() => null);
+        if (result?.success !== true) throw new Error("Tenant message processing did not confirm inbox persistence.");
     } else {
         const db = await tenantPool(event.tenantId);
         try {

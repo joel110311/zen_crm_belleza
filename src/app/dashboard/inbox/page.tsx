@@ -2373,19 +2373,16 @@ export default function InboxPage() {
                 stream.getTracks().forEach(track => track.stop());
 
                 const actualMimeType = mediaRecorder.mimeType;
-                // Always use OGG for WhatsApp compatibility
-                // Even if browser records as webm, WhatsApp can often handle it when sent as audio type
-                let ext = "ogg";
-                let blobType = "audio/ogg; codecs=opus";
+                // Preserve the browser's real container; the server converts it to OGG/Opus.
+                let ext = "webm";
+                let blobType = actualMimeType || "audio/webm";
 
                 if (actualMimeType.includes("ogg")) {
                     ext = "ogg";
-                    blobType = "audio/ogg; codecs=opus";
+                    blobType = actualMimeType;
                 } else if (actualMimeType.includes("webm")) {
-                    // WebM/Opus is very similar to OGG/Opus internally
-                    // Send as .ogg anyway - WhatsApp handles this better
-                    ext = "ogg";
-                    blobType = "audio/ogg; codecs=opus";
+                    ext = "webm";
+                    blobType = actualMimeType;
                 }
 
                 console.log(`Recording finished. Mime: ${actualMimeType}, Sending as: ${blobType}, Ext: ${ext}`);
@@ -2427,13 +2424,14 @@ export default function InboxPage() {
         try {
             const formData = new FormData();
             formData.append("file", audioBlob, `nota-de-voz-${Date.now()}.${ext}`);
+            formData.append("purpose", "chat");
             const uploadRes = await fetch("/api/upload", { method: "POST", body: formData });
             const uploadResult = await uploadRes.json().catch(() => ({}));
             if (!uploadRes.ok || !uploadResult.success) {
                 throw new Error(uploadResult.error || "No se pudo subir el audio.");
             }
             if (uploadResult.success) {
-                await sendMediaMessage(uploadResult.url, "audio", uploadResult.fileName, mimeType);
+                await sendMediaMessage(uploadResult.url, "audio", uploadResult.fileName, uploadResult.mimeType || mimeType);
             }
         } catch (error) {
             console.error("Upload audio error:", error);
@@ -2453,6 +2451,7 @@ export default function InboxPage() {
         try {
             const formData = new FormData();
             formData.append("file", file);
+            formData.append("purpose", "chat");
             const response = await fetch("/api/upload", { method: "POST", body: formData });
             const result = await response.json().catch(() => ({}));
             if (!response.ok || !result.success) {
@@ -2460,7 +2459,7 @@ export default function InboxPage() {
             }
             if (result.success) {
                 const previewUrl = ["image", "video"].includes(result.mediaCategory)
-                    ? URL.createObjectURL(file)
+                    ? result.mimeType !== file.type ? getSafeMediaUrl(result.url) : URL.createObjectURL(file)
                     : undefined;
                 setPendingFile({ ...result, previewUrl });
             }

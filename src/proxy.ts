@@ -57,6 +57,8 @@ export async function proxy(req: NextRequest) {
         "/api/bot-message",
         "/api/health",
         "/api/internal/tenant-scheduled-work",
+        // This handler verifies x-tenant-worker-secret itself, never a browser session.
+        "/api/internal/tenant-inbound-message",
         "/api/operation-context",
     ];
     // The canonical application URL is the public acquisition page.  It must
@@ -107,6 +109,15 @@ export async function proxy(req: NextRequest) {
         forwardedHeaders.set(TENANT_SLUG_HEADER, activeTenantSlug);
         forwardedHeaders.set(TENANT_USER_HEADER, tokenUserId);
     }
+
+    // Media authorizes session/tenant or a short-lived provider signature in its handler.
+    // Rewrite static aliases too, so private files cannot bypass that authorization.
+    if (pathname.startsWith("/uploads/")) {
+        const mediaUrl = req.nextUrl.clone();
+        mediaUrl.pathname = pathname.replace(/^\/uploads\//, "/api/media/");
+        return NextResponse.rewrite(mediaUrl, { request: { headers: forwardedHeaders } });
+    }
+    if (pathname.startsWith("/api/media/")) return nextWithSanitizedHeaders();
 
     if (isPublicPath) {
         return nextWithSanitizedHeaders();
@@ -161,6 +172,8 @@ export async function proxy(req: NextRequest) {
 
 export const config = {
     matcher: [
+        "/api/media/:path*",
+        "/uploads/:path*",
         "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|mp3|wav|ogg|woff|woff2|ttf|otf)$).*)",
     ],
 };
