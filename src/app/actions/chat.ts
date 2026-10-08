@@ -17,6 +17,8 @@ import {
     splitCatalogAssets,
 } from "@/lib/catalog/catalog";
 import { generateConversationReply } from "@/lib/ai/chatbot";
+import { formatBotReplyForReadability } from "@/lib/ai/reply-format";
+import { sendTrackedBotMessage } from "@/lib/tracked-bot-delivery";
 import { getSystemSettingsOrDefaults, type AppSystemSettings } from "@/lib/system-settings";
 import { buildInboundMediaContext, shouldSkipAutoReplyText } from "@/lib/ai/media-understanding";
 import { maybeHandleAppointmentBooking } from "@/lib/ai/appointment-booking";
@@ -1218,48 +1220,27 @@ async function sendAutomatedBotText(params: {
     phone: string;
     content: string;
 }) {
-    const content = stripInternalDisclosureLines(params.content).trim();
+    const content = formatBotReplyForReadability(stripInternalDisclosureLines(params.content));
     if (!content) return;
     const usageAllowance = await assertChatbotUsageAvailable();
 
     const source = await getAutomatedConversationSource(params.conversationId);
 
-    try {
-        const transportResult = await sendChannelText({
+    const message = await sendTrackedBotMessage({
+        db: prisma,
+        data: {
+            conversationId: params.conversationId, content, type: "text",
+            sourceType: source.sourceType, sourceId: source.sourceId,
+        },
+        send: () => sendChannelText({
             sourceType: source.sourceType,
             to: params.phone,
             body: content,
-        });
-
-        const message = await prisma.message.create({
-            data: {
-                conversationId: params.conversationId,
-                content,
-                direction: "outbound",
-                status: "sent",
-                type: "text",
-                sourceType: source.sourceType,
-                sourceId: source.sourceId,
-                senderType: "bot",
-                providerMessageId: transportResult?.Id || null,
-            },
-        });
+        }),
+    });
+    if (message) {
         await recordChatbotReply(message.id, usageAllowance);
         queueAvatarRefreshForConversation(params.conversationId);
-    } catch (error) {
-        await prisma.message.create({
-            data: {
-                conversationId: params.conversationId,
-                content,
-                direction: "outbound",
-                status: "failed",
-                type: "text",
-                sourceType: source.sourceType,
-                sourceId: source.sourceId,
-                senderType: "bot",
-            },
-        });
-        throw error;
     }
 }
 
@@ -1271,7 +1252,8 @@ async function sendAutomatedBotMedia(params: {
     mediaLabel?: string | null;
     development: string;
 }) {
-    const placeholderContent = params.mediaCategory === "image" ? "[image]" : "[document]";
+    const caption = params.mediaCategory === "document" ? `Catalogo PDF de ${params.development}` : undefined;
+    const placeholderContent = caption || `[${params.mediaCategory}]`;
     let storedMediaUrl = params.mediaUrl;
     const source = await getAutomatedConversationSource(params.conversationId);
 
@@ -1289,13 +1271,20 @@ async function sendAutomatedBotMedia(params: {
             console.warn("[Catalog] Failed to persist automated media locally:", persistError);
         }
 
-        const result = source.sourceType === "meta"
+        const message = await sendTrackedBotMessage({
+            db: prisma,
+            data: {
+                conversationId: params.conversationId, content: placeholderContent, type: params.mediaCategory,
+                sourceType: source.sourceType, sourceId: source.sourceId,
+                mediaUrl: storedMediaUrl, mediaType: resolvedMedia.mimeType, mediaFileName: resolvedMedia.fileName,
+            },
+            send: async () => source.sourceType === "meta"
             ? await sendChannelMedia({
                 sourceType: "meta",
                 to: params.phone,
                 mediaType: params.mediaCategory,
                 link: buildPublicMediaUrl(storedMediaUrl),
-                caption: params.mediaCategory === "document" ? `Catalogo PDF de ${params.development}` : undefined,
+                caption,
                 fileName: resolvedMedia.fileName,
             })
             : await sendChannelMedia({
@@ -1305,44 +1294,15 @@ async function sendAutomatedBotMedia(params: {
                 dataUrl: resolvedMedia.dataUrl,
                 fileName: resolvedMedia.fileName,
                 mimeType: resolvedMedia.mimeType,
-                caption: params.mediaCategory === "document" ? `Catalogo PDF de ${params.development}` : undefined,
-            });
-
-        await prisma.message.create({
-            data: {
-                conversationId: params.conversationId,
-                content: placeholderContent,
-                direction: "outbound",
-                status: "sent",
-                type: params.mediaCategory,
-                sourceType: source.sourceType,
-                sourceId: source.sourceId,
-                senderType: "bot",
-                mediaUrl: storedMediaUrl,
-                mediaType: resolvedMedia.mimeType,
-                mediaFileName: resolvedMedia.fileName,
-                providerMessageId: result?.Id || null,
-            },
+                caption,
+            }),
         });
+        if (!message) return false;
         queueAvatarRefreshForConversation(params.conversationId);
 
         return true;
     } catch (error) {
         console.error("[Catalog] Failed to send automated media asset:", error);
-        await prisma.message.create({
-            data: {
-                conversationId: params.conversationId,
-                content: placeholderContent,
-                direction: "outbound",
-                status: "failed",
-                type: params.mediaCategory,
-                sourceType: source.sourceType,
-                sourceId: source.sourceId,
-                senderType: "bot",
-                mediaUrl: storedMediaUrl,
-                mediaFileName: params.mediaLabel || null,
-            },
-        });
         return false;
     }
 }

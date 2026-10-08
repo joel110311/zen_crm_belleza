@@ -3,6 +3,7 @@ import { processInboundMessage } from "@/app/actions/chat";
 import { getControlDb } from "@/lib/control-db";
 import { runWithTenantPrisma } from "@/lib/routed-prisma";
 import { getTenantPrismaManager } from "@/lib/tenant-prisma-manager";
+import { storeWuzapiOutboundEcho } from "@/lib/wuzapi-outbound-echo-runtime";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -17,7 +18,7 @@ function text(value: unknown, maximum = 4_000) {
 }
 
 /**
- * Stores one inbound tenant message before Redis is involved. Redis is deliberately used only by
+ * Stores either direction of a tenant message before Redis is involved. Redis is used only by
  * processInboundMessage for chatbot batching, never as a prerequisite for inbox persistence.
  */
 export async function processTenantInboundWebhookEvent(tenantId: string, webhookEventId: string) {
@@ -27,7 +28,7 @@ export async function processTenantInboundWebhookEvent(tenantId: string, webhook
         select: { payload: true },
     });
     const payload = record(event?.payload);
-    if (!event || payload.kind !== "message" || payload.direction === "outbound") {
+    if (!event || payload.kind !== "message") {
         throw new Error("Inbound tenant webhook event was not found.");
     }
 
@@ -35,6 +36,9 @@ export async function processTenantInboundWebhookEvent(tenantId: string, webhook
     const sourceType = payload.sourceType === "meta" ? "meta" : "wuzapi";
     const sourceId = text(payload.sourceId, 160);
     if (!phone || !sourceId) throw new Error("Inbound tenant webhook payload is invalid.");
+    if (payload.direction === "outbound" && sourceType !== "wuzapi") {
+        throw new Error("Only linked-device WuzAPI outbound echoes are supported.");
+    }
 
     await controlDb.webhookEvent.update({
         where: { id: webhookEventId },
@@ -44,7 +48,15 @@ export async function processTenantInboundWebhookEvent(tenantId: string, webhook
     const tenantDb = await getTenantPrismaManager().getForTenant(tenantId);
     const result = await runWithTenantPrisma(
         tenantDb,
-        () => processInboundMessage(
+        () => payload.direction === "outbound"
+            ? storeWuzapiOutboundEcho({
+                phoneCandidates: [phone], content: text(payload.content) || "[Mensaje de WhatsApp]",
+                sourceId, providerMessageId: text(payload.providerMessageId, 300) || undefined,
+                contactName: text(payload.contactName, 160) || undefined,
+                occurredAt: text(payload.occurredAt, 80) ? new Date(text(payload.occurredAt, 80)) : undefined,
+                media: { type: text(payload.messageType, 40) || "text", mediaType: text(payload.mediaMimeType, 160) || undefined, mediaFileName: text(payload.mediaFileName, 255) || undefined },
+            })
+            : processInboundMessage(
             phone,
             text(payload.content) || "[Mensaje de WhatsApp]",
             text(payload.contactName, 160) || undefined,

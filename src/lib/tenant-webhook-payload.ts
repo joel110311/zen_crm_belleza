@@ -12,9 +12,12 @@ function string(value: unknown, maxLength = 4_000) {
 }
 
 function asTimestamp(value: unknown) {
-    const numeric = typeof value === "number" ? value : Number(string(value, 40));
-    if (!Number.isFinite(numeric)) return undefined;
-    const date = new Date(numeric > 10_000_000_000 ? numeric : numeric * 1_000);
+    const raw = typeof value === "number" ? value : string(value, 80);
+    if (raw === "" || raw === undefined) return undefined;
+    const numeric = Number(raw);
+    const date = Number.isFinite(numeric)
+        ? new Date(numeric > 10_000_000_000 ? numeric : numeric * 1_000)
+        : new Date(raw);
     return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
 }
 
@@ -33,7 +36,10 @@ function containsNonDirectJid(value: unknown): boolean {
             || normalized.includes("@newsletter");
     }
     if (typeof value === "object") {
-        return Object.values(record(value)).some((entry) => containsNonDirectJid(entry));
+        const candidate = record(value);
+        const server = string(field(candidate, "Server") || field(candidate, "RawServer"), 80).toLowerCase();
+        return ["g.us", "broadcast", "newsletter"].includes(server)
+            || Object.values(candidate).some((entry) => containsNonDirectJid(entry));
     }
     return false;
 }
@@ -250,14 +256,19 @@ function resolveWuzapiPhone(info: JsonRecord, fromMe: boolean) {
 export function normalizeWuzapiWebhook(payload: unknown, externalAccountId: string, fallbackHash: string): { providerEventId: string; payload: QueuedWebhookPayload } {
     const root = record(payload);
     const event = record(root.event);
-    const info = record(event.Info || event.info || root.Info || root.info);
+    const rawInfo = record(field(event, "Info") || field(root, "Info"));
+    const info = { ...nested(rawInfo, "MessageSource"), ...rawInfo };
     const message = unwrapWuzapiMessage(event.Message || event.message || root.Message || root.message);
     const rawId = string(info.ID || info.Id || info.id || root.id, 300);
     const providerEventId = `wuzapi:message:${externalAccountId}:${rawId || fallbackHash}`;
-    const fromMe = boolean(info.IsFromMe ?? info.isFromMe);
+    const fromMe = boolean(field(info, "IsFromMe"));
     const phone = resolveWuzapiPhone(info, fromMe);
-    const contactName = string(event.PushName || event.pushName || root.PushName || root.pushName, 160) || undefined;
+    // Outgoing PushName belongs to the CRM owner, not the recipient.
+    const contactName = string(fromMe
+        ? field(info, "RecipientName") || field(info, "RecipientPushName")
+        : field(info, "PushName") || field(event, "PushName") || field(root, "PushName"), 160) || undefined;
     const messageType = wuzapiMessageType(message);
+    const media = nested(message, `${messageType}Message`);
     const content = wuzapiText(message)
         || (messageType === "image" ? "[Imagen]"
             : messageType === "video" ? "[Video]"
@@ -272,6 +283,8 @@ export function normalizeWuzapiWebhook(payload: unknown, externalAccountId: stri
             ? {
                 kind: "message", sourceType: "wuzapi", sourceId: externalAccountId, providerMessageId: rawId || undefined,
                 phone, contactName, content, messageType,
+                mediaMimeType: string(field(media, "mimetype"), 160) || undefined,
+                mediaFileName: string(field(media, "fileName"), 255) || undefined,
                 direction: fromMe ? "outbound" : "inbound", occurredAt: asTimestamp(info.Timestamp || info.timestamp || event.Timestamp || event.timestamp),
             }
             : { kind: "ignored", sourceType: "wuzapi", sourceId: externalAccountId },

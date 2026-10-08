@@ -126,81 +126,6 @@ function text(value, maximum = 4_000) {
     return typeof value === "string" ? value.trim().slice(0, maximum) : "";
 }
 
-function timestamp(value) {
-    if (typeof value !== "string" || !value) return new Date();
-    const parsed = new Date(value);
-    return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
-}
-
-async function applyMessage(db, event) {
-    const payload = event.payload || {};
-    const sourceType = payload.sourceType === "meta" ? "meta" : "wuzapi";
-    const sourceId = text(payload.sourceId, 160);
-    const providerMessageId = text(payload.providerMessageId, 300) || null;
-    const phone = text(payload.phone, 80).replace(/\D/g, "");
-    if (!sourceId || !phone || phone.length < 7 || phone.length > 20) return;
-
-    await db.query("BEGIN");
-    try {
-        // The durable queue already de-duplicates deliveries, and this transaction-level lock also
-        // handles a worker crash between the tenant write and the control-plane acknowledgement.
-        await db.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`${sourceType}:${providerMessageId || event.providerEventId}`]);
-        if (providerMessageId) {
-            const duplicate = await db.query(
-                `SELECT "id" FROM "Message" WHERE "source_type" = $1 AND "providerMessageId" = $2 LIMIT 1`,
-                [sourceType, providerMessageId],
-            );
-            if (duplicate.rowCount) {
-                await db.query("COMMIT");
-                return;
-            }
-        }
-        const contact = await db.query(
-            `INSERT INTO "Contact" ("id", "phone", "name", "tags", "status", "createdAt", "updatedAt")
-             VALUES ($1, $2, $3, ARRAY[]::TEXT[], 'lead', NOW(), NOW())
-             ON CONFLICT ("phone") DO UPDATE SET
-                 "name" = COALESCE("Contact"."name", EXCLUDED."name"),
-                 "updatedAt" = NOW()
-             RETURNING "id"`,
-            [crypto.randomUUID(), phone, text(payload.contactName, 160) || null],
-        );
-        const contactId = contact.rows[0].id;
-        const existingConversation = await db.query(
-            `SELECT "id" FROM "Conversation"
-              WHERE "contactId" = $1 AND "source_type" = $2 AND "source_id" IS NOT DISTINCT FROM $3 AND "status" = 'active'
-              ORDER BY "updatedAt" DESC LIMIT 1`,
-            [contactId, sourceType, sourceId],
-        );
-        const conversationId = existingConversation.rows[0]?.id || crypto.randomUUID();
-        if (!existingConversation.rowCount) {
-            await db.query(
-                `INSERT INTO "Conversation" ("id", "contactId", "source_type", "source_id", "createdAt", "updatedAt", "sessionExpiresAt")
-                 VALUES ($1, $2, $3, $4, NOW(), NOW(), CASE WHEN $3 = 'meta' THEN NOW() + INTERVAL '24 hours' ELSE NULL END)`,
-                [conversationId, contactId, sourceType, sourceId],
-            );
-        }
-        const direction = payload.direction === "outbound" ? "outbound" : "inbound";
-        await db.query(
-            `INSERT INTO "Message" ("id", "conversationId", "content", "type", "direction", "source_type", "source_id", "status", "senderType", "providerMessageId", "createdAt")
-             VALUES ($1, $2, $3, $4, $5, $6, $7, 'sent', $8, $9, $10)`,
-            [
-                crypto.randomUUID(), conversationId, text(payload.content) || "[Mensaje de WhatsApp]",
-                ["image", "video", "audio", "document"].includes(payload.messageType) ? payload.messageType : "text",
-                direction, sourceType, sourceId, direction === "outbound" ? "human" : null, providerMessageId, timestamp(payload.occurredAt),
-            ],
-        );
-        await db.query(
-            `UPDATE "Conversation" SET "updatedAt" = NOW(), "sessionExpiresAt" = CASE WHEN $2 = 'meta' THEN NOW() + INTERVAL '24 hours' ELSE "sessionExpiresAt" END
-              WHERE "id" = $1`,
-            [conversationId, sourceType],
-        );
-        await db.query("COMMIT");
-    } catch (error) {
-        await db.query("ROLLBACK").catch(() => {});
-        throw error;
-    }
-}
-
 async function applyStatus(db, event) {
     const payload = event.payload || {};
     const sourceType = payload.sourceType === "meta" ? "meta" : "wuzapi";
@@ -242,10 +167,11 @@ async function processWebhookEvent(work) {
     if (!event || !event.tenantId || event.status === "IGNORED" || event.status === "PROCESSED") return;
     if (event.tenantId !== work.tenantId) throw new Error("Webhook work item tenant mismatch.");
     await control.query(`UPDATE "WebhookEvent" SET "status" = 'PROCESSING', "processingError" = NULL WHERE "id" = $1`, [event.id]);
-    if (event.payload?.kind === "message" && event.payload?.direction !== "outbound") {
+    // Both directions use the same tenant-scoped contact/conversation resolver.
+    if (event.payload?.kind === "message") {
         const internalUrl = process.env.TENANT_WEB_INTERNAL_URL?.trim()?.replace(/\/+$/, "") || "";
         const secret = process.env.SECURITY_HASH_SALT?.trim() || "";
-        if (!internalUrl || !secret) throw new Error("Tenant inbound processing endpoint is not configured.");
+        if (!internalUrl || !secret) throw new Error("Tenant message processing endpoint is not configured.");
         const response = await fetch(`${internalUrl}/api/internal/tenant-inbound-message`, {
             method: "POST",
             headers: {
@@ -255,13 +181,12 @@ async function processWebhookEvent(work) {
             body: JSON.stringify({ tenantId: event.tenantId, webhookEventId: event.id }),
             signal: AbortSignal.timeout(90_000),
         });
-        if (!response.ok) throw new Error(`Tenant inbound processing returned HTTP ${response.status}.`);
+        if (!response.ok) throw new Error(`Tenant message processing returned HTTP ${response.status}.`);
     } else {
         const db = await tenantPool(event.tenantId);
         try {
-            if (event.payload?.kind === "message") await applyMessage(db, event);
-        else if (event.payload?.kind === "status") await applyStatus(db, event);
-        else if (event.payload?.kind === "reaction") await applyReaction(db, event);
+            if (event.payload?.kind === "status") await applyStatus(db, event);
+            else if (event.payload?.kind === "reaction") await applyReaction(db, event);
         } finally {
             await db.end();
         }

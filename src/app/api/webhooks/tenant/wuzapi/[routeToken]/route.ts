@@ -41,8 +41,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const normalized = normalizeWuzapiWebhook(payload, connection?.externalAccountId || "unknown", webhookBodyHash(rawBody));
     const processImmediately = Boolean(
         connection
-        && normalized.payload.kind === "message"
-        && normalized.payload.direction !== "outbound",
+        && normalized.payload.kind === "message",
     );
     const ingested = await ingestTenantWebhook({
         tenantId: connection?.tenantId || null,

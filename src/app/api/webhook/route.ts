@@ -10,9 +10,7 @@ import { getSystemSettingsOrDefaults } from "@/lib/system-settings";
 import { MESSAGE_SOURCE_WUZAPI, resolveMessageSourceId } from "@/lib/message-source";
 import { getBearerToken, safeSecretEqual } from "@/lib/security";
 import { downloadWuzapiMedia } from "@/lib/wuzapi";
-import { refreshWhatsAppAvatarForContact } from "@/lib/whatsapp-avatar";
-import { findOrCreateActiveConversationForContactSource } from "@/lib/source-conversations";
-import { findAndConsolidateContact } from "@/lib/contact-deduplication";
+import { storeWuzapiOutboundEcho } from "@/lib/wuzapi-outbound-echo-runtime";
 
 type JsonObject = Record<string, unknown>;
 
@@ -1107,10 +1105,6 @@ function resolvePhoneCandidatesFromInfo(info: JsonObject, isFromMe: boolean) {
     return uniquePhoneCandidates(candidates.map((candidate) => extractJidPhone(candidate)));
 }
 
-async function findContactByPhoneCandidates(phoneCandidates: string[]) {
-    return findAndConsolidateContact(phoneCandidates);
-}
-
 function resolveProviderMessageId(info: JsonObject) {
     return (
         getString(info, "ID") ||
@@ -1280,174 +1274,9 @@ async function storeOutboundEcho(
     providerMessageId?: string,
     occurredAt?: Date | null,
 ) {
-    if (providerMessageId) {
-        const existingMessage = await prisma.message.findFirst({
-            where: {
-                providerMessageId,
-                sourceType: MESSAGE_SOURCE_WUZAPI,
-            },
-            include: { conversation: true },
-        });
-
-        if (existingMessage) {
-            const shouldPauseBot = existingMessage.senderType !== "bot";
-            await prisma.message.update({
-                where: { id: existingMessage.id },
-                data: {
-                    status: existingMessage.status === "sent" ? existingMessage.status : "sent",
-                    ...(occurredAt ? { createdAt: occurredAt } : {}),
-                },
-            });
-
-            await prisma.conversation.update({
-                where: { id: existingMessage.conversationId },
-                data: {
-                    updatedAt: new Date(),
-                    ...(shouldPauseBot ? { botActive: false } : {}),
-                },
-            });
-
-            revalidatePath("/dashboard/inbox");
-            return;
-        }
-    }
-
-    const normalizedCandidates = uniquePhoneCandidates(phoneCandidates);
-    if (normalizedCandidates.length === 0) return;
-
-    const normalizedCustomerName = normalizeCustomerNameValue(customerName);
-    let contact = await findContactByPhoneCandidates(normalizedCandidates);
-
-    if (!contact) {
-        const primaryPhone = normalizedCandidates[0];
-        try {
-            contact = await prisma.contact.create({
-                data: {
-                    phone: primaryPhone,
-                    name: normalizedCustomerName,
-                    status: "lead",
-                },
-            });
-        } catch (error) {
-            console.warn("[Webhook] Failed to create contact from outbound echo, retrying lookup", {
-                phone: primaryPhone,
-                providerMessageId,
-                error,
-            });
-            contact = await findContactByPhoneCandidates(normalizedCandidates);
-        }
-    } else if (normalizedCustomerName && !normalizeCustomerNameValue(contact.name)) {
-        contact = await prisma.contact.update({
-            where: { id: contact.id },
-            data: { name: normalizedCustomerName },
-        });
-    }
-
-    if (!contact) {
-        console.warn("[Webhook] Outbound echo ignored because contact could not be resolved", {
-            providerMessageId,
-            phoneCandidates: normalizedCandidates,
-        });
-        return;
-    }
-
-    const shouldAwaitInitialAvatarRefresh = !contact.whatsappAvatarCheckedAt;
-    if (shouldAwaitInitialAvatarRefresh) {
-        try {
-            await refreshWhatsAppAvatarForContact(contact.id, { force: true });
-        } catch (avatarError) {
-            console.warn("[Webhook] Failed to refresh WhatsApp avatar for first outbound echo", avatarError);
-        }
-    } else {
-        void refreshWhatsAppAvatarForContact(contact.id).catch((avatarError) => {
-            console.warn("[Webhook] Failed to refresh WhatsApp avatar for outbound echo", avatarError);
-        });
-    }
-
-    const conversation = await findOrCreateActiveConversationForContactSource({
-        contactId: contact.id,
-        sourceType: MESSAGE_SOURCE_WUZAPI,
-        sourceId,
-        defaults: {
-            botActive: false,
-        },
-    });
-
-    const duplicate = await prisma.message.findFirst({
-        where: {
-            conversationId: conversation.id,
-            sourceType: MESSAGE_SOURCE_WUZAPI,
-            OR: [
-                ...(providerMessageId ? [{ providerMessageId }] : []),
-                ...(providerMessageId
-                    ? [{
-                        providerMessageId: null,
-                        content: text,
-                        direction: "outbound",
-                        type: media.type || "text",
-                        createdAt: { gte: new Date(Date.now() - 15000) },
-                    }]
-                    : [{
-                        content: text,
-                        direction: "outbound",
-                        type: media.type || "text",
-                        createdAt: { gte: new Date(Date.now() - 15000) },
-                    }]),
-            ],
-        },
-    });
-
-    if (duplicate) {
-        const shouldPauseBot = duplicate.senderType !== "bot";
-        if ((providerMessageId && !duplicate.providerMessageId) || occurredAt) {
-            await prisma.message.update({
-                where: { id: duplicate.id },
-                data: {
-                    ...(providerMessageId && !duplicate.providerMessageId ? { providerMessageId } : {}),
-                    ...(occurredAt ? { createdAt: occurredAt } : {}),
-                },
-            });
-        }
-
-        await prisma.conversation.update({
-            where: { id: conversation.id },
-            data: {
-                updatedAt: new Date(),
-                ...(shouldPauseBot ? { botActive: false } : {}),
-            },
-        });
-        return;
-    }
-
-    await prisma.message.create({
-        data: {
-            conversationId: conversation.id,
-            content: text,
-            direction: "outbound",
-            status: "sent",
-            type: media.type || "text",
-            mediaUrl: media.mediaUrl || null,
-            mediaType: media.mediaType || null,
-            mediaFileName: media.mediaFileName || null,
-            senderType: "human",
-            providerMessageId: providerMessageId || null,
-            sourceType: MESSAGE_SOURCE_WUZAPI,
-            sourceId,
-            ...(occurredAt ? { createdAt: occurredAt } : {}),
-        },
-    });
-
-    await prisma.conversation.update({
-        where: { id: conversation.id },
-        data: {
-            updatedAt: new Date(),
-            botActive: false,
-        },
-    });
-
+    await storeWuzapiOutboundEcho({ phoneCandidates, content: text, media, sourceId, contactName: customerName, providerMessageId, occurredAt });
     revalidatePath("/dashboard/inbox");
 }
-
 export async function GET() {
     return NextResponse.json({ ok: true, channel: "whatsapp-webhook" });
 }

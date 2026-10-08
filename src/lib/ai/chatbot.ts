@@ -7,6 +7,7 @@ import { getSystemSettingsOrDefaults, type AppSystemSettings } from "@/lib/syste
 import { formatBusinessScheduleLines, normalizeBusinessHours } from "@/lib/calendar/business-hours";
 import { getContactFullName } from "@/lib/contact-name";
 import { buildBeautyBusinessContext } from "@/lib/ai/beauty-business-context";
+import { formatBotReplyForReadability } from "@/lib/ai/reply-format";
 
 type AssistantHistoryEntry = {
     content: string;
@@ -223,6 +224,7 @@ ${businessScheduleLines}
 - Formatea para WhatsApp: usa saltos de linea entre ideas, pasos, precios y cierre.
 - No amontones la informacion: usa parrafos cortos de 1 o 2 frases maximo.
 - Si enumeras beneficios, opciones o pasos, usa una lista simple con cada punto en su propia linea.
+- Separa la introduccion, los bloques de opciones y la pregunta final con una linea en blanco; no insertes lineas vacias entre los puntos de una misma lista.
 - Para resaltar algo usa *negritas* con un solo asterisco. No uses **doble asterisco**, encabezados Markdown ni tablas.
 - Mantena un tono amable, profesional y claro. Usa pocos emojis y solo si aportan.
 
@@ -273,7 +275,7 @@ async function generateConfiguredAssistantReply(params: {
         ],
         params.settings.agentTemperature,
     );
-    const normalized = normalizeWhatsAppReply(response || "");
+    const normalized = formatBotReplyForReadability(normalizeWhatsAppReply(response || ""));
 
     return {
         reply: stripUnverifiedAdvisorLines(normalized, {
