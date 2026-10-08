@@ -5,14 +5,17 @@ import path from "node:path";
 import os from "node:os";
 import { loadTsModule } from "./helpers/load-ts-module.mts";
 import * as policy from "../src/lib/chat-media-policy.ts";
+import * as audioPolicy from "../src/lib/whatsapp-audio.ts";
 import type { QueuedWebhookPayload } from "../src/lib/tenant-work-queue.ts";
 
 test("tenant QR downloads and reactions use only the matching tenant credential; Meta retrieval authenticates both requests", async () => {
     process.env.MULTITENANT_WUZAPI_BASE_URL = "https://gateway.test";
     process.env.META_APP_ID = "test-app"; process.env.META_APP_SECRET = "test-secret"; process.env.META_EMBEDDED_SIGNUP_CONFIG_ID = "test-config";
     const requests: Array<{ url: string; token: string | null; bearer: string | null; body: Record<string, unknown> }> = [];
+    let rejectAudio = false;
     const loadedModule = loadTsModule("src/lib/tenant-channels.ts", {
         "server-only": {}, "@/generated/control-plane": { Prisma: {} },
+        "@/lib/whatsapp-audio": audioPolicy,
         "@/lib/control-db": { getControlDb: () => ({ channelConnection: {
             findFirst: async ({ where }: { where: Record<string, unknown> }) => {
                 if (where.tenantId !== "a" && where.tenantId !== "b") return null;
@@ -28,6 +31,7 @@ test("tenant QR downloads and reactions use only the matching tenant credential;
     }, { fetch: async (url: string | URL, init: RequestInit) => {
         const headers = new Headers(init.headers);
         requests.push({ url: String(url), token: headers.get("token"), bearer: headers.get("authorization"), body: JSON.parse(String(init.body || "{}")) });
+        if (rejectAudio) return Response.json({ success: false, error: "audio rejected" });
         if (String(url).includes("/download")) return Response.json({ data: { Data: "data:image/jpeg;base64,YWJj", Mimetype: "image/jpeg" } });
         if (String(url).includes("graph.facebook.com") && !init.body) return Response.json({ url: "https://lookaside.fbsbx.com/media", mime_type: "image/jpeg" });
         if (String(url).includes("lookaside.fbsbx.com")) return new Response("abc");
@@ -53,6 +57,16 @@ test("tenant QR downloads and reactions use only the matching tenant credential;
     assert.equal(requests.at(-1)?.token, "test-token-b");
     assert.equal(requests.at(-1)?.body.Document, "data:application/octet-stream;base64,YWJj");
     assert.equal(requests.at(-1)?.body.MimeType, "application/pdf");
+    await sendMedia({ tenantId: "b", sourceType: "wuzapi", to: "demo", mediaType: "audio", dataUrl: "data:audio/mpeg;base64,YWJj", mimeType: "audio/mpeg" });
+    assert.equal(requests.at(-1)?.token, "test-token-b");
+    assert.equal(requests.at(-1)?.body.Audio, "data:audio/mpeg;base64,YWJj");
+    assert.equal(requests.at(-1)?.body.PTT, false, "uploaded MP3 is not a microphone voice note");
+    assert.equal(requests.at(-1)?.body.MimeType, "audio/mpeg");
+    await sendMedia({ tenantId: "b", sourceType: "wuzapi", to: "demo", mediaType: "audio", dataUrl: "data:audio/ogg;base64,YWJj", mimeType: "audio/ogg" });
+    assert.equal(requests.at(-1)?.body.PTT, true);
+    assert.equal(requests.at(-1)?.body.MimeType, "audio/ogg; codecs=opus");
+    rejectAudio = true;
+    await assert.rejects(sendMedia({ tenantId: "b", sourceType: "wuzapi", to: "demo", mediaType: "audio", dataUrl: "data:audio/mpeg;base64,YWJj", mimeType: "audio/mpeg" }), /audio rejected/);
 });
 
 test("inbound media stores stable tenant-namespaced files, so retry does not duplicate attachments", async () => {

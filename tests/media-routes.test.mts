@@ -89,6 +89,19 @@ test("actual upload/media routes: >10MB MP4, real WebM→Opus, images/documents,
         assert.equal(storedAudio.subarray(0, 4).toString(), "OggS");
         assert.ok(storedAudio.includes(Buffer.from("OpusHead")));
 
+        // An attached MP3 stays an audio file, while the microphone path above remains Opus.
+        const mp3Source = path.join(root, "audio.mp3");
+        await runMediaFfmpeg(["-y", "-f", "lavfi", "-i", "sine=frequency=440:duration=0.2", "-c:a", "libmp3lame", mp3Source]);
+        const mp3Bytes = await fs.readFile(process.env.CRM_TEST_AUDIO || mp3Source);
+        const mp3 = await put("song.mp3", "audio/mpeg", mp3Bytes);
+        assert.equal(mp3.response.status, 200);
+        assert.equal(mp3.payload.mimeType, "audio/mpeg");
+        assert.equal(mp3.payload.mediaCategory, "audio");
+        assert.equal(mp3.payload.fileName, "song.mp3");
+        assert.ok(mp3.payload.url.endsWith(".mp3"));
+        assert.deepEqual(await fs.readFile(path.join(root, "public", "uploads", mp3.payload.url.split("/").pop()!)), mp3Bytes);
+        assert.equal((await put("invalid.mp3", "audio/mpeg", Buffer.from("not an audio file"))).response.status, 422);
+
         const sharp = require("sharp");
         const webp = await sharp({ create: { width: 8, height: 8, channels: 3, background: "#4B5F25" } }).webp().toBuffer();
         const convertedImage = await put("image.webp", "image/webp", webp);

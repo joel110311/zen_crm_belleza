@@ -2603,6 +2603,7 @@ export default function InboxPage() {
             sourceId: outboundSourceType === selectedChat.sourceType ? selectedChat.sourceId || null : null,
             senderType: "human",
             mediaUrl: fullMediaUrl,
+            status: "sending",
             mediaType: mimeType,
             mediaFileName: fileName,
         };
@@ -2624,12 +2625,10 @@ export default function InboxPage() {
                 }),
             });
 
-            if (!res.ok) {
-                const errData = await res.json();
-                throw new Error(errData.error || "Failed to send message");
+            const result = await res.json().catch(() => ({}));
+            if (!res.ok || !result.success || !result.message) {
+                throw new Error(result.error || "WhatsApp no confirmó el envío del archivo.");
             }
-
-            const result = await res.json();
             if (result?.message) {
                 const persistedMessage = normalizeMessageRecord(result.message);
                 if (result.conversationId && result.conversationId !== selectedChat.id) {
@@ -2675,6 +2674,7 @@ export default function InboxPage() {
             sourceType: outboundSourceType,
             sourceId: outboundSourceType === selectedChat.sourceType ? selectedChat.sourceId || null : null,
             senderType: "human",
+            status: "sending",
         };
         setMessages(prev => [...prev, optimistic]);
         setConversationBotState(selectedChat.id, false);
@@ -3306,6 +3306,10 @@ export default function InboxPage() {
                                                                         No enviado
                                                                     </span>
                                                                 )}
+                                                                {msg.direction === "outbound" && msg.status === "sending" && <span>Enviando…</span>}
+                                                                {msg.direction === "outbound" && msg.status === "sent" && <span>Enviado a WhatsApp</span>}
+                                                                {msg.direction === "outbound" && msg.status === "delivered" && <span>Entregado</span>}
+                                                                {msg.direction === "outbound" && msg.status === "read" && <span>Leído</span>}
                                                                 <p>
                                                                     {formatTimeInOperationZone(msg.createdAt, operationContext.locale, operationContext.timeZone)}
                                                                 </p>

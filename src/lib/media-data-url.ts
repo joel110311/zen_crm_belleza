@@ -189,7 +189,7 @@ async function convertAudioBufferToOgg(
     fileName: string,
     mimeType: string,
 ) {
-    if (!mimeType.startsWith("audio/")) {
+    if (!mimeType.startsWith("audio/") || mimeType.split(";")[0].trim() === "audio/mpeg") {
         return null;
     }
 
@@ -205,10 +205,13 @@ async function convertAudioBufferToOgg(
                 "-y",
                 "-i",
                 inputPath,
+                "-vn",
                 "-c:a",
                 "libopus",
                 "-b:a",
                 "32k",
+                "-ac",
+                "1",
                 "-vbr",
                 "on",
                 outputPath,

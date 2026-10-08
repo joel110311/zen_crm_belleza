@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import { prisma } from "@/lib/db";
 import { getSystemSettingsOrDefaults } from "@/lib/system-settings";
+import { whatsappAudioOptions } from "@/lib/whatsapp-audio";
 
 type WuzapiUser = {
     id?: string | number;
@@ -615,8 +616,7 @@ export async function sendWuzapiMediaMessage(params: SendMediaParams) {
                     Phone: phone,
                     Audio: params.dataUrl,
                     Caption: params.caption || "",
-                    MimeType: params.mimeType,
-                    PTT: true,
+                    ...whatsappAudioOptions(params.dataUrl, params.mimeType),
                 }),
             }),
         );

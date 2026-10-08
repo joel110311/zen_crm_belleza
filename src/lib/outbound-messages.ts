@@ -11,6 +11,7 @@ import { findOrCreateActiveConversationForContactSource } from "@/lib/source-con
 import { sendChannelMedia, sendChannelText } from "@/lib/channel-delivery";
 import { assertChatbotUsageAvailable, recordChatbotReply } from "@/lib/billing/chatbot-usage";
 import { resolveAssignableTenantUserId } from "@/lib/user-assignment";
+import { requireProviderMessageId } from "@/lib/whatsapp-audio";
 
 export { resolveAssignableTenantUserId } from "@/lib/user-assignment";
 
@@ -153,7 +154,7 @@ export async function sendOutboundConversationMessage(
                     to: conversation.contact.phone,
                     body: content,
                 });
-                providerMessageId = result?.Id || null;
+                providerMessageId = requireProviderMessageId(result);
             } else if (params.mediaUrl) {
                 let result: { Id?: string | null } | null = null;
 
@@ -182,8 +183,10 @@ export async function sendOutboundConversationMessage(
                     });
                 }
 
-                providerMessageId = result?.Id || null;
+                providerMessageId = requireProviderMessageId(result);
             }
+
+            if (!providerMessageId) throw new Error("WhatsApp no confirmó el envío del mensaje.");
 
             const updatedMessage = await prisma.message.update({
                 where: { id: message.id },
@@ -200,16 +203,7 @@ export async function sendOutboundConversationMessage(
             };
         }
 
-        const updatedMessage = await prisma.message.update({
-            where: { id: message.id },
-            data: { status: "sent" },
-        });
-        if (isBotReply) await recordChatbotReply(updatedMessage.id, usageAllowance);
-
-        return {
-            message: updatedMessage,
-            conversation,
-        };
+        throw new Error("El contacto no tiene un teléfono válido para enviar por WhatsApp.");
     } catch (error) {
         await prisma.message.update({
             where: { id: message.id },

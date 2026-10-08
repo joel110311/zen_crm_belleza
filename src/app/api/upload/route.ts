@@ -108,6 +108,7 @@ export async function POST(request: NextRequest) {
             ? MEDIA_MIME_BY_EXTENSION[originalExt.slice(1)] || "application/octet-stream" : claimedMimeType;
         // A WebM voice recording is audio, not video: preserve the actual container until conversion.
         const isAudio = normalizedMimeType.startsWith("audio/");
+        const isMp3 = isAudio && originalExt === ".mp3";
         const isVideo = !isAudio && (VIDEO_EXTENSIONS.has(originalExt) || normalizedMimeType.startsWith("video/") || (isPrivateChat && normalizedMimeType === "image/gif"));
         const isImage = !isVideo && normalizedMimeType.startsWith("image/");
 
@@ -134,7 +135,7 @@ export async function POST(request: NextRequest) {
         const originalBuffer = Buffer.from(await file.arrayBuffer());
 
         // Generate unique filename
-        const ext = isVideo ? ".mp4" : isAudio ? ".ogg" : isImage && normalizedMimeType === "image/webp" ? ".png" : originalExt;
+        const ext = isVideo ? ".mp4" : isMp3 ? ".mp3" : isAudio ? ".ogg" : isImage && normalizedMimeType === "image/webp" ? ".png" : originalExt;
         // Keep legacy installations compatible while making every new multitenant object
         // unambiguously owned by one business, even on the temporary shared volume fallback.
         const tenantNamespace = tenantRuntime
@@ -183,14 +184,21 @@ export async function POST(request: NextRequest) {
             const inputPath = path.join(uploadsDir, `${crypto.randomUUID()}-input${originalExt}`);
             try {
                 await writeFile(inputPath, originalBuffer);
-                await runMediaFfmpeg(["-y", "-i", inputPath, "-vn", "-c:a", "libopus", "-b:a", "32k", "-ac", "1", filePath]);
-                returnedMimeType = "audio/ogg";
-                returnedFileName = `${path.parse(file.name).name || "audio"}.ogg`;
+                if (isMp3) {
+                    // Validate the audio stream without turning a music/audio file into a PTT.
+                    await runMediaFfmpeg(["-i", inputPath, "-map", "0:a:0", "-vn", "-f", "null", "-"]);
+                    await writeFile(filePath, originalBuffer);
+                    returnedMimeType = "audio/mpeg";
+                } else {
+                    await runMediaFfmpeg(["-y", "-i", inputPath, "-vn", "-c:a", "libopus", "-b:a", "32k", "-ac", "1", filePath]);
+                    returnedMimeType = "audio/ogg";
+                    returnedFileName = `${path.parse(file.name).name || "audio"}.ogg`;
+                }
                 if ((await stat(filePath)).size > 16 * 1024 * 1024) throw new Error("audio_too_large");
             } catch (error) {
                 await removeIfExists(filePath);
                 if (error instanceof Error && error.message === "audio_too_large") return NextResponse.json({ error: "El audio final supera el límite de 16MB de WhatsApp." }, { status: 413 });
-                return NextResponse.json({ error: "No se pudo convertir el audio a una nota de voz compatible con WhatsApp." }, { status: 422 });
+                return NextResponse.json({ error: "No se pudo preparar el audio en un formato compatible con WhatsApp." }, { status: 422 });
             } finally { await removeIfExists(inputPath); }
         } else if (isImage && normalizedMimeType === "image/webp") {
             await writeFile(filePath, await sharp(originalBuffer, { limitInputPixels: 40_000_000 }).rotate().png().toBuffer());

@@ -7,6 +7,7 @@ import { decryptChannelSecret, encryptChannelSecret } from "@/lib/tenant-channel
 import { TenantServiceError } from "@/lib/tenant-services/context";
 import { normalizeMetaRecipient, normalizeWuzapiRecipient } from "@/lib/phone";
 import type { QueuedWebhookPayload } from "@/lib/tenant-work-queue";
+import { whatsappAudioOptions } from "@/lib/whatsapp-audio";
 
 type ChannelStatePayload = {
     v: 1;
@@ -377,7 +378,7 @@ async function qrGatewayRequest<T>(params: { path: string; token?: string; admin
         try { payload = JSON.parse(raw) as unknown; }
         catch { payload = raw; }
     }
-    if (!response.ok) {
+    if (!response.ok || (payload && typeof payload === "object" && (payload as { success?: boolean }).success === false)) {
         const details = typeof payload === "string" ? payload : (payload as { message?: string; error?: string }).message || (payload as { error?: string }).error;
         throw new Error(details || `El servicio de conexión mediante QR respondió ${response.status}.`);
     }
@@ -512,7 +513,7 @@ export async function sendTenantChannelMedia(params: {
             [field]: dataUrl,
             MimeType: params.mimeType,
             ...(params.mediaType === "document" ? { FileName: params.fileName || "archivo" } : {}),
-            ...(params.mediaType === "audio" ? { PTT: true } : {}),
+            ...(params.mediaType === "audio" ? whatsappAudioOptions(dataUrl, params.mimeType) : {}),
         },
     });
 }
