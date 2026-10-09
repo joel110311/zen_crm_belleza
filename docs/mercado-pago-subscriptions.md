@@ -26,7 +26,7 @@ La integración agrega Suscripciones (`/preapproval`) al Checkout Pro existente.
 - Si la cancelación, el cambio de periodo o un cobro ya preparado impiden aplicar una mejora pagada, se solicita devolver el proporcional con una clave idempotente. No se muestra como devuelto hasta verificar el estado real del pago. Ante timeout del cambio de precio se lee el acuerdo y se recupera el mismo cambio, sin repetir el cobro.
 - El worker también recupera pagos proporcionales sin webhook, por referencia exacta. No concede funciones a partir del retorno del navegador. Una eliminación de cuenta espera los cambios/pagos/devoluciones pendientes; la contabilidad del proporcional nunca cuenta como mensualidad.
 
-## Despliegue gradual (todavía no activado en producción)
+## Despliegue gradual
 
 1. Respaldar la base de control. Aplicar **antes de actualizar web/workers** las migraciones con la nueva imagen:
 
@@ -53,7 +53,7 @@ La integración agrega Suscripciones (`/preapproval`) al Checkout Pro existente.
    https://app.synapselogik.com/api/webhooks/mercado-pago
    ```
 
-   Suscripciones depende de la configuración del webhook de la aplicación, no de la `notification_url` enviada por Checkout Pro. Si se comparte la aplicación con Eventiia, **no sobrescribir su URL sin definir cómo se entregarán ambos productos**: configurar una URL adicional si el panel lo permite, un router de notificaciones verificado, o usar una aplicación dedicada. Comprobar que los Access Tokens y el secreto correspondan a la aplicación elegida.
+   Suscripciones depende de la configuración del webhook de la aplicación, no de la `notification_url` enviada por Checkout Pro. Si se comparte la aplicación con Eventiia, usar en producción **`https://app.synapselogik.com/api/webhooks/mercado-pago/shared`** y mantener la URL normal del CRM en pruebas. Desplegar y verificar esta ruta antes de cambiar el panel de Mercado Pago. El router comprueba la firma, consulta el pago canónico, verifica aplicación/entorno y reenvía únicamente referencias `eventiia:` al webhook original de Eventiia, preservando cuerpo, query y firma (sin cookies/tokens). Los avisos del CRM y suscripciones usan el reconciliador existente. Un fallo de verificación o entrega devuelve error para permitir el reintento; no se marca como entregado. Eventiia conserva sus credenciales y su endpoint. Comprobar que los Access Tokens y el secreto correspondan a la aplicación elegida.
 
 4. Actualizar web y workers con la nueva imagen, manteniendo la bandera en `false`. Confirmar los nueve servicios y `/api/health?scope=ready`.
 5. Seleccionar **Prueba** en `/control`, habilitar la bandera y autorizar con usuarios/medios de prueba oficiales. No usar tarjetas reales para probar. Verificar autorización, primer pago, próxima mensualidad, rechazo, cancelación desde CRM y desde Mercado Pago, notificación repetida, retorno sin pago y recuperación sin webhook. Probar además mejora proporcional, precio y fecha de la siguiente factura, bajada al siguiente periodo, respuesta perdida de actualización y devolución cuando no se puede aplicar. Confirmar también que el webhook de Eventiia siga funcionando si se comparte la app.
