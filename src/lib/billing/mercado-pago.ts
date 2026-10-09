@@ -66,6 +66,7 @@ export function getMercadoPagoWebhookRuntimeConfigurations(): MercadoPagoRuntime
 async function requestMercadoPago<T>(runtime: MercadoPagoRuntimeConfiguration, path: string, init?: RequestInit & { idempotencyKey?: string }): Promise<T> {
     const response = await fetch(`${API_BASE_URL}${path}`, {
         ...init,
+        signal: init?.signal || AbortSignal.timeout(8_000),
         cache: "no-store",
         headers: {
             Authorization: `Bearer ${runtime.accessToken}`,
@@ -103,8 +104,10 @@ export async function createMercadoPagoPreference(input: {
     notificationUrl: string;
     tenantId: string;
     planId: string;
+    runtime?: MercadoPagoRuntimeConfiguration;
+    expiresAt?: Date;
 }) {
-    const runtime = await getMercadoPagoRuntimeConfiguration();
+    const runtime = input.runtime || await getMercadoPagoRuntimeConfiguration();
     const preference = await requestMercadoPago<Omit<MercadoPagoPreference, "environment">>(runtime, "/checkout/preferences", {
         method: "POST",
         idempotencyKey: input.idempotencyKey,
@@ -127,6 +130,7 @@ export async function createMercadoPagoPreference(input: {
             auto_return: "approved",
             notification_url: input.notificationUrl,
             statement_descriptor: "SYNAPSELOGIK",
+            ...(input.expiresAt ? { expires: true, expiration_date_from: new Date().toISOString(), expiration_date_to: input.expiresAt.toISOString() } : {}),
             metadata: {
                 checkout_attempt_id: input.idempotencyKey,
                 tenant_id: input.tenantId,
@@ -150,8 +154,86 @@ export type MercadoPagoPayment = {
     payer?: { id?: number | string | null; email?: string | null };
 };
 
+export type MercadoPagoPreapproval = {
+    id: string;
+    application_id?: string | number;
+    external_reference?: string | number;
+    status?: string;
+    init_point?: string;
+    next_payment_date?: string;
+    last_modified?: string;
+    auto_recurring?: { frequency?: number; frequency_type?: string; transaction_amount?: number | string; currency_id?: string; start_date?: string };
+};
+
+export type MercadoPagoInvoice = {
+    id: string | number;
+    preapproval_id?: string;
+    external_reference?: string | number;
+    debit_date?: string;
+    currency_id?: string;
+    transaction_amount?: number | string;
+    payment?: { id?: string | number; status?: string };
+};
+
+export function isMercadoPagoSubscriptionsEnabled() {
+    return isMercadoPagoBillingEnabled() && process.env.MERCADO_PAGO_SUBSCRIPTIONS_ENABLED === "true";
+}
+
+/** Existing agreements always use their original environment, never the control-panel selector. */
+export function getMercadoPagoAgreementRuntime(environment: string, applicationId: string) {
+    const runtime = getMercadoPagoWebhookRuntimeConfigurations().find((item) => item.environment === environment && item.applicationId === applicationId);
+    if (!runtime) throw new MercadoPagoBillingConfigurationError("Faltan las credenciales originales de la suscripción.");
+    return runtime;
+}
+
+export function createMercadoPagoPreapproval(runtime: MercadoPagoRuntimeConfiguration, input: {
+    externalReference: string; title: string; payerEmail: string; amountCents: number; currency: string; startsAt: Date; backUrl: string;
+}) {
+    return requestMercadoPago<MercadoPagoPreapproval>(runtime, "/preapproval", {
+        method: "POST",
+        body: JSON.stringify({
+            reason: input.title, external_reference: input.externalReference, payer_email: input.payerEmail,
+            auto_recurring: { frequency: 1, frequency_type: "months", transaction_amount: input.amountCents / 100, currency_id: input.currency, start_date: input.startsAt.toISOString() },
+            back_url: input.backUrl, status: "pending",
+        }),
+    });
+}
+
+export function getMercadoPagoPreapproval(id: string, runtime: MercadoPagoRuntimeConfiguration) {
+    return requestMercadoPago<MercadoPagoPreapproval>(runtime, `/preapproval/${encodeURIComponent(id)}`);
+}
+
+export function cancelMercadoPagoPreapproval(id: string, runtime: MercadoPagoRuntimeConfiguration) {
+    return requestMercadoPago<MercadoPagoPreapproval>(runtime, `/preapproval/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify({ status: "canceled" }) });
+}
+
+/** Change only the recurring price: never restart/reactivate or shift the billing date. */
+export function updateMercadoPagoSubscriptionPrice(id: string, amountCents: number, currency: string, runtime: MercadoPagoRuntimeConfiguration) {
+    return requestMercadoPago<MercadoPagoPreapproval>(runtime, `/preapproval/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify({ auto_recurring: { transaction_amount: amountCents / 100, currency_id: currency } }) });
+}
+
+export function refundMercadoPagoPayment(id: string, idempotencyKey: string, runtime: MercadoPagoRuntimeConfiguration) {
+    return requestMercadoPago<{ id?: number | string }>(runtime, `/v1/payments/${encodeURIComponent(id)}/refunds`, { method: "POST", idempotencyKey, body: "{}" });
+}
+
+export function searchMercadoPagoPreapprovals(reference: string, runtime: MercadoPagoRuntimeConfiguration) {
+    return requestMercadoPago<{ results?: MercadoPagoPreapproval[] }>(runtime, `/preapproval/search?external_reference=${encodeURIComponent(reference)}&limit=100`);
+}
+
+export function getMercadoPagoInvoice(id: string, runtime: MercadoPagoRuntimeConfiguration) {
+    return requestMercadoPago<MercadoPagoInvoice>(runtime, `/authorized_payments/${encodeURIComponent(id)}`);
+}
+
+export function searchMercadoPagoInvoices(filters: { preapproval_id?: string; payment_id?: string; offset?: number; limit?: number }, runtime: MercadoPagoRuntimeConfiguration) {
+    return requestMercadoPago<{ results?: MercadoPagoInvoice[]; paging?: { total?: number } }>(runtime, `/authorized_payments/search?${new URLSearchParams(Object.entries({ limit: 20, ...filters }).map(([key, value]) => [key, String(value)]))}`);
+}
+
 export function getMercadoPagoPayment(paymentId: string, runtime: MercadoPagoRuntimeConfiguration) {
     return requestMercadoPago<MercadoPagoPayment>(runtime, `/v1/payments/${encodeURIComponent(paymentId)}`);
+}
+
+export function searchMercadoPagoPayments(reference: string, runtime: MercadoPagoRuntimeConfiguration) {
+    return requestMercadoPago<{ results?: MercadoPagoPayment[] }>(runtime, `/v1/payments/search?external_reference=${encodeURIComponent(reference)}&sort=date_created&criteria=desc&limit=50`);
 }
 
 export function verifyMercadoPagoWebhookSignature(input: {

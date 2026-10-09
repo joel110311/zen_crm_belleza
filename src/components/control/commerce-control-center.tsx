@@ -130,7 +130,7 @@ export function CommerceControlCenter({ ai, billing, paymentAttempts, policy, pl
 
         <section className="rounded-2xl border bg-card p-5 shadow-sm">
             <h2 className="text-xl font-semibold">Planes y precios</h2>
-            <p className="mt-1 text-sm text-muted-foreground">{billing.provider === "MERCADO_PAGO" ? "Mercado Pago toma el importe mensual configurado aquí y genera un Checkout fijo por negocio." : "El identificador de precio se copia desde Stripe. Vacío mantiene el plan fuera del Checkout."}</p>
+            <p className="mt-1 text-sm text-muted-foreground">{billing.provider === "MERCADO_PAGO" ? "Este importe se usa para nuevos pagos individuales y nuevas suscripciones autorizadas. Cambiarlo no modifica las suscripciones ya contratadas." : "El identificador de precio se copia desde Stripe. Vacío mantiene el plan fuera del Checkout."}</p>
             <div className="mt-5 grid gap-4 lg:grid-cols-3">{plans.map((plan) => <form key={plan.id} className="rounded-xl border p-4" onSubmit={(event) => {
                 event.preventDefault();
                 const data = new FormData(event.currentTarget);
@@ -149,7 +149,7 @@ export function CommerceControlCenter({ ai, billing, paymentAttempts, policy, pl
 
         <section className="rounded-2xl border bg-card p-5 shadow-sm">
             <div className="flex flex-wrap items-start justify-between gap-3">
-                <div><p className="text-xs font-semibold uppercase tracking-wider text-primary">Proveedor activo · {billing.provider === "MERCADO_PAGO" ? "Mercado Pago" : "Stripe"}</p><h2 className="mt-1 text-xl font-semibold">Cobros de Mercado Pago</h2><p className="mt-1 text-sm text-muted-foreground">Cada fila corresponde a una preferencia única. Sólo APPROVED habilita o extiende el acceso.</p></div>
+                <div><p className="text-xs font-semibold uppercase tracking-wider text-primary">Proveedor activo · {billing.provider === "MERCADO_PAGO" ? "Mercado Pago" : "Stripe"}</p><h2 className="mt-1 text-xl font-semibold">Cobros de Mercado Pago</h2><p className="mt-1 text-sm text-muted-foreground">Cada fila corresponde a un pago individual o ciclo de suscripción. Sólo APPROVED habilita o extiende el acceso.</p></div>
                 <div className="grid gap-2 sm:grid-cols-3">
                     <KeyStatus label={`Token ${billing.environment === "production" ? "producción" : "prueba"}`} configured={(billing.environment === "production" ? billing.productionAccessTokenConfigured : billing.testAccessTokenConfigured) && billing.mercadoPagoEnabled} />
                     <KeyStatus label="App ID" configured={billing.applicationIdConfigured && billing.mercadoPagoEnabled} />

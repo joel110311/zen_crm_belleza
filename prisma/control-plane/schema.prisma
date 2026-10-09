@@ -266,6 +266,7 @@ model Tenant {
   invitations             TenantInvitation[]
   billingSelection        BillingSelection?
   billingCheckoutAttempts BillingCheckoutAttempt[]
+  mercadoPagoAgreements   MercadoPagoAgreement[]
 
   @@index([status, provisioningStatus])
   @@index([billingStatus, accessMode])
@@ -373,6 +374,9 @@ model Plan {
   usageEntries            UsageLedger[]
   billingSelections       BillingSelection[]
   billingCheckoutAttempts BillingCheckoutAttempt[]
+  mercadoPagoAgreements   MercadoPagoAgreement[]
+  outgoingPlanChanges     MercadoPagoPlanChange[] @relation("PlanChangeSource")
+  incomingPlanChanges     MercadoPagoPlanChange[] @relation("PlanChangeTarget")
 }
 
 /**
@@ -387,6 +391,9 @@ model BillingCheckoutAttempt {
   externalReference  String                @unique
   providerCheckoutId String?               @unique
   providerPaymentId  String?               @unique
+  recurringAgreementId String?
+  planChangeId       String?               @unique
+  providerInvoiceId  String?               @unique
   amountCents        Int
   currency           String                @default("MXN")
   status             BillingCheckoutStatus @default(CREATED)
@@ -399,9 +406,86 @@ model BillingCheckoutAttempt {
   updatedAt          DateTime              @updatedAt
   tenant             Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   plan               Plan                  @relation(fields: [planId], references: [id], onDelete: Restrict)
+  recurringAgreement MercadoPagoAgreement? @relation(fields: [recurringAgreementId], references: [id], onDelete: Restrict)
+  planChange         MercadoPagoPlanChange? @relation(fields: [planChangeId], references: [id], onDelete: Restrict)
 
   @@index([tenantId, createdAt])
   @@index([provider, status, createdAt])
+}
+
+/** Authorization is separate from paid access. Retain every agreement and billed cycle. */
+model MercadoPagoAgreement {
+  id                     String   @id
+  tenantId               String
+  planId                 String
+  activeKey              String?  @unique
+  externalReference      String   @unique
+  providerSubscriptionId String?  @unique
+  environment            String
+  applicationId          String
+  amountCents            Int
+  initialAmountCents     Int?
+  initialPlanId          String?
+  currency               String
+  status                 String   @default("CREATING")
+  checkoutUrl            String?
+  startsAt               DateTime
+  nextPaymentAt          DateTime?
+  consentAt              DateTime
+  consentUserId          String
+  consentVersion         String
+  cancelRequestedAt      DateTime?
+  canceledAt             DateTime?
+  providerModifiedAt     DateTime?
+  reconciledAt           DateTime?
+  reconciliationOffset   Int      @default(0)
+  lastError              String?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+  tenant                 Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  plan                   Plan     @relation(fields: [planId], references: [id], onDelete: Restrict)
+  payments               BillingCheckoutAttempt[]
+  planChanges            MercadoPagoPlanChange[]
+
+  @@index([status, reconciledAt])
+  @@index([tenantId, createdAt])
+}
+
+/** Immutable accepted quote and price history; one change in flight per billing period. */
+model MercadoPagoPlanChange {
+  id                 String   @id
+  agreementId        String
+  activeKey          String?  @unique
+  sourcePlanId       String
+  targetPlanId       String
+  fromAmountCents    Int
+  toAmountCents      Int
+  amountTodayCents   Int
+  currency           String
+  direction          String
+  periodStartsAt     DateTime
+  effectiveAt        DateTime
+  quotedAt           DateTime
+  expiresAt          DateTime
+  externalReference  String   @unique
+  status             String   @default("QUOTED")
+  consentUserId      String?
+  consentAt          DateTime?
+  consentVersion     String?
+  checkoutUrl        String?
+  processingAt       DateTime?
+  providerAppliedAt  DateTime?
+  appliedAt          DateTime?
+  refundedAt         DateTime?
+  lastError          String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  agreement          MercadoPagoAgreement @relation(fields: [agreementId], references: [id], onDelete: Restrict)
+  sourcePlan         Plan @relation("PlanChangeSource", fields: [sourcePlanId], references: [id], onDelete: Restrict)
+  targetPlan         Plan @relation("PlanChangeTarget", fields: [targetPlanId], references: [id], onDelete: Restrict)
+  payment            BillingCheckoutAttempt?
+
+  @@index([agreementId, effectiveAt, createdAt])
 }
 
 /**

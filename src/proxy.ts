@@ -59,9 +59,11 @@ export async function proxy(req: NextRequest) {
         "/api/bot-message",
         "/api/health",
         "/api/internal/tenant-scheduled-work",
+        "/api/internal/billing-reconcile",
         // This handler verifies x-tenant-worker-secret itself, never a browser session.
         "/api/internal/tenant-inbound-message",
         "/api/operation-context",
+        "/support-access",
     ];
     // The canonical application URL is the public acquisition page.  It must
     // bypass this authentication middleware just like /signup; otherwise the
@@ -100,13 +102,19 @@ export async function proxy(req: NextRequest) {
         if (!value) return null;
         try {
             const referer = new URL(value);
-            return referer.host === req.nextUrl.host ? tenantSlugFromPath(referer.pathname) : null;
+            const origins = [req.nextUrl.origin];
+            // Traefik may expose an internal request host while the browser sends the public
+            // Referer. Trust only deployment-configured origins, never a supplied forward header.
+            for (const base of [process.env.APP_BASE_URL, process.env.AUTH_URL, process.env.NEXTAUTH_URL]) {
+                try { if (base) origins.push(new URL(base).origin); } catch {}
+            }
+            return origins.includes(referer.origin) ? tenantSlugFromPath(referer.pathname) : null;
         } catch {
             return null;
         }
     })();
     const cookieTenantSlug = normalizeRequestTenantSlug(req.cookies.get(ACTIVE_TENANT_COOKIE)?.value);
-    const activeTenantSlug = pathTenantSlug || refererTenantSlug || cookieTenantSlug;
+    let activeTenantSlug = pathTenantSlug || refererTenantSlug || cookieTenantSlug;
 
     const isPlatformControlPath = pathname === "/control" || pathname.startsWith("/control/")
         || pathname === "/api/control" || pathname.startsWith("/api/control/");
@@ -123,9 +131,16 @@ export async function proxy(req: NextRequest) {
         let grant;
         try { grant = await getPlatformSupportGrant(tokenUserId); }
         catch { return NextResponse.json({ error: "Soporte temporalmente no disponible. Vuelve al panel e intenta de nuevo." }, { status: 503 }); }
-        const authorized = activeTenantSlug && grant?.slug === activeTenantSlug
+        // Legacy navigation can outlive/lose the routing cookie. Resolve only the operator's
+        // already authorized workspace, never an arbitrary cookie or a different scoped URL.
+        const legacyWorkspaceRequest = pathname === "/dashboard" || pathname.startsWith("/dashboard/") || pathname.startsWith("/api/") || pathname.startsWith("/uploads/");
+        if (!activeTenantSlug && grant && isControlSession && legacyWorkspaceRequest) activeTenantSlug = grant.slug;
+        const authorized = isControlSession && activeTenantSlug && grant?.slug === activeTenantSlug
             && (tokenUserId !== ENVIRONMENT_ADMIN_ID || grant.credentialVersion === token?.platformAdminCredentialVersion);
         if (authorized) {
+            forwardedHeaders.set(TENANT_SCOPE_HEADER, "control");
+            forwardedHeaders.set(TENANT_SLUG_HEADER, activeTenantSlug!);
+            forwardedHeaders.set(TENANT_USER_HEADER, tokenUserId);
             if (grant.mode === "READ_ONLY" && !["GET", "HEAD", "OPTIONS"].includes(req.method)) {
                 return NextResponse.json({ error: "Modo soporte de solo lectura. Abre una sesión con edición desde el panel para guardar cambios." }, { status: 403 });
             }
@@ -133,7 +148,18 @@ export async function proxy(req: NextRequest) {
             if (pathname.startsWith("/api/") || pathname.startsWith("/uploads/")) {
                 return NextResponse.json({ error: "Abre este negocio en modo soporte desde el panel administrativo." }, { status: 403 });
             }
-            return NextResponse.redirect(new URL("/control", req.url));
+            // Keep the address and show a neutral re-entry screen, never the control dashboard
+            // and never customer data when the grant expired or another tab replaced it.
+            forwardedHeaders.delete(TENANT_SCOPE_HEADER);
+            forwardedHeaders.delete(TENANT_SLUG_HEADER);
+            forwardedHeaders.delete(TENANT_USER_HEADER);
+            const recovery = new URL("/support-access", req.url);
+            const requested = new URL(req.url);
+            requested.searchParams.delete("_rsc");
+            recovery.searchParams.set("returnTo", `${requested.pathname}${requested.search}`);
+            const response = NextResponse.rewrite(recovery, { request: { headers: forwardedHeaders } });
+            response.headers.set("Cache-Control", "private, no-store, max-age=0");
+            return response;
         }
     }
 
@@ -168,10 +194,15 @@ export async function proxy(req: NextRequest) {
         // Established CRM screens still contain /dashboard links. Keep those links usable while
         // preserving the selected business in the URL and in subsequent API requests.
         if (pathname === "/dashboard" || pathname.startsWith("/dashboard/")) {
-            if (!cookieTenantSlug) {
+            if (!activeTenantSlug) {
                 return NextResponse.redirect(new URL("/", req.url));
             }
-            return NextResponse.redirect(new URL(tenantDashboardPath(cookieTenantSlug, pathname), req.url));
+            const target = new URL(tenantDashboardPath(activeTenantSlug, pathname), req.url);
+            target.search = req.nextUrl.search;
+            target.searchParams.delete("_rsc");
+            const response = NextResponse.redirect(target);
+            response.headers.set("Cache-Control", "private, no-store, max-age=0");
+            return response;
         }
 
         return nextWithSanitizedHeaders();

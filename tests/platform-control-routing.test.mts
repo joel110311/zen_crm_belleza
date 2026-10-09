@@ -8,7 +8,7 @@ test("control requests never inherit an unrelated workspace cookie or spoofed te
     let token: unknown = { id: "platform-env-admin", authScope: "control" };
     const mod = loadTsModule("src/proxy.ts", {
         "next-auth/jwt": { getToken: async () => token },
-        "next/server": { NextResponse: { next: (value: unknown) => value, redirect: (url: URL) => ({ redirect: String(url) }), json: (_value: unknown, init: unknown) => init } },
+        "next/server": { NextResponse: { next: (value: unknown) => value, redirect: (url: URL) => ({ redirect: String(url), headers: new Headers() }), rewrite: (url: URL, value: object) => ({ rewrite: String(url), headers: new Headers(), ...value }), json: (_value: unknown, init: unknown) => init } },
         "@/lib/platform-admin-policy": adminPolicy,
         "@/lib/platform-support": { getPlatformSupportGrant: async () => null },
         "@/lib/permissions": { hasPermission: () => true },
@@ -19,14 +19,16 @@ test("control requests never inherit an unrelated workspace cookie or spoofed te
         headers: new Headers({ [routing.TENANT_SCOPE_HEADER]: "control", [routing.TENANT_SLUG_HEADER]: "spoofed", [routing.TENANT_USER_HEADER]: "spoofed-id" }),
         cookies: { get: () => ({ value: "unavailable-workspace" }) },
     });
-    const proxy = mod.proxy as (request: unknown) => Promise<{ request?: { headers: Headers }; redirect?: string }>;
+    const proxy = mod.proxy as (request: unknown) => Promise<{ request?: { headers: Headers }; redirect?: string; rewrite?: string }>;
     for (const path of ["/control", "/control/login", "/api/control/commerce"]) {
         const result = await proxy(request(path));
         assert.equal(result.request?.headers.has(routing.TENANT_SCOPE_HEADER), false);
         assert.equal(result.request?.headers.has(routing.TENANT_SLUG_HEADER), false);
         assert.equal(result.request?.headers.has(routing.TENANT_USER_HEADER), false);
     }
-    assert.equal((await proxy(request("/t/logicapp/dashboard"))).redirect, "https://crm.test/control");
+    const expired = await proxy(request("/t/logicapp/dashboard"));
+    assert.equal(expired.redirect, undefined); assert.match(expired.rewrite || "", /\/support-access\?returnTo=/);
+    assert.equal(expired.request?.headers.has(routing.TENANT_SLUG_HEADER), false);
     for (const path of ["/api/users", "/api/chat", "/api/t/logicapp/v1/contacts", "/api/media/private.mp3", "/uploads/private.mp3"]) {
         const response = await proxy(request(path)) as unknown as { status: number };
         assert.equal(response.status, 403, "platform credentials must not inherit operational/legacy data access");

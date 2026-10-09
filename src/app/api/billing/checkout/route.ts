@@ -50,6 +50,8 @@ export async function POST(request: NextRequest) {
         const { tenant, user } = await requireBillingOwner(tenantSlug);
         const db = getControlDb();
         if (getActiveBillingProvider() === "MERCADO_PAGO") {
+            const recurring = await db.mercadoPagoAgreement.findUnique({ where: { activeKey: tenant.tenantId } });
+            if (recurring) return NextResponse.json({ error: "Ya hay una suscripción automática o una autorización pendiente. Adminístrala antes de hacer un pago individual." }, { status: 409 });
             if (interval !== "MONTHLY") {
                 return NextResponse.json({ error: "Mercado Pago está disponible únicamente para mensualidades." }, { status: 409 });
             }
@@ -63,17 +65,22 @@ export async function POST(request: NextRequest) {
                 return NextResponse.json({ error: "Este plan no está disponible para pago en línea." }, { status: 409 });
             }
             const attemptId = randomUUID();
+            const checkoutAmountCents = plan.monthlyAmountCents;
             const externalReference = `sl_${attemptId.replaceAll("-", "")}`;
-            await db.billingCheckoutAttempt.create({
-                data: {
-                    id: attemptId,
-                    tenantId: tenant.tenantId,
-                    planId: plan.id,
-                    provider: "MERCADO_PAGO",
-                    externalReference,
-                    amountCents: plan.monthlyAmountCents,
-                    currency: plan.currency,
-                },
+            await db.$transaction(async (tx) => {
+                await tx.$queryRaw`SELECT id FROM "Tenant" WHERE id = ${tenant.tenantId} FOR UPDATE`;
+                if (await tx.mercadoPagoAgreement.findUnique({ where: { activeKey: tenant.tenantId } })) throw new BillingAccessError("Ya existe una autorización de renovación. Adminístrala antes de iniciar otro pago.");
+                await tx.billingCheckoutAttempt.create({
+                    data: {
+                        id: attemptId,
+                        tenantId: tenant.tenantId,
+                        planId: plan.id,
+                        provider: "MERCADO_PAGO",
+                        externalReference,
+                        amountCents: checkoutAmountCents,
+                        currency: plan.currency,
+                    },
+                });
             });
 
             try {

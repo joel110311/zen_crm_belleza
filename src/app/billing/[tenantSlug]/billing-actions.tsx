@@ -12,12 +12,14 @@ export function BillingActions({
     interval,
     canManage,
     billingProvider,
+    disabled = false,
 }: {
     tenantSlug: string;
     planSlug?: string;
     interval?: "monthly" | "annual";
     canManage?: boolean;
     billingProvider: ActiveBillingProvider;
+    disabled?: boolean;
 }) {
     const [pendingAction, setPendingAction] = useState<BillingAction | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -52,8 +54,8 @@ export function BillingActions({
     return (
         <div className="space-y-3">
             {planSlug && interval ? (
-                <button type="button" onClick={() => start("checkout")} disabled={pendingAction !== null} className="inline-flex h-10 w-full items-center justify-center rounded-md bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:opacity-60">
-                    {pendingAction === "checkout" ? <><Loader2 className="mr-2 size-4 animate-spin" />Abriendo pago...</> : "Continuar a pago seguro"}
+                <button type="button" onClick={() => start("checkout")} disabled={disabled || pendingAction !== null} className="inline-flex h-10 w-full items-center justify-center rounded-md border px-4 text-sm font-semibold disabled:opacity-60">
+                    {pendingAction === "checkout" ? <><Loader2 className="mr-2 size-4 animate-spin" />Abriendo pago...</> : billingProvider === "MERCADO_PAGO" ? "Pagar solo un mes" : "Continuar a pago seguro"}
                 </button>
             ) : null}
             {showPortal ? (

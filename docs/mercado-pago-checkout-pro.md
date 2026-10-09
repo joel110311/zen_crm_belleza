@@ -1,5 +1,7 @@
 # Configurar Checkout Pro como en Eventtia
 
+Para renovación mensual automática, consultar [Suscripciones de Mercado Pago](./mercado-pago-subscriptions.md). Checkout Pro sigue disponible como **pago de un solo mes**, no como autorización recurrente.
+
 El CRM crea una preferencia por negocio y plan en `/checkout/preferences`, redirige al comprador a Mercado Pago y confirma el pago consultando `/v1/payments/{id}` después de validar la firma del webhook. Sólo un pago aprobado, con la aplicación, moneda e importe esperados, habilita o extiende un mes de acceso. Checkout Pro no realiza una renovación automática: el cliente vuelve a pagar para renovar.
 
 Mercado Pago es el proveedor predeterminado de esta etapa. Stripe no aparece en el formulario de precios, su portal y webhook quedan deshabilitados y el worker no ejecuta activaciones programadas. Los registros históricos se conservan y no bloquean un nuevo Checkout de Mercado Pago. Esta desactivación en el CRM **no cancela suscripciones externas existentes en Stripe**; comprueba cualquier contrato real directamente en Stripe antes de cambiar el proveedor de un cliente. Reactivar Stripe en una segunda etapa requiere explícitamente `BILLING_PROVIDER=stripe` y `BILLING_STRIPE_ENABLED=true`.

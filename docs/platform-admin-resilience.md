@@ -43,7 +43,7 @@ No se modificaron permisos ni contraseñas de esas cuentas para resolverlo.
   sin banner dentro del CRM. El formulario de entrada permite elegir solo consulta.
 - El motivo, operador, negocio, modo y vencimiento se registran en `AuditLog`.
   Esto registra los accesos, no constituye auditoría detallada de todas las modificaciones.
-- Se usa `PlatformRuntimeSetting` para una sesión de soporte por operador y 30 minutos.
+- Se usa `PlatformRuntimeSetting` para una sesión de soporte por operador y 16 horas. La cookie usa la misma duración. Abrir otro negocio sustituye la sesión; revocar la cuenta o rotar credenciales la invalida inmediatamente. La navegación inicial es completa para no reutilizar redirecciones RSC anteriores a la autorización. Si el acceso dejó de estar vigente, un rewrite muestra una pantalla neutra en la misma URL, sin datos del cliente; sólo una acción explícita puede reabrir la revisión y queda registrada.
   Abrir otro negocio sustituye el permiso anterior; las pestañas antiguas ya no tienen
   acceso salvo membresía normal independiente. Volver al panel no revoca de inmediato
   el permiso: vence automáticamente; el endpoint DELETE permite su revocación explícita.

@@ -47,7 +47,11 @@ async function checkControlPlaneHealth(): Promise<HealthDatabaseState> {
 
     try {
         await Promise.race([
-            getControlDb().$queryRaw`SELECT 1`,
+            // A reachable database with an old schema is not ready for this release.
+            Promise.all([
+                getControlDb().$queryRaw`SELECT "reconciliationOffset" FROM "MercadoPagoAgreement" LIMIT 0`,
+                getControlDb().$queryRaw`SELECT "activeKey" FROM "MercadoPagoPlanChange" LIMIT 0`,
+            ]),
             new Promise((_, reject) => {
                 timeoutHandle = setTimeout(() => {
                     reject(new Error("Control-plane healthcheck timed out"));

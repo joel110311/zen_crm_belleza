@@ -11,8 +11,11 @@
    o el digest en producción; anotar la imagen anterior para rollback.
 2. Conservar una copia privada del YAML y los valores actuales de Portainer. No
    subir secretos a Git ni reutilizar contraseñas de Eventiia.
-3. Este cambio no requiere migraciones ni modificar PostgreSQL, Redis, gateway,
-   redes, volúmenes, claves de cifrado o las credenciales de clientes.
+3. El acceso de soporte por sí solo no requiere migraciones. **La entrega actual
+   también incluye suscripciones y cambios de plan:** aplicar primero las dos
+   migraciones de control indicadas en [la guía de Mercado Pago](mercado-pago-subscriptions.md),
+   incluso manteniendo las renovaciones desactivadas. No modificar Redis, gateway,
+   redes, volúmenes, claves de cifrado ni credenciales de clientes.
 
 ## Opción recomendada: guardar el cambio en el stack
 
@@ -67,7 +70,9 @@ posible, para que un despliegue posterior no quite las variables ni vuelva atrá
 5. Comprobar dashboard, chats, imágenes/audio y wizard. No enviar mensajes ni
    cambiar datos de un cliente sólo para probar: usar un negocio de prueba propio.
 6. Regresar por **Centro de mando** y abrir otro negocio. La sesión anterior deja
-   de autorizar a `adminjoel`; cada sesión dura 30 minutos. No aparece un banner.
+   de autorizar a `adminjoel`; cada sesión dura 16 horas. No aparece un banner.
+   Al vencer o sustituirse la revisión se conserva la dirección: aparece una
+   pantalla neutra para reabrirla, no una redirección automática al centro de mando.
 7. Verificar por separado que el propietario normal sigue entrando a su CRM y
    que no ve el panel administrativo ni negocios ajenos.
 
@@ -80,7 +85,9 @@ cambia la contraseña del cliente ni se suplanta su identidad.
 Volver la imagen web a `ghcr.io/joel110311/zen_crm_belleza:6296cf1`, manteniendo
 todos los volúmenes y secretos actuales. Esa versión incluye la reparación del
 falso 404 y el login dedicado, pero no permite entrar a negocios como soporte.
-No hace falta revertir una migración de esta entrega porque no contiene ninguna.
+No revertir ni borrar las migraciones aditivas de facturación al volver una imagen.
+Si ya existen contratos recurrentes, conservar un worker/web compatible para
+administrarlos: volver la imagen no cancela autorizaciones externas.
 
 Nunca prometer que no habrá caídas: la base PostgreSQL y el plano de control son
 dependencias compartidas. El aislamiento de aplicación no sustituye backups

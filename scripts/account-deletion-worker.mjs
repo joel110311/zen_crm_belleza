@@ -140,6 +140,19 @@ async function deleteStoredObjects(tenantId, hasPrivateFiles) {
 }
 
 async function cancelBilling(control, tenantId) {
+    const recurring = await control.query('SELECT a.id FROM "MercadoPagoAgreement" a WHERE a."tenantId"=$1 AND (a."activeKey" IS NOT NULL OR EXISTS (SELECT 1 FROM "MercadoPagoPlanChange" c WHERE c."agreementId"=a.id AND c."activeKey" IS NOT NULL AND c.status NOT IN (\'APPLIED\',\'QUOTED\')))', [tenantId]);
+    if (recurring.rowCount) {
+        const secret = process.env.BILLING_RECONCILIATION_SECRET?.trim();
+        const base = process.env.APP_BASE_URL?.trim();
+        if (!secret || !base) throw new Error("recurring_billing_cancellation_not_configured");
+        const response = await request(`${new URL(base).origin}/api/internal/billing-reconcile`, {
+            method: "POST", headers: { "Content-Type": "application/json", "x-billing-worker-secret": secret },
+            body: JSON.stringify({ action: "cancel_for_deletion", tenantId }),
+        }, []);
+        if (!(await response.json()).ok) throw new Error("recurring_billing_cancellation_not_confirmed");
+        if ((await control.query('SELECT 1 FROM "MercadoPagoAgreement" WHERE "tenantId"=$1 AND "activeKey" IS NOT NULL', [tenantId])).rowCount) throw new Error("recurring_billing_still_active");
+    }
+    if ((await control.query('SELECT 1 FROM "MercadoPagoPlanChange" c JOIN "MercadoPagoAgreement" a ON a.id=c."agreementId" WHERE a."tenantId"=$1 AND c."consentAt" IS NOT NULL AND (c.status IN (\'CHECKOUT_CREATING\',\'PAYMENT_PENDING\',\'PAID\',\'ACCEPTED\',\'PROVIDER_UPDATING\',\'REFUND_PENDING\') OR (c.status=\'EXPIRED\' AND c."expiresAt">NOW()-INTERVAL \'48 hours\'))', [tenantId])).rowCount) throw new Error("plan_change_settlement_pending");
     const { rows } = await control.query('SELECT * FROM "Subscription" WHERE "tenantId"=$1', [tenantId]);
     for (const subscription of rows) {
         if (!subscription.providerSubscriptionId) continue;
@@ -213,6 +226,9 @@ async function purgeTenant(control, admin, tenantId) {
     await control.query('DELETE FROM "BillingEvent" WHERE payload #>> \'{data,object,metadata,tenantId}\'=$1 OR payload #>> \'{data,custom_data,tenantId}\'=$1 OR payload #>> \'{data,metadata,tenantId}\'=$1', [tenantId]);
     await control.query('DELETE FROM "UsageLedger" WHERE "tenantId"=$1', [tenantId]);
     await control.query('DELETE FROM "CommercialEvent" WHERE "tenantId"=$1', [tenantId]);
+    await control.query('DELETE FROM "BillingCheckoutAttempt" WHERE "tenantId"=$1', [tenantId]);
+    await control.query('DELETE FROM "MercadoPagoPlanChange" WHERE "agreementId" IN (SELECT id FROM "MercadoPagoAgreement" WHERE "tenantId"=$1)', [tenantId]);
+    await control.query('DELETE FROM "MercadoPagoAgreement" WHERE "tenantId"=$1', [tenantId]);
     await control.query('DELETE FROM "Tenant" WHERE id=$1', [tenantId]);
 }
 

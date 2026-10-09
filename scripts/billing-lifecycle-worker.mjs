@@ -46,7 +46,8 @@ async function sendLifecycleEmail(pool, item, template, subject, title, copy) {
     try {
         const response = await fetch("https://api.resend.com/emails", {
             method: "POST",
-            headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+            headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json",
+                ...(template.startsWith("recurring_payment_failed_") ? { "Idempotency-Key": `${template}:${item.tenantId}` } : {}) },
             body: JSON.stringify({
                 from,
                 to: item.email,
@@ -128,7 +129,7 @@ async function expireTrials(pool) {
         );
         for (const item of rows) {
             await client.query(`UPDATE "Trial" SET status='EXPIRED', "expiredAt"=COALESCE("expiredAt",NOW()), "updatedAt"=NOW() WHERE id=$1`, [item.id]);
-            await client.query(`UPDATE "Tenant" SET "billingStatus"='CANCELED', "accessMode"='BILLING_ONLY', "updatedAt"=NOW() WHERE id=$1`, [item.tenantId]);
+            await client.query(`UPDATE "Tenant" SET "billingStatus"='CANCELED', "accessMode"='BILLING_ONLY', "updatedAt"=NOW() WHERE id=$1 AND status NOT IN ('SUSPENDED','ARCHIVED') AND "accessMode"<>'SUSPENDED'`, [item.tenantId]);
             await client.query(`INSERT INTO "CommercialEvent" (id,"tenantId",event,source,"createdAt") VALUES ($1,$2,'trial_expired','billing_worker',NOW())`, [createId(), item.tenantId]);
             expired += 1;
         }
@@ -219,6 +220,9 @@ async function expirePaymentGrace(pool) {
         `UPDATE "Tenant" t SET "accessMode"='BILLING_ONLY', "updatedAt"=NOW()
          FROM "Subscription" s
          WHERE s."tenantId"=t.id AND s.status='PAST_DUE' AND s."graceEndsAt"<=NOW() AND t."accessMode"<>'BILLING_ONLY'
+           AND t.status NOT IN ('SUSPENDED','ARCHIVED') AND t."accessMode"<>'SUSPENDED'
+           AND NOT EXISTS (SELECT 1 FROM "Subscription" paid WHERE paid."tenantId"=t.id AND paid.status IN ('ACTIVE','TRIALING') AND (paid."currentPeriodEndsAt" IS NULL OR paid."currentPeriodEndsAt">NOW()))
+           AND NOT EXISTS (SELECT 1 FROM "Trial" tr WHERE tr."tenantId"=t.id AND tr.status IN ('ACTIVE','ENDING') AND tr."endsAt">NOW())
          RETURNING t.id`,
     );
     return rows.length;
@@ -230,15 +234,24 @@ async function expireMercadoPagoPeriods(pool) {
     try {
         await client.query("BEGIN");
         const { rows } = await client.query(
-            `SELECT s.id, s."tenantId" FROM "Subscription" s
+            `SELECT s.id, s."tenantId", s."currentPeriodEndsAt", a.status AS "agreementStatus", a."cancelRequestedAt",
+                COALESCE(p."graceDays",3) AS "graceDays"
+             FROM "Subscription" s
+             LEFT JOIN "MercadoPagoAgreement" a ON a."providerSubscriptionId"=s."providerSubscriptionId"
+             LEFT JOIN "Trial" tr ON tr."tenantId"=s."tenantId"
+             LEFT JOIN "TrialPolicy" p ON p.id=tr."policyId"
              WHERE s.provider='MERCADO_PAGO' AND s.status='ACTIVE' AND s."currentPeriodEndsAt"<=NOW()
              ORDER BY s."currentPeriodEndsAt" FOR UPDATE OF s SKIP LOCKED LIMIT $1`,
             [maxBatch],
         );
         for (const item of rows) {
+            const recurring = item.agreementStatus === "AUTHORIZED" && !item.cancelRequestedAt;
+            const graceEndsAt = new Date(new Date(item.currentPeriodEndsAt).getTime() + item.graceDays * 86_400_000);
             await client.query(
-                `UPDATE "Subscription" SET status='CANCELED', "canceledAt"=COALESCE("canceledAt",NOW()), "updatedAt"=NOW() WHERE id=$1`,
-                [item.id],
+                `UPDATE "Subscription" SET status=$2::"SubscriptionStatus", "canceledAt"=CASE WHEN $2='CANCELED' THEN COALESCE("canceledAt",NOW()) ELSE "canceledAt" END,
+                 "pastDueAt"=CASE WHEN $2='PAST_DUE' THEN COALESCE("pastDueAt","currentPeriodEndsAt") ELSE "pastDueAt" END,
+                 "graceEndsAt"=CASE WHEN $2='PAST_DUE' THEN COALESCE("graceEndsAt",$3) ELSE "graceEndsAt" END, "updatedAt"=NOW() WHERE id=$1`,
+                [item.id, recurring ? "PAST_DUE" : "CANCELED", graceEndsAt],
             );
             const activeAccess = await client.query(
                 `SELECT 1
@@ -249,8 +262,9 @@ async function expireMercadoPagoPeriods(pool) {
             );
             if (!activeAccess.rowCount) {
                 await client.query(
-                    `UPDATE "Tenant" SET "billingStatus"='CANCELED', "accessMode"='BILLING_ONLY', "updatedAt"=NOW() WHERE id=$1`,
-                    [item.tenantId],
+                    `UPDATE "Tenant" SET "billingStatus"=$2::"BillingStatus", "accessMode"=$3::"TenantAccessMode", "updatedAt"=NOW()
+                     WHERE id=$1 AND status NOT IN ('SUSPENDED','ARCHIVED') AND "accessMode"<>'SUSPENDED'`,
+                    [item.tenantId, recurring ? "PAST_DUE" : "CANCELED", recurring && graceEndsAt > new Date() ? "READ_ONLY" : "BILLING_ONLY"],
                 );
             }
             await client.query(
@@ -273,13 +287,41 @@ async function expireAbandonedCheckouts(pool) {
     const result = await pool.query(
         `UPDATE "BillingCheckoutAttempt"
          SET status='EXPIRED', "updatedAt"=NOW()
-         WHERE provider='MERCADO_PAGO' AND status IN ('CREATED','PENDING') AND "createdAt"<NOW()-(48*INTERVAL '1 hour')`,
+         WHERE provider='MERCADO_PAGO' AND "recurringAgreementId" IS NULL AND status IN ('CREATED','PENDING') AND "createdAt"<NOW()-(48*INTERVAL '1 hour')`,
     );
     return result.rowCount || 0;
 }
 
+async function warnFailedRecurringPayments(pool) {
+    const { rows } = await pool.query(
+        `SELECT b.id, b."tenantId", t.slug, t."displayName", u.id AS "userId", u.email
+         FROM "BillingCheckoutAttempt" b
+         JOIN "Tenant" t ON t.id=b."tenantId"
+         JOIN LATERAL (SELECT u.id,u.email FROM "TenantMembership" m JOIN "User" u ON u.id=m."userId"
+           WHERE m."tenantId"=t.id AND m.role='OWNER' AND m."isActive"=true ORDER BY m."createdAt" LIMIT 1) u ON true
+         WHERE b."recurringAgreementId" IS NOT NULL AND b."providerInvoiceId" IS NOT NULL AND b.status='REJECTED' AND t.status='READY'
+           AND NOT EXISTS (SELECT 1 FROM "EmailDelivery" e WHERE e.template='recurring_payment_failed_'||b.id AND e.status='SENT')
+         ORDER BY b."createdAt" LIMIT $1`, [maxBatch],
+    );
+    for (const item of rows) {
+        try {
+            await sendLifecycleEmail(pool, item, `recurring_payment_failed_${item.id}`, "No se confirmó la renovación de tu CRM", "Revisa tu medio de pago",
+                "Mercado Pago rechazó un intento de renovación. Revisa tu medio de pago en Mercado Pago y el estado de tu suscripción en el CRM. No eliminaremos tus datos; el acceso puede quedar en solo lectura durante el plazo de recuperación.");
+        } catch (error) { console.error(`[Billing lifecycle] Recurring payment warning failed for ${item.tenantId}:`, error instanceof Error ? error.message : error); }
+    }
+}
+
 const pool = new Pool({ connectionString: controlDatabaseUrl });
 try {
+    const reconciliationSecret = process.env.BILLING_RECONCILIATION_SECRET?.trim();
+    if (reconciliationSecret && publicBaseUrl()) {
+        try {
+            const response = await fetch(`${publicBaseUrl()}/api/internal/billing-reconcile`, {
+                method: "POST", headers: { "x-billing-worker-secret": reconciliationSecret }, signal: AbortSignal.timeout(90_000),
+            });
+            if (!response.ok) console.error(`[Billing lifecycle] Recurring reconciliation returned ${response.status}; will retry on the next poll.`);
+        } catch { console.error("[Billing lifecycle] Recurring reconciliation unavailable; will retry on the next poll."); }
+    }
     const warning48 = await processWarnings(pool, "warningSentAt", 'tr."warningHours"', "trial_ending_48h", false);
     const warning24 = await processWarnings(pool, "finalWarningAt", 'tr."finalWarningHours"', "trial_ending_24h", true);
     const selectionsActivated = await activateScheduledSelections(pool);
@@ -287,6 +329,7 @@ try {
     const graceExpired = await expirePaymentGrace(pool);
     const mercadoPagoExpired = await expireMercadoPagoPeriods(pool);
     const abandonedCheckoutsExpired = await expireAbandonedCheckouts(pool);
+    await warnFailedRecurringPayments(pool);
     console.log(`[Billing lifecycle] warnings48=${warning48} warnings24=${warning24} selectionsActivated=${selectionsActivated} expired=${expired} graceExpired=${graceExpired} mercadoPagoExpired=${mercadoPagoExpired} abandonedCheckoutsExpired=${abandonedCheckoutsExpired}`);
 } finally {
     await pool.end();

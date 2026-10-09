@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import { Search, ShieldCheck, Loader2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 
@@ -9,7 +8,6 @@ type Workspace = { id: string; displayName: string; slug: string; status: string
 type Listing = { tenants: Workspace[]; total: number; page: number; pageSize: number };
 
 export function WorkspaceSupportCenter() {
-    const router = useRouter();
     const [search, setSearch] = useState("");
     const [query, setQuery] = useState("");
     const [page, setPage] = useState(0);
@@ -45,7 +43,9 @@ export function WorkspaceSupportCenter() {
             }) });
             const payload = await response.json();
             if (!response.ok) throw new Error(payload.error || "No fue posible abrir el negocio.");
-            router.push(payload.destination);
+            // The authorization changed in a route handler. A full navigation must not reuse
+            // an RSC redirect prefetched/cached before this workspace was authorized.
+            window.location.assign(payload.destination);
         } catch (err) { setError(err instanceof Error ? err.message : "Error al abrir."); }
         finally { setPending(false); }
     }
@@ -74,7 +74,7 @@ export function WorkspaceSupportCenter() {
             <DialogContent showCloseButton={!pending}>
             {selected ? <form onSubmit={(event) => { event.preventDefault(); void enter(event.currentTarget); }}>
                 <DialogHeader><DialogTitle>Abrir {selected.tenant.displayName}</DialogTitle>
-                <DialogDescription>Sesión de 30 minutos. Abrir otro negocio sustituye esta sesión. Regresa mediante Centro de mando.</DialogDescription></DialogHeader>
+                <DialogDescription>Sesión de 16 horas. Puedes recargar y cambiar de sección sin salir del negocio. Abrir otro negocio sustituye esta sesión. Regresa mediante Centro de mando.</DialogDescription></DialogHeader>
                 <label className="mt-5 block text-sm font-medium">Acceso<select name="mode" defaultValue="FULL" className="mt-2 w-full rounded-xl border bg-background px-3 py-2"><option value="FULL">Completo: consultar y editar</option><option value="READ_ONLY">Solo consultar</option></select></label>
                 <label className="mt-4 block text-sm font-medium">Motivo de la revisión<textarea name="reason" required minLength={5} maxLength={500} defaultValue="Verificar el alta y funcionamiento del CRM" rows={3} className="mt-2 w-full rounded-xl border bg-background px-3 py-2" /></label>
                 {error ? <p role="alert" className="mt-3 text-sm text-destructive">{error}</p> : null}

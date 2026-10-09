@@ -4,6 +4,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@/generated/control-plane";
 import {
     getMercadoPagoPayment,
+    getMercadoPagoPreapproval,
+    getMercadoPagoInvoice,
     getMercadoPagoWebhookRuntimeConfigurations,
     MercadoPagoBillingConfigurationError,
     verifyMercadoPagoWebhookSignature,
@@ -13,6 +15,8 @@ import {
 import { getControlDb } from "@/lib/control-db";
 import { resolveMercadoPagoWebhookPayment } from "@/lib/billing/mercado-pago-runtime-helpers";
 import { paidPeriodStart } from "@/lib/billing/paid-period";
+import { reconcileRecurringAgreement, reconcileRecurringInvoice, reconcileRecurringPayment } from "@/lib/billing/mercado-pago-subscriptions";
+import { reconcilePlanChangePayment } from "@/lib/billing/mercado-pago-plan-changes";
 
 export const runtime = "nodejs";
 
@@ -47,6 +51,8 @@ function paymentStatus(value: string) {
 }
 
 async function reconcilePayment(payment: MercadoPagoPayment, runtime: MercadoPagoRuntimeConfiguration) {
+    if (await reconcilePlanChangePayment(payment, runtime)) return;
+    if (await reconcileRecurringPayment(payment, runtime)) return;
     const paymentId = text(payment.id);
     const externalReference = text(payment.external_reference);
     if (!paymentId || !externalReference) return;
@@ -86,12 +92,15 @@ async function reconcilePayment(payment: MercadoPagoPayment, runtime: MercadoPag
         if (attempt.status === "APPROVED" && attempt.providerPaymentId === paymentId) return;
         const paidAt = date(payment.date_approved) || new Date();
         await db.$transaction(async (tx) => {
+            await tx.$queryRaw`SELECT id FROM "Tenant" WHERE id = ${attempt.tenantId} FOR UPDATE`;
+            const locked = await tx.billingCheckoutAttempt.findUniqueOrThrow({ where: { id: attempt.id } });
+            if (locked.paidAt) return;
             const existing = await tx.subscription.findFirst({
-                where: { tenantId: attempt.tenantId, provider: "MERCADO_PAGO" },
+                where: { tenantId: attempt.tenantId, provider: "MERCADO_PAGO", providerSubscriptionId: { startsWith: "mp_payment_" } },
                 orderBy: { updatedAt: "desc" },
             });
             const previousAccess = await tx.subscription.findFirst({
-                where: { tenantId: attempt.tenantId, provider: { not: "MERCADO_PAGO" }, status: { in: ["ACTIVE", "TRIALING"] }, currentPeriodEndsAt: { gt: paidAt } },
+                where: { tenantId: attempt.tenantId, status: { in: ["ACTIVE", "TRIALING"] }, currentPeriodEndsAt: { gt: paidAt } },
                 orderBy: { currentPeriodEndsAt: "desc" },
                 select: { currentPeriodEndsAt: true },
             });
@@ -154,8 +163,8 @@ async function reconcilePayment(payment: MercadoPagoPayment, runtime: MercadoPag
                     data: { status: "CONVERTED", convertedAt: paidAt },
                 });
             }
-            await tx.tenant.update({
-                where: { id: attempt.tenantId },
+            await tx.tenant.updateMany({
+                where: { id: attempt.tenantId, status: { notIn: ["SUSPENDED", "ARCHIVED"] }, accessMode: { not: "SUSPENDED" } },
                 data: { billingStatus: "ACTIVE", accessMode: "FULL" },
             });
             await tx.commercialEvent.create({
@@ -223,12 +232,39 @@ async function processEvent(providerEventId: string, eventType: string, apiVersi
         },
         data: { processingStartedAt: new Date(), processingError: null },
     });
-    if (claimed.count === 0) return;
+    if (claimed.count === 0) throw new Error("La notificación se está procesando; reintenta la entrega.");
     try {
         if (eventType === "payment") {
             const { payment, runtime } = await resolveMercadoPagoWebhookPayment(paymentId, runtimes,
                 (candidate) => getMercadoPagoPayment(paymentId, candidate));
             await reconcilePayment(payment, runtime);
+        } else if (eventType === "subscription_preapproval" || eventType === "subscription_authorized_payment") {
+            let resolved = false;
+            for (const candidate of runtimes) {
+                try {
+                    if (eventType === "subscription_preapproval") {
+                        const resource = await getMercadoPagoPreapproval(paymentId, candidate);
+                        if (resource.id !== paymentId) throw new Error("ID de suscripción no válido.");
+                        const agreement = await db.mercadoPagoAgreement.findUnique({ where: { externalReference: String(resource.external_reference) } });
+                        if (!agreement) { resolved = true; break; }
+                        if (agreement.environment !== candidate.environment) continue;
+                        await reconcileRecurringAgreement(resource, candidate);
+                    } else {
+                        const invoice = await getMercadoPagoInvoice(paymentId, candidate);
+                        if (String(invoice.id) !== paymentId) throw new Error("ID de ciclo no válido.");
+                        const agreement = invoice.preapproval_id ? await db.mercadoPagoAgreement.findUnique({ where: { providerSubscriptionId: invoice.preapproval_id } }) : null;
+                        if (!agreement) throw new Error("La autorización del ciclo todavía no se ha reconciliado.");
+                        if (agreement.environment !== candidate.environment) continue;
+                        await reconcileRecurringInvoice(invoice, candidate);
+                    }
+                    resolved = true; break;
+                } catch (error) {
+                    const status = error && typeof error === "object" && "status" in error ? error.status : null;
+                    if (status === 401 || status === 403 || status === 404) continue;
+                    throw error;
+                }
+            }
+            if (!resolved) throw new Error("No se pudo verificar el recurso recurrente en su entorno.");
         }
         await db.billingEvent.update({
             where: { id: stored.id },
@@ -272,9 +308,9 @@ export async function POST(request: NextRequest) {
         }
 
         const notificationId = text(payload.id);
-        const providerEventId = notificationId || createHash("sha256")
+        const providerEventId = `${eventType}:${dataId}:${notificationId || createHash("sha256")
             .update(`${eventType}:${dataId}:${xSignature}:${rawPayload}`)
-            .digest("hex");
+            .digest("hex")}`;
         await processEvent(
             providerEventId,
             eventType,

@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { getControlDb } from "@/lib/control-db";
 import { ENVIRONMENT_ADMIN_ID, environmentAdminCredentialVersion } from "@/lib/environment-platform-admin";
 import { ControlValidationError } from "@/lib/control-validation-error";
+import { PLATFORM_SUPPORT_DURATION_SECONDS, supportWorkspaceReturnPath } from "@/lib/platform-admin-policy";
 
 export type SupportGrant = {
     id: string; tenantId: string; slug: string; adminUserId: string;
@@ -10,7 +11,7 @@ export type SupportGrant = {
     securityVersion: number; credentialVersion: string | null;
 };
 const keyFor = (userId: string) => `support.workspace.${userId}`;
-const durationMs = 30 * 60 * 1000;
+const durationMs = PLATFORM_SUPPORT_DURATION_SECONDS * 1000;
 
 /** One explicit, expiring workspace per operator. A cookie alone is never an access grant. */
 export async function getPlatformSupportGrant(userId: string): Promise<SupportGrant | null> {
@@ -66,7 +67,7 @@ export async function startPlatformSupport(userId: string, input: Record<string,
             metadata: { mode: grant.mode, reason, expiresAt: grant.expiresAt, replacedPreviousSession: Boolean(previous) },
         } });
         const target = input.destination === "onboarding" ? "onboarding" : "dashboard";
-        return { grant, destination: tenant.status === "READY" ? `/t/${encodeURIComponent(tenant.slug)}/${target}` : `/onboarding/${encodeURIComponent(tenant.slug)}` };
+        return { grant, destination: tenant.status === "READY" ? supportWorkspaceReturnPath(tenant.slug, input.returnTo) || `/t/${encodeURIComponent(tenant.slug)}/${target}` : `/onboarding/${encodeURIComponent(tenant.slug)}` };
     });
 }
 

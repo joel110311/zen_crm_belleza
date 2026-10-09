@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { NextRequest, NextResponse } from "next/server.js";
 import { renderToStaticMarkup } from "react-dom/server";
+import { createElement, type ReactElement } from "react";
+import fs from "node:fs";
 import { loadTsModule } from "./helpers/load-ts-module.mts";
 import * as routing from "../src/lib/tenant-request-routing.ts";
 import * as policy from "../src/lib/platform-admin-policy.ts";
@@ -14,6 +16,11 @@ type Support = {
     endPlatformSupport: (id: string, grantId: unknown) => Promise<void>;
 };
 function fixture() {
+    let clock = Date.now();
+    class TaskDate extends Date {
+        constructor(value?: string | number) { super(value ?? clock); }
+        static now() { return clock; }
+    }
     let setting: { value: Grant } | null = null;
     const audits: Array<Record<string, unknown>> = [];
     const user = { isPlatformAdmin: true, securityVersion: 1 };
@@ -38,8 +45,9 @@ function fixture() {
         "server-only": {}, "@/lib/control-db": { getControlDb: () => db },
         "@/lib/environment-platform-admin": { ENVIRONMENT_ADMIN_ID: policy.ENVIRONMENT_ADMIN_ID, environmentAdminCredentialVersion: () => credentialVersion },
         "@/lib/control-validation-error": { ControlValidationError: Validation },
-    }) as unknown as Support;
-    return { mod, user, tenant, audits, setDeletion: (value: boolean) => { deleted = value; }, setEpoch: (value: string | null) => { credentialVersion = value; }, setting: () => setting };
+        "@/lib/platform-admin-policy": policy,
+    }, { Date: TaskDate }) as unknown as Support;
+    return { mod, user, tenant, audits, advance: (ms: number) => { clock += ms; }, setDeletion: (value: boolean) => { deleted = value; }, setEpoch: (value: string | null) => { credentialVersion = value; }, setting: () => setting };
 }
 const input = { tenantId: "tenant-a", reason: "Verificar el alta del negocio" };
 
@@ -50,7 +58,8 @@ test("support explicitly grants full access by default without adding tenant mem
     assert.equal(result.grant.mode, "FULL");
     assert.equal(result.destination, "/t/new-salon/dashboard");
     assert.equal((await f.mod.getPlatformSupportGrant(policy.ENVIRONMENT_ADMIN_ID))?.tenantId, "tenant-a");
-    assert.ok(Date.parse(result.grant.expiresAt) - Date.now() <= 30 * 60 * 1000);
+    assert.ok(Date.parse(result.grant.expiresAt) - Date.now() <= policy.PLATFORM_SUPPORT_DURATION_SECONDS * 1000);
+    assert.ok(Date.parse(result.grant.expiresAt) - Date.now() > 15 * 60 * 60 * 1000);
     assert.equal(f.audits[0].action, "support.workspace.started");
     assert.equal(f.audits[0].tenantId, "tenant-a");
     assert.equal(f.audits[0].actorUserId, policy.ENVIRONMENT_ADMIN_ID);
@@ -149,7 +158,8 @@ test("proxy permits supported tenant pages, APIs and private media but denies di
         assert.equal(response.headers.get("x-middleware-request-x-synapselogik-business"), "new-salon");
     }
     assert.equal((await proxy(req("/api/t/other/v1/contacts"))).status, 403);
-    assert.equal((await proxy(req("/t/other/dashboard"))).headers.get("location"), "https://crm.test/control");
+    assert.equal((await proxy(req("/t/other/dashboard"))).headers.get("location"), null);
+    assert.match((await proxy(req("/t/other/dashboard"))).headers.get("x-middleware-rewrite") || "", /\/support-access\?returnTo=/);
     assert.equal((await proxy(req("/api/chat", "POST"))).headers.get("x-middleware-next"), "1");
     grant!.mode = "READ_ONLY";
     for (const path of ["/api/chat", "/t/new-salon/onboarding", "/api/t/new-salon/v1/contacts"]) assert.equal((await proxy(req(path, "POST"))).status, 403);
@@ -172,6 +182,7 @@ test("support endpoints require admin and same-origin JSON mutations; listing is
         "@/lib/security": { isSameApplicationOrigin: (request: Request) => request.headers.get("origin") === "https://crm.test" },
         "@/lib/platform-support": { startPlatformSupport: async () => { calls++; return { destination: "/t/new/dashboard", grant: { slug: "new" } }; }, endPlatformSupport: async () => { calls++; } },
         "@/lib/tenant-request-routing": routing,
+        "@/lib/platform-admin-policy": policy,
     });
     const get = mod.GET as (r: Request) => Promise<Response>;
     const post = mod.POST as (r: Request) => Promise<Response>;
@@ -187,7 +198,79 @@ test("support endpoints require admin and same-origin JSON mutations; listing is
     const opened = await post(request("https://crm.test"));
     assert.equal(opened.status, 200);
     assert.match(opened.headers.get("set-cookie") || "", /synapselogik-active-business=new/);
+    assert.match(opened.headers.get("set-cookie") || "", /Max-Age=57600/);
     assert.equal(calls, 1);
+});
+
+test("an explicit support session survives refresh beyond 30 minutes but expires after one workday", async () => {
+    const f = fixture(); const started = await f.mod.startPlatformSupport(policy.ENVIRONMENT_ADMIN_ID, input);
+    f.advance(45 * 60_000); assert.equal((await f.mod.getPlatformSupportGrant(policy.ENVIRONMENT_ADMIN_ID))?.id, started.grant.id);
+    f.advance(16 * 60 * 60_000); assert.equal(await f.mod.getPlatformSupportGrant(policy.ENVIRONMENT_ADMIN_ID), null);
+});
+
+test("refresh and business/chat navigation stay scoped even when the routing cookie is missing", async () => {
+    let grant: Grant | null = { id: "grant", tenantId: "tenant-a", slug: "new-salon", adminUserId: policy.ENVIRONMENT_ADMIN_ID, mode: "FULL", reason: "Test", expiresAt: new Date(Date.now() + 60000).toISOString(), securityVersion: 1, credentialVersion: "current" };
+    const mod = loadTsModule("src/proxy.ts", {
+        "@/lib/platform-admin-policy": policy, "@/lib/platform-support": { getPlatformSupportGrant: async () => grant },
+        "next-auth/jwt": { getToken: async () => ({ id: policy.ENVIRONMENT_ADMIN_ID, authScope: "control", platformAdminCredentialVersion: "current" }) },
+        "@/lib/tenant-request-routing": routing, "@/lib/permissions": { hasPermission: () => true },
+    }, { process: { env: { APP_BASE_URL: "https://crm.test" } } });
+    const proxy = mod.proxy as (request: NextRequest) => Promise<Response>;
+    for (const path of ["/t/new-salon/business", "/t/new-salon/inbox", "/t/new-salon/calendar", "/t/new-salon/services", "/t/new-salon/business?_rsc=old-key"]) {
+        const response = await proxy(new NextRequest(`https://crm.test${path}`));
+        assert.equal(response.headers.get("location"), null); assert.equal(response.headers.get("x-middleware-request-x-synapselogik-business"), "new-salon");
+    }
+    const legacy = await proxy(new NextRequest("https://crm.test/dashboard/inbox?conversation=123&_rsc=old-key"));
+    assert.equal(legacy.headers.get("location"), "https://crm.test/t/new-salon/inbox?conversation=123");
+    const foreign = await proxy(new NextRequest("https://crm.test/t/another/business"));
+    assert.equal(foreign.headers.get("location"), null); assert.match(foreign.headers.get("cache-control") || "", /no-store/);
+    assert.match(foreign.headers.get("x-middleware-rewrite") || "", /\/support-access\?returnTo=/);
+    assert.equal(foreign.headers.get("x-middleware-request-x-synapselogik-business"), null);
+    // An old tab's public Referer wins over a newer cookie behind Traefik; no cross-workspace API write.
+    const oldTab = await proxy(new NextRequest("http://internal:3000/api/chat", { headers: { referer: "https://crm.test/t/another/inbox", cookie: `${routing.ACTIVE_TENANT_COOKIE}=new-salon` } }));
+    assert.equal(oldTab.status, 403);
+    grant = null;
+    const expired = await proxy(new NextRequest("https://crm.test/dashboard/inbox"));
+    assert.equal(expired.headers.get("location"), null); assert.match(expired.headers.get("x-middleware-rewrite") || "", /\/support-access\?returnTo=/);
+});
+
+test("opening support bypasses old RSC redirects without adding a workspace banner", () => {
+    const source = fs.readFileSync("src/components/control/workspace-support-center.tsx", "utf8");
+    assert.match(source, /window.location.assign\(payload.destination\)/);
+    assert.doesNotMatch(source, /router.push\(payload.destination\)/);
+    assert.match(source, /Sesión de 16 horas/);
+});
+
+test("support re-entry preserves the requested screen and rejects external/cross-workspace return paths", async () => {
+    for (const path of ["/t/new-salon/inbox?conversation=abc", "/t/new-salon/business?tab=portal&_rsc=old-key", "/onboarding/new-salon"]) {
+        const f = fixture(); const result = await f.mod.startPlatformSupport(policy.ENVIRONMENT_ADMIN_ID, { ...input, returnTo: path });
+        assert.equal(result.destination, path.replace("&_rsc=old-key", ""));
+    }
+    for (const path of ["https://evil.test", "//evil.test", "/control", "/t/another/inbox", "/t/new-salon/../../control"]) {
+        assert.equal(policy.supportWorkspaceReturnPath("new-salon", path), null);
+    }
+    const page = fs.readFileSync("src/app/support-access/page.tsx", "utf8");
+    assert.doesNotMatch(page, /redirect\(|requireTenantRuntimeContext|getTenantDb/);
+    assert.match(page, /requirePlatformAdmin\(\)/);
+});
+
+test("the neutral expired-access page discloses no tenant to an unauthenticated viewer and keeps the return screen", async () => {
+    let allowed = false; let reads = 0; let reentry: Record<string, unknown> | null = null;
+    const page = loadTsModule("src/app/support-access/page.tsx", {
+        "next/link": ({ children, ...props }: { children: ReactElement; href: string }) => createElement("a", props, children),
+        "@/lib/platform-admin": { requirePlatformAdmin: async () => { if (!allowed) throw new Error("unauthenticated"); return { id: "admin" }; } },
+        "@/lib/control-db": { getControlDb: () => { reads++; return {
+            platformRuntimeSetting: { findUnique: async () => ({ value: { tenantId: "tenant-a", slug: "new-salon", mode: "READ_ONLY" } }) },
+            tenant: { findUnique: async () => ({ id: "tenant-a", slug: "new-salon", displayName: "Private salon", status: "READY" }) },
+        }; } },
+        "@/lib/platform-admin-policy": policy, "@/lib/tenant-request-routing": routing,
+        "./support-reentry": { SupportReentry: (props: Record<string, unknown>) => { reentry = props; return createElement("button", null, "Reabrir"); } },
+    }) as { default: (props: { searchParams: Promise<{ returnTo: string }> }) => Promise<ReactElement> };
+    const input = { searchParams: Promise.resolve({ returnTo: "/t/new-salon/business?tab=portal" }) };
+    const denied = renderToStaticMarkup(await page.default(input));
+    assert.equal(reads, 0); assert.doesNotMatch(denied, /Private salon|Reabrir/);
+    allowed = true; const permitted = renderToStaticMarkup(await page.default(input));
+    assert.match(permitted, /Esta revisión no está activa/); assert.equal(reentry!.returnTo, "/t/new-salon/business?tab=portal"); assert.equal(reentry!.mode, "READ_ONLY");
 });
 
 test("read-only support does not create local staff or impersonate an owner", async () => {

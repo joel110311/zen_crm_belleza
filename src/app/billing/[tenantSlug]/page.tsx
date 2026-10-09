@@ -3,6 +3,9 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { BillingActions } from "./billing-actions";
 import { BillingStatusRefresh } from "./billing-status-refresh";
+import { RecurringCheckout, RecurringManagement } from "./recurring-controls";
+import { PlanChangeActions } from "./plan-change-actions";
+import { isMercadoPagoSubscriptionsEnabled } from "@/lib/billing/mercado-pago";
 import { BillingAccessError, requireBillingOwner } from "@/lib/billing/context";
 import { getActiveBillingProvider } from "@/lib/billing/provider";
 import { hasActiveTrial, shouldOfferBillingPortal } from "@/lib/billing/provider-policy";
@@ -36,11 +39,13 @@ export default async function BillingPage({
 
     const db = getControlDb();
     const billingProvider = getActiveBillingProvider();
-    const [plans, trial, subscriptions, selection] = await Promise.all([
+    const recurringEnabled = billingProvider === "MERCADO_PAGO" && isMercadoPagoSubscriptionsEnabled();
+    const [plans, trial, subscriptions, selection, agreement] = await Promise.all([
         db.plan.findMany({
             where: { isActive: true },
             orderBy: { monthlyAmountCents: "asc" },
             select: {
+                id: true,
                 slug: true,
                 name: true,
                 description: true,
@@ -57,22 +62,33 @@ export default async function BillingPage({
         db.subscription.findMany({
             where: { tenantId: context.tenant.tenantId },
             orderBy: { updatedAt: "desc" },
-            select: { provider: true, status: true, currentPeriodEndsAt: true, providerCustomerId: true, plan: { select: { name: true } } },
+            select: { planId: true, provider: true, providerSubscriptionId: true, status: true, currentPeriodStartsAt: true, currentPeriodEndsAt: true, providerCustomerId: true, plan: { select: { name: true } } },
         }),
         db.billingSelection.findUnique({
             where: { tenantId: context.tenant.tenantId },
             select: { status: true, scheduledFor: true, lastError: true, providerCustomerId: true, plan: { select: { name: true, monthlyAmountCents: true, currency: true } } },
         }),
+        db.mercadoPagoAgreement.findFirst({ where: { tenantId: context.tenant.tenantId }, orderBy: { createdAt: "desc" }, include: { plan: { select: { name: true } }, planChanges: { where: { activeKey: { not: null } }, take: 1 } } }),
     ]);
 
-    const subscription = subscriptions.find((item) => item.provider === billingProvider);
+    const subscription = subscriptions.find((item) => item.provider === billingProvider && agreement?.providerSubscriptionId && item.providerSubscriptionId === agreement.providerSubscriptionId)
+        || subscriptions.find((item) => item.provider === billingProvider);
+    const change = agreement?.planChanges[0];
+    const canChange = recurringEnabled && agreement?.status === "AUTHORIZED" && !agreement.cancelRequestedAt
+        && subscription?.status === "ACTIVE" && subscription.planId === agreement.planId
+        && subscription.currentPeriodStartsAt && subscription.currentPeriodEndsAt && subscription.currentPeriodEndsAt > new Date()
+        && (!change || change.status === "QUOTED");
     const historicalSubscription = !subscription ? subscriptions.find((item) =>
         ["ACTIVE", "TRIALING"].includes(item.status)
         && (!item.currentPeriodEndsAt || item.currentPeriodEndsAt > new Date())) : null;
     // Match the portal endpoint: scheduled selections and older customer records also qualify.
     const hasStripeCustomer = shouldOfferBillingPortal(billingProvider,
         Boolean(selection?.providerCustomerId) || subscriptions.some((item) => item.provider === "STRIPE" && Boolean(item.providerCustomerId)));
-    const checkoutNotice = checkout === "success"
+    const checkoutNotice = checkout === "plan-change"
+        ? "Regresaste del pago proporcional. La mejora sólo se activa cuando Mercado Pago aprueba el pago y confirma el nuevo importe de la misma suscripción. Actualiza el estado abajo para verificarlo."
+        : checkout === "subscription"
+        ? "Regresaste de autorizar una suscripción. La autorización no confirma un cobro: verificaremos cada pago con Mercado Pago antes de ampliar tu acceso. Puedes actualizar el estado abajo."
+        : checkout === "success"
         ? billingProvider === "MERCADO_PAGO"
             ? "Regresaste de Mercado Pago. Estamos verificando el pago directamente con el proveedor; el acceso se actualizará únicamente cuando quede aprobado."
             : "Tu plan quedó registrado. Confirmaremos la activación cuando el proveedor notifique el resultado del pago."
@@ -88,7 +104,7 @@ export default async function BillingPage({
 
     return (
         <main className="mx-auto min-h-dvh max-w-5xl px-5 py-12">
-            <BillingStatusRefresh enabled={billingProvider === "MERCADO_PAGO" && (checkout === "success" || checkout === "pending")} />
+            <BillingStatusRefresh enabled={billingProvider === "MERCADO_PAGO" && ["success", "pending", "plan-change", "subscription"].includes(checkout || "")} />
             <Link
                 href={`/t/${encodeURIComponent(context.tenant.slug)}/dashboard`}
                 className="mb-6 inline-flex items-center gap-2 text-sm font-semibold text-primary transition-colors hover:text-primary/80"
@@ -101,7 +117,9 @@ export default async function BillingPage({
                 <h1 className="mt-2 text-3xl font-semibold tracking-tight">Elige y administra tu plan</h1>
                 <p className="mt-3 text-sm leading-6 text-muted-foreground">
                     {billingProvider === "MERCADO_PAGO"
-                        ? "El cobro se realiza al completar el pago en una página segura de Mercado Pago; nunca almacenamos los datos de tu tarjeta. Cada pago cubre una mensualidad, sin renovación automática. Si aún estás en prueba, tu mes pagado comenzará cuando termine para que no pierdas ningún día."
+                        ? recurringEnabled
+                            ? "Elige una suscripción mensual con renovación automática o paga solo un mes. Autorizarás los cobros en Mercado Pago; nunca almacenamos los datos de tu tarjeta. La suscripción comienza después de tu prueba o del periodo ya pagado. Puedes cancelar la renovación desde aquí."
+                            : "El cobro se realiza en una página segura de Mercado Pago; nunca almacenamos los datos de tu tarjeta. Cada pago cubre una mensualidad, sin renovación automática. Si aún estás en prueba, tu mes pagado comenzará cuando termine."
                         : "El pago se completa en una página segura del proveedor; nunca almacenamos los datos de tu tarjeta. Revisa las condiciones del plan antes de confirmar."}
                 </p>
             </header>
@@ -123,9 +141,14 @@ export default async function BillingPage({
                             <p className="mt-2 min-h-10 text-sm text-muted-foreground">{plan.description || "Plan de suscripción"}</p>
                             <p className="mt-5 text-2xl font-semibold">{formatMoney(amount, plan.currency)}<span className="ml-1 text-sm font-normal text-muted-foreground">/{interval === "annual" ? "año" : "mes"}</span></p>
                             <div className="mt-6">
+                                {canChange && agreement && plan.id !== agreement.planId && plan.monthlyAmountCents && plan.monthlyAmountCents !== agreement.amountCents && plan.currency === agreement.currency
+                                    ? <PlanChangeActions tenantSlug={context.tenant.slug} planSlug={plan.slug} planName={plan.name} upgrade={plan.monthlyAmountCents > agreement.amountCents} />
+                                    : <>
+                                {recurringEnabled && plan.monthlyAmountCents ? <div className="mb-4"><RecurringCheckout tenantSlug={context.tenant.slug} planSlug={plan.slug} price={formatMoney(plan.monthlyAmountCents, plan.currency)} amountCents={plan.monthlyAmountCents} currency={plan.currency} disabled={Boolean(agreement?.activeKey)} /></div> : null}
                                 {interval
-                                    ? <BillingActions tenantSlug={context.tenant.slug} planSlug={plan.slug} interval={interval} billingProvider={billingProvider} />
+                                    ? <BillingActions tenantSlug={context.tenant.slug} planSlug={plan.slug} interval={interval} billingProvider={billingProvider} disabled={Boolean(agreement?.activeKey)} />
                                     : <p className="rounded-lg bg-muted px-3 py-2 text-center text-xs text-muted-foreground">Pago en línea por configurar</p>}
+                                </>}
                             </div>
                         </article>
                     );
@@ -142,10 +165,27 @@ export default async function BillingPage({
                             ? `${historicalSubscription.plan?.name || "Plan"}: acceso anterior conservado${historicalSubscription.currentPeriodEndsAt ? ` hasta ${new Intl.DateTimeFormat("es-MX", { dateStyle: "medium" }).format(historicalSubscription.currentPeriodEndsAt)}` : ""}. Los nuevos pagos se realizan con Mercado Pago.`
                         : hasActiveTrial(trial, new Date()) ? `Prueba activa hasta ${new Intl.DateTimeFormat("es-MX", { dateStyle: "medium" }).format(trial!.endsAt)}.` : "Sin suscripción activa."}
                 </p>
-                {billingProvider === "MERCADO_PAGO" && subscription ? <p className="mt-2 text-sm text-muted-foreground">Para renovar o cambiar de plan, utiliza las opciones de arriba. No hay cargos automáticos.</p> : null}
+                {billingProvider === "MERCADO_PAGO" && subscription && !agreement?.activeKey ? <p className="mt-2 text-sm text-muted-foreground">No hay renovación automática activa. Puedes contratarla con autorización expresa o pagar solo un mes desde las opciones de arriba.</p> : null}
                 {billingProvider === "STRIPE" && selection?.status === "FAILED" ? <p className="mt-3 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">No fue posible activar el plan. No realizaremos intentos ocultos; soporte puede revisar y reintentar la activación. {selection.lastError ? `Referencia: ${selection.lastError}` : ""}</p> : null}
                 <div className="mt-4 max-w-xs"><BillingActions tenantSlug={context.tenant.slug} canManage={hasStripeCustomer} billingProvider={billingProvider} /></div>
             </section>
+            {billingProvider === "MERCADO_PAGO" && agreement ? <section className="mt-7 rounded-xl border bg-card p-5 shadow-sm">
+                <h2 className="font-semibold">Administrar suscripción</h2>
+                <p className="mt-2 text-sm">{agreement.plan.name} · {formatMoney(agreement.amountCents, agreement.currency)} al mes · {agreement.environment === "test" ? "Pruebas (no es una suscripción de producción)" : "Producción"}</p>
+                <p className="mt-2 text-sm text-muted-foreground">{agreement.status === "AUTHORIZED" ? "Renovación automática autorizada" : agreement.status === "CANCELED" ? "Renovación cancelada" : agreement.status === "PAUSED" ? "Suscripción pausada en Mercado Pago" : agreement.status === "PENDING" ? "Falta completar la autorización en Mercado Pago" : "Autorización en revisión"}.</p>
+                {agreement.cancelRequestedAt && agreement.status !== "CANCELED" ? <p role="alert" className="mt-2 text-sm">Cancelación solicitada: falta confirmarla con Mercado Pago. Actualiza el estado o reintenta la cancelación.</p> : null}
+                {agreement.nextPaymentAt && agreement.status === "AUTHORIZED" ? <p className="mt-2 text-sm">Próximo cobro programado: {new Intl.DateTimeFormat("es-MX", { dateStyle: "medium", timeStyle: "short", timeZone: "America/Mexico_City" }).format(agreement.nextPaymentAt)}.</p> : null}
+                <p className="mt-2 text-sm text-muted-foreground">Inicio programado: {new Intl.DateTimeFormat("es-MX", { dateStyle: "medium", timeZone: "America/Mexico_City" }).format(agreement.startsAt)}. Cada cobro se confirma por separado; un pago rechazado no extiende el periodo pagado.</p>
+                {subscription?.status === "PAST_DUE" ? <p role="alert" className="mt-2 text-sm text-destructive">No se confirmó la renovación. Revisa tu medio de pago en Mercado Pago. Durante el plazo de recuperación el CRM puede quedar en solo lectura; tus datos no se eliminan.</p> : null}
+                {agreement.lastError ? <p role="alert" className="mt-2 text-sm text-destructive">{agreement.lastError}</p> : null}
+                {change && change.status !== "QUOTED" ? <div className="mt-4 rounded-lg border bg-muted/30 p-4 text-sm" role="status">
+                    <p>{change.status === "APPLIED" ? change.direction === "UPGRADE" ? "Mejora activada." : "Bajada de plan programada; conservas tu plan actual hasta el corte." : change.status === "REFUND_PENDING" ? "Devolución del proporcional en verificación; no se activó la mejora." : "Cambio de plan en verificación. No abras un segundo pago."}</p>
+                    <p className="mt-2">Proporcional: {formatMoney(change.amountTodayCents, change.currency)}. Próxima mensualidad: {formatMoney(change.toAmountCents, change.currency)} desde el {new Intl.DateTimeFormat("es-MX", { dateStyle: "medium", timeZone: "America/Mexico_City" }).format(change.effectiveAt)}.</p>
+                    {change.lastError ? <p className="mt-2 text-destructive">{change.lastError}</p> : null}
+                    <p className="mt-2 text-xs text-muted-foreground">Por seguridad, se admite un cambio confirmado por periodo mensual. Podrás solicitar otro después de confirmar la siguiente renovación.</p>
+                </div> : null}
+                <RecurringManagement tenantSlug={context.tenant.slug} canCancel={Boolean(agreement.activeKey)} />
+            </section> : null}
         </main>
     );
 }

@@ -5,6 +5,7 @@ import { controlApiError, ControlValidationError } from "@/lib/control-api-error
 import { isSameApplicationOrigin } from "@/lib/security";
 import { startPlatformSupport, endPlatformSupport } from "@/lib/platform-support";
 import { ACTIVE_TENANT_COOKIE } from "@/lib/tenant-request-routing";
+import { PLATFORM_SUPPORT_DURATION_SECONDS } from "@/lib/platform-admin-policy";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -43,7 +44,7 @@ export async function POST(request: Request) {
         // Update routing before navigation/legacy links. The grant, never this cookie,
         // remains the source of authorization (including the optional read-only mode).
         response.cookies.set(ACTIVE_TENANT_COOKIE, result.grant.slug, {
-            httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", path: "/", maxAge: 30 * 60,
+            httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", path: "/", maxAge: PLATFORM_SUPPORT_DURATION_SECONDS,
         });
         return response;
     } catch (error) { return failure(error); }
