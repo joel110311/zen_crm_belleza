@@ -4,7 +4,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
 import { loadTsModule } from "./helpers/load-ts-module.mts";
-import { metaSignupExtras, parseMetaSignupMessage, metaSignupFailure, isMetaSignupOrigin } from "../src/lib/meta-signup.ts";
+import { META_COEXISTENCE_GUIDANCE, metaSignupCompletionData, metaSignupWaitMs, metaSignupExtras, parseMetaSignupMessage, metaSignupFailure, isMetaSignupOrigin } from "../src/lib/meta-signup.ts";
 import { normalizeMetaWebhook } from "../src/lib/tenant-webhook-payload.ts";
 import { storeMetaSyncedMessage, applyMetaContactSync, applyMetaMessageChange, applyMetaSyncedReaction } from "../src/lib/meta-coexistence-processing.ts";
 import * as phone from "../src/lib/phone.ts";
@@ -16,7 +16,7 @@ function envelope(field: string, value: Record<string, unknown>, wabaId = "waba"
 
 test("both signup panels launch v4 coexistence and accept a WABA-only finish safely", () => {
     assert.equal(metaSignupExtras("coexistence").featureType, "whatsapp_business_app_onboarding");
-    assert.equal(metaSignupExtras("coexistence").version, "v4");
+    assert.ok(!("version" in metaSignupExtras("coexistence")), "v4 comes from the product configuration");
     assert.equal(metaSignupExtras("coexistence").sessionInfoVersion, "3");
     assert.ok(!("featureType" in metaSignupExtras("cloud")));
     assert.equal(parseMetaSignupMessage({ type: "WA_EMBEDDED_SIGNUP", event: "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING", data: { waba_id: "waba" } })?.phoneNumberId, "");
@@ -28,6 +28,35 @@ test("both signup panels launch v4 coexistence and accept a WABA-only finish saf
     assert.match(metaSignupFailure(JSON.stringify({ type: "WA_EMBEDDED_SIGNUP", event: "ERROR" }))!, /no pudo completar/);
     assert.equal(metaSignupFailure({ type: "OTHER", event: "ERROR" }), null);
     for (const path of ["src/components/tenant/tenant-channel-setup.tsx", "src/components/settings/meta-whatsapp-panel.tsx"]) assert.match(fs.readFileSync(path, "utf8"), /metaSignupExtras\(/);
+});
+
+test("generic v4 FINISH preserves coexistence choice in legacy completion", () => {
+    const message = parseMetaSignupMessage({ type: "WA_EMBEDDED_SIGNUP", event: "FINISH", data: { waba_id: "waba", phone_number_id: "phone" } })!;
+    assert.equal(message.mode, "cloud");
+    assert.equal(metaSignupCompletionData("coexistence", message).mode, "coexistence");
+    assert.equal(metaSignupCompletionData("coexistence", message).phoneNumberId, "phone");
+    assert.match(fs.readFileSync("src/components/settings/meta-whatsapp-panel.tsx", "utf8"), /metaSignupCompletionData\(mode, signupData.current\)/);
+});
+
+test("UI waits for the signed ceremony instead of three minutes; never extends server expiration", () => {
+    const now = Date.parse("2026-10-09T18:00:00Z");
+    assert.equal(metaSignupWaitMs(new Date(now + 600_000).toISOString(), now), 595_000);
+    assert.equal(metaSignupWaitMs(new Date(now + 30_000).toISOString(), now), 25_000);
+    assert.equal(metaSignupWaitMs(new Date(now - 1).toISOString(), now), 0);
+    assert.equal(metaSignupWaitMs(new Date(now + 3_600_000).toISOString(), now), 600_000);
+    assert.equal(metaSignupWaitMs(undefined, now), 600_000);
+    const panel = fs.readFileSync("src/components/tenant/tenant-channel-setup.tsx", "utf8");
+    assert.match(panel, /metaSignupWaitMs\(signupStart.expiresAt\)/);
+    assert.doesNotMatch(panel, /180_000/);
+});
+
+test("both panels explain number-first coexistence and optional history without deleting the phone account", () => {
+    assert.match(META_COEXISTENCE_GUIDANCE, /no elijas un número virtual/);
+    assert.match(META_COEXISTENCE_GUIDANCE, /no continúes/);
+    assert.match(META_COEXISTENCE_GUIDANCE, /Compartir el historial con el CRM es opcional/);
+    for (const path of ["src/components/tenant/tenant-channel-setup.tsx", "src/components/settings/meta-whatsapp-panel.tsx"]) {
+        assert.match(fs.readFileSync(path, "utf8"), /\{META_COEXISTENCE_GUIDANCE\}/);
+    }
 });
 
 test("phone echoes use the customer recipient and preserve native IDs and attachment metadata", () => {

@@ -1,8 +1,23 @@
 export type MetaSignupMode = "cloud" | "coexistence";
 
+export const META_COEXISTENCE_GUIDANCE = "En Meta, elige la opción para ingresar un número (puede decir «Crea uno nuevo») y captura el que ya usas en WhatsApp Business; no elijas un número virtual. Meta v4 detecta tu cuenta existente y debe mostrar su perfil y el QR de coexistencia. Si te pide borrar la cuenta o migrarla fuera del celular, no continúes. Compartir el historial con el CRM es opcional.";
+
 export function metaSignupExtras(mode: MetaSignupMode, solutionId?: string) {
-    return { setup: solutionId ? { solutionID: solutionId } : {}, version: "v4", sessionInfoVersion: "3",
+    // v4 is selected by the Login for Business configuration's products, not version: "v4".
+    return { setup: solutionId ? { solutionID: solutionId } : {}, sessionInfoVersion: "3",
         ...(mode === "coexistence" ? { featureType: "whatsapp_business_app_onboarding" } : {}) };
+}
+
+/** Wait for Meta without extending the signed server ceremony. */
+export function metaSignupWaitMs(expiresAt?: string, now = Date.now()) {
+    const maximum = 10 * 60_000;
+    const expiration = expiresAt ? Date.parse(expiresAt) : NaN;
+    return Number.isFinite(expiration) ? Math.max(0, Math.min(maximum, expiration - now - 5_000)) : maximum;
+}
+
+/** Generic FINISH must not switch a requested coexistence to exclusive API registration. */
+export function metaSignupCompletionData(requestedMode: MetaSignupMode, received: { wabaId: string; phoneNumberId: string; businessId: string }) {
+    return { wabaId: received.wabaId, phoneNumberId: received.phoneNumberId, businessId: received.businessId, mode: requestedMode };
 }
 
 export function isMetaSignupOrigin(origin: string) {

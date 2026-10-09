@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/use-toast";
-import { metaSignupExtras, metaSignupFailure, isMetaSignupOrigin, parseMetaSignupMessage, type MetaSignupMode } from "@/lib/meta-signup";
+import { META_COEXISTENCE_GUIDANCE, metaSignupCompletionData, metaSignupExtras, metaSignupFailure, isMetaSignupOrigin, parseMetaSignupMessage, type MetaSignupMode } from "@/lib/meta-signup";
 
 type Session = {
     metaConfigured?: boolean;
@@ -165,7 +165,7 @@ export function MetaWhatsAppPanel() {
                     const result = await fetch("/api/whatsapp/embedded-signup", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ code, ...signupData.current }),
+                        body: JSON.stringify({ code, ...metaSignupCompletionData(mode, signupData.current) }),
                     });
                     const payload = await result.json();
                     if (!result.ok) { reject(new Error(payload.error || "No se pudo finalizar la conexion.")); return; }
@@ -224,6 +224,7 @@ export function MetaWhatsAppPanel() {
 
             <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2 md:col-span-2"><Label>Forma de conexión oficial</Label><select className="w-full rounded-xl border bg-background p-2 text-sm" value={mode} onChange={e => setMode(e.target.value === "cloud" ? "cloud" : "coexistence")} disabled={working}><option value="coexistence">API + WhatsApp Business en el celular</option><option value="cloud">Número solo para API</option></select><p className="text-xs text-muted-foreground">Coexistencia conserva tu cuenta del celular. No borres la cuenta ni desinstales la app; el historial requiere tu autorización en Meta.</p></div>
+                {mode === "coexistence" ? <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/5 p-3 text-xs leading-5 md:col-span-2"><p className="font-semibold">Usar el número que ya tienes</p><p className="mt-1">{META_COEXISTENCE_GUIDANCE}</p></div> : null}
                 <div className="space-y-2"><Label>Meta App ID</Label><Input value={form.appId} onChange={(e) => field("appId", e.target.value)} placeholder="App ID" /></div>
                 <div className="space-y-2"><Label>App Secret</Label><Input type="password" value={form.appSecret} onChange={(e) => field("appSecret", e.target.value)} placeholder="Dejar vacio para conservarlo" /></div>
                 <div className="space-y-2"><Label>Configuration ID (v4)</Label><Input value={form.configId} onChange={(e) => field("configId", e.target.value)} /></div>

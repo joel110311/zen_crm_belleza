@@ -5,7 +5,7 @@ import Image from "next/image";
 import { CheckCircle2, CreditCard, ExternalLink, Loader2, QrCode, RefreshCw, ShieldCheck, Smartphone, Unplug } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { metaSignupExtras, parseMetaSignupMessage, metaSignupFailure, isMetaSignupOrigin, type MetaSignupMode } from "@/lib/meta-signup";
+import { META_COEXISTENCE_GUIDANCE, metaSignupExtras, metaSignupWaitMs, parseMetaSignupMessage, metaSignupFailure, isMetaSignupOrigin, type MetaSignupMode } from "@/lib/meta-signup";
 
 type Channel = {
     id: string;
@@ -132,14 +132,17 @@ export function TenantChannelSetup({
                 headers: { "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() },
                 body: JSON.stringify({ mode: metaMode }),
             });
-            const begin = await responseBody(beginResponse) as { data?: { state?: string; appId?: string; configId?: string; graphApiVersion?: string }; error?: { message?: string } };
+            const begin = await responseBody(beginResponse) as { data?: { state?: string; expiresAt?: string; appId?: string; configId?: string; graphApiVersion?: string }; error?: { message?: string } };
             if (!beginResponse.ok || !begin.data?.state || !begin.data.appId || !begin.data.configId) throw new Error(begin.error?.message || "No fue posible iniciar Meta Embedded Signup.");
             const signupStart = {
                 state: begin.data.state,
                 appId: begin.data.appId,
                 configId: begin.data.configId,
                 graphApiVersion: begin.data.graphApiVersion || "v26.0",
+                expiresAt: begin.data.expiresAt,
             };
+            const remainingMs = metaSignupWaitMs(signupStart.expiresAt);
+            if (!remainingMs) throw new Error("El intento de conexión venció. Inicia de nuevo desde el CRM.");
 
             const details = await new Promise<{ wabaId: string; phoneNumberId: string; businessId: string; code: string }>((resolve, reject) => {
                 let signup: { wabaId: string; phoneNumberId: string; businessId: string } | null = null;
@@ -189,9 +192,9 @@ export function TenantChannelSetup({
                     if (!settled) {
                         settled = true;
                         window.removeEventListener("message", receive);
-                        reject(new Error("Meta no completó la conexión a tiempo."));
+                        reject(new Error("El intento de conexión venció. Cierra la ventana anterior de Meta e inicia de nuevo desde el CRM; no borres tu cuenta del celular."));
                     }
-                }, 180_000);
+                }, remainingMs);
             });
             const completeResponse = await fetch(`${endpoint}/meta/complete`, {
                 method: "POST",
@@ -270,6 +273,7 @@ export function TenantChannelSetup({
                     <label className="flex items-start gap-2 text-sm"><input type="radio" name={`meta-mode-${tenantSlug}`} checked={metaMode === "coexistence"} onChange={() => setMetaMode("coexistence")} disabled={busy !== null} className="mt-1" />Mantener WhatsApp Business en mi celular (coexistencia)</label>
                     <label className="flex items-start gap-2 text-sm"><input type="radio" name={`meta-mode-${tenantSlug}`} checked={metaMode === "cloud"} onChange={() => setMetaMode("cloud")} disabled={busy !== null} className="mt-1" />Conectar un número solo para API</label>
                     {metaMode === "coexistence" ? <p className="text-xs text-muted-foreground">Conecta tu cuenta existente mediante Meta. No borres tu cuenta ni desinstales WhatsApp Business. El historial se importa solo si lo autorizas; tus mensajes del celular pausarán el bot en ese chat. Meta puede desvincular dispositivos adicionales durante la conexión.</p> : null}
+                    {metaMode === "coexistence" ? <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/5 p-3 text-xs leading-5"><p className="font-semibold">Usar el número que ya tienes</p><p className="mt-1">{META_COEXISTENCE_GUIDANCE}</p></div> : null}
                 </div>
                 {metaMode === "cloud" ? <div className="mt-3 space-y-2">
                     <label htmlFor={`meta-pin-${tenantSlug}`} className="text-sm font-medium">PIN de registro de WhatsApp</label>
