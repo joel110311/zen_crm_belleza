@@ -5,6 +5,10 @@
 1. Esperar que **Build and Push Docker Image** del commit publicado esté verde en
    GitHub Actions. Usar la etiqueta de siete caracteres de ese commit, sin prefijo
    `sha-`: `ghcr.io/joel110311/zen_crm_belleza:COMMIT_CORTO`.
+   El propietario también puede usar `:latest`, como queda en el YAML del repo:
+   es una etiqueta móvil, no un identificador inmutable. Re-descargar/resolver la
+   imagen al actualizar y comprobar la etiqueta OCI `org.opencontainers.image.revision`
+   o el digest en producción; anotar la imagen anterior para rollback.
 2. Conservar una copia privada del YAML y los valores actuales de Portainer. No
    subir secretos a Git ni reutilizar contraseñas de Eventiia.
 3. Este cambio no requiere migraciones ni modificar PostgreSQL, Redis, gateway,
@@ -36,6 +40,11 @@ Sin un valor válido, la nueva identidad administrativa permanece desactivada.
 Actualizar el stack. No seleccionar ninguna opción para eliminar volúmenes ni
 recrear bases. Mantener el orden de actualización **start-first** del servicio web
 si ya está configurado; un worker programado debe continuar **stop-first**.
+
+La sección `environment` admite un mapa `CLAVE: valor` o una lista de cadenas
+`- CLAVE=valor`, pero no mezclar ambas formas dentro de una lista. En este YAML
+usar `- ADMIN_USERNAME=${ADMIN_USERNAME:-adminjoel}` y
+`- ADMIN_PASSWORD=${ADMIN_PASSWORD:-}`. No usar `- ADMIN_USERNAME: ...`.
 
 ## Alternativa: actualizar únicamente el servicio web
 
