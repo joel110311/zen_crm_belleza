@@ -59,7 +59,7 @@ posible, para que un despliegue posterior no quite las variables ni vuelva atrá
 ## Verificación después del despliegue
 
 1. Confirmar el servicio web en `1/1` con la imagen esperada y sin reinicios.
-2. Abrir `/api/health?mode=readiness&strict=true`: esperar HTTP 200 y `ok: true`.
+2. Abrir `/api/health?scope=ready`: esperar HTTP 200, `mode: readiness` y `ok: true`.
 3. Entrar a `https://app.synapselogik.com/control/login` como `adminjoel`.
    El primer login válido inicializa la identidad interna y deja auditoría.
 4. En **Revisar negocios**, buscar Logicapp o una cuenta recién creada. Elegir
