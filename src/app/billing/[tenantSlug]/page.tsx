@@ -118,7 +118,7 @@ export default async function BillingPage({
                 <p className="mt-3 text-sm leading-6 text-muted-foreground">
                     {billingProvider === "MERCADO_PAGO"
                         ? recurringEnabled
-                            ? "Elige una suscripción mensual con renovación automática o paga solo un mes. Autorizarás los cobros en Mercado Pago; nunca almacenamos los datos de tu tarjeta. La suscripción comienza después de tu prueba o del periodo ya pagado. Puedes cancelar la renovación desde aquí."
+                            ? "Contrata tu plan mensual con renovación automática hasta que canceles. El primer mes y las siguientes mensualidades forman parte de la misma suscripción: no necesitas hacer un pago por separado. Autorizarás los cobros en Mercado Pago; nunca almacenamos los datos de tu tarjeta. Si tienes una prueba o un periodo pagado vigente, el primer cobro se programa para cuando termine. Puedes cancelar la renovación desde este CRM."
                             : "El cobro se realiza en una página segura de Mercado Pago; nunca almacenamos los datos de tu tarjeta. Cada pago cubre una mensualidad, sin renovación automática. Si aún estás en prueba, tu mes pagado comenzará cuando termine."
                         : "El pago se completa en una página segura del proveedor; nunca almacenamos los datos de tu tarjeta. Revisa las condiciones del plan antes de confirmar."}
                 </p>
@@ -140,15 +140,17 @@ export default async function BillingPage({
                             <div className="flex items-center justify-between gap-2"><h2 className="text-lg font-semibold">{plan.name}</h2>{plan.slug === "automatiza" ? <span className="rounded-full bg-primary/10 px-2 py-1 text-[11px] font-semibold text-primary">Más elegido</span> : null}</div>
                             <p className="mt-2 min-h-10 text-sm text-muted-foreground">{plan.description || "Plan de suscripción"}</p>
                             <p className="mt-5 text-2xl font-semibold">{formatMoney(amount, plan.currency)}<span className="ml-1 text-sm font-normal text-muted-foreground">/{interval === "annual" ? "año" : "mes"}</span></p>
+                            {recurringEnabled && plan.monthlyAmountCents ? <p className="mt-2 text-xs leading-5 text-muted-foreground">Renovación mensual automática hasta que canceles.</p> : null}
                             <div className="mt-6">
                                 {canChange && agreement && plan.id !== agreement.planId && plan.monthlyAmountCents && plan.monthlyAmountCents !== agreement.amountCents && plan.currency === agreement.currency
                                     ? <PlanChangeActions tenantSlug={context.tenant.slug} planSlug={plan.slug} planName={plan.name} upgrade={plan.monthlyAmountCents > agreement.amountCents} />
-                                    : <>
-                                {recurringEnabled && plan.monthlyAmountCents ? <div className="mb-4"><RecurringCheckout tenantSlug={context.tenant.slug} planSlug={plan.slug} price={formatMoney(plan.monthlyAmountCents, plan.currency)} amountCents={plan.monthlyAmountCents} currency={plan.currency} disabled={Boolean(agreement?.activeKey)} /></div> : null}
-                                {interval
+                                    : recurringEnabled
+                                    ? plan.monthlyAmountCents
+                                        ? <RecurringCheckout tenantSlug={context.tenant.slug} planSlug={plan.slug} price={formatMoney(plan.monthlyAmountCents, plan.currency)} amountCents={plan.monthlyAmountCents} currency={plan.currency} disabled={Boolean(agreement?.activeKey)} />
+                                        : <p className="rounded-lg bg-muted px-3 py-2 text-center text-xs text-muted-foreground">Suscripción mensual por configurar</p>
+                                    : interval
                                     ? <BillingActions tenantSlug={context.tenant.slug} planSlug={plan.slug} interval={interval} billingProvider={billingProvider} disabled={Boolean(agreement?.activeKey)} />
                                     : <p className="rounded-lg bg-muted px-3 py-2 text-center text-xs text-muted-foreground">Pago en línea por configurar</p>}
-                                </>}
                             </div>
                         </article>
                     );
@@ -165,7 +167,7 @@ export default async function BillingPage({
                             ? `${historicalSubscription.plan?.name || "Plan"}: acceso anterior conservado${historicalSubscription.currentPeriodEndsAt ? ` hasta ${new Intl.DateTimeFormat("es-MX", { dateStyle: "medium" }).format(historicalSubscription.currentPeriodEndsAt)}` : ""}. Los nuevos pagos se realizan con Mercado Pago.`
                         : hasActiveTrial(trial, new Date()) ? `Prueba activa hasta ${new Intl.DateTimeFormat("es-MX", { dateStyle: "medium" }).format(trial!.endsAt)}.` : "Sin suscripción activa."}
                 </p>
-                {billingProvider === "MERCADO_PAGO" && subscription && !agreement?.activeKey ? <p className="mt-2 text-sm text-muted-foreground">No hay renovación automática activa. Puedes contratarla con autorización expresa o pagar solo un mes desde las opciones de arriba.</p> : null}
+                {billingProvider === "MERCADO_PAGO" && subscription && !agreement?.activeKey ? <p className="mt-2 text-sm text-muted-foreground">Tu pago anterior no tiene renovación automática activa.{recurringEnabled ? " Para los siguientes meses, contrata una suscripción desde las opciones de arriba. El primer cobro respetará tu periodo ya pagado." : " Conservas el periodo ya pagado."}</p> : null}
                 {billingProvider === "STRIPE" && selection?.status === "FAILED" ? <p className="mt-3 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">No fue posible activar el plan. No realizaremos intentos ocultos; soporte puede revisar y reintentar la activación. {selection.lastError ? `Referencia: ${selection.lastError}` : ""}</p> : null}
                 <div className="mt-4 max-w-xs"><BillingActions tenantSlug={context.tenant.slug} canManage={hasStripeCustomer} billingProvider={billingProvider} /></div>
             </section>

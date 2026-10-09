@@ -9,6 +9,7 @@ export function RecurringCheckout({ tenantSlug, planSlug, price, amountCents, cu
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState<string | null>(null);
     async function start() {
+        if (!consent || busy || disabled) return;
         setBusy(true); setError(null);
         try {
             const response = await fetch("/api/billing/subscription", { method: "POST", headers: { "Content-Type": "application/json" },
@@ -24,7 +25,7 @@ export function RecurringCheckout({ tenantSlug, planSlug, price, amountCents, cu
             <input type="checkbox" checked={consent} onChange={event => setConsent(event.target.checked)} disabled={disabled || busy} className="mt-1 size-4 shrink-0" />
             <span>Acepto una suscripción de {price} al mes, con renovación automática hasta que cancele. Puedo cancelar la renovación desde este CRM.</span>
         </label>
-        <button type="button" onClick={start} disabled={!consent || busy || disabled} className="h-10 w-full rounded-md bg-primary px-3 text-sm font-semibold text-primary-foreground disabled:opacity-50">{busy ? "Abriendo autorización..." : "Autorizar suscripción mensual"}</button>
+        <button type="button" onClick={start} disabled={!consent || busy || disabled} className="h-10 w-full rounded-md bg-primary px-3 text-sm font-semibold text-primary-foreground disabled:opacity-50">{busy ? "Abriendo Mercado Pago..." : "Contratar plan mensual"}</button>
         {disabled ? <p className="text-xs text-muted-foreground">Administra la suscripción existente antes de contratar otro plan.</p> : null}
         {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
     </div>;

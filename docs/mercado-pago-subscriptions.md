@@ -14,6 +14,10 @@ La integración agrega Suscripciones (`/preapproval`) al Checkout Pro existente.
 - El worker de eliminación no borra un negocio mientras exista una autorización recurrente sin cancelación confirmada. Necesita conectividad con el servicio web para confirmar la cancelación; un fallo queda pendiente de reintento.
 - Cambiar precios del catálogo no cambia contratos autorizados. Los cambios voluntarios del propietario usan el mismo acuerdo, conservando su fecha de renovación, con la confirmación descrita abajo.
 
+## Contratar un plan mensual
+
+La contratación principal usa **Contratar plan mensual**: el primer mes y las renovaciones pertenecen al mismo acuerdo, con autorización explícita del propietario. Con las suscripciones habilitadas no se ofrece el botón de pago único en las tarjetas. La ruta de Checkout Pro individual se conserva para compatibilidad con pagos e intentos anteriores (y se usa para el proporcional de mejoras); no se convierten pagos antiguos en autorizaciones recurrentes ni se exige pagar primero una mensualidad aparte.
+
 ## Mejorar o bajar el plan
 
 - Disponible para suscripciones automáticas autorizadas con un periodo mensual **pagado y vigente**. No convierte pagos individuales anteriores ni cobra mejoras durante la prueba.
