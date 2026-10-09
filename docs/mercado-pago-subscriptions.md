@@ -45,6 +45,8 @@ La integración agrega Suscripciones (`/preapproval`) al Checkout Pro existente.
 
    Generar un secreto aleatorio exclusivo, de al menos 32 caracteres. El **mismo** valor debe llegar a web, billing-lifecycle-worker y account-deletion-worker. Los workers también necesitan `APP_BASE_URL=https://app.synapselogik.com`. No compartir el secreto ni almacenarlo en Git. Conserva las credenciales originales de ambos entornos para administrar contratos ya existentes, aunque cambies el selector del panel.
 
+   Si las credenciales del vendedor de prueba automático pertenecen a otra aplicación, configurar `MERCADO_PAGO_TEST_APPLICATION_ID` con ese ID y `MERCADO_PAGO_PRODUCTION_APPLICATION_ID` con el ID productivo. Si se dejan vacíos, se conserva `MERCADO_PAGO_APPLICATION_ID`. No confundir el ID de usuario vendedor con el ID de aplicación ni aceptar un pago de otra aplicación para resolver una configuración incorrecta.
+
 3. En la aplicación de Mercado Pago habilitar los eventos `payment`, `subscription_preapproval` y `subscription_authorized_payment` hacia:
 
    ```text

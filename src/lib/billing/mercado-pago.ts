@@ -1,7 +1,7 @@
 import "server-only";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { getMercadoPagoEnvironment, getMercadoPagoEnvironmentFallback, type MercadoPagoEnvironment } from "@/lib/billing/platform-runtime";
-import { resolveMercadoPagoCredentials } from "@/lib/billing/mercado-pago-runtime-helpers";
+import { resolveMercadoPagoCredentials, resolveMercadoPagoApplicationId } from "@/lib/billing/mercado-pago-runtime-helpers";
 
 const API_BASE_URL = "https://api.mercadopago.com";
 
@@ -39,7 +39,7 @@ export async function getMercadoPagoRuntimeConfiguration(): Promise<MercadoPagoR
         throw new MercadoPagoBillingConfigurationError("El cobro con Mercado Pago aún no está habilitado.");
     }
     const environment = await getMercadoPagoEnvironment();
-    const applicationId = process.env.MERCADO_PAGO_APPLICATION_ID?.trim() || "";
+    const applicationId = resolveMercadoPagoApplicationId(process.env, environment);
     const { accessToken, webhookSecret } = environmentCredentials(environment);
     if (!applicationId) throw new MercadoPagoBillingConfigurationError("Falta configurar MERCADO_PAGO_APPLICATION_ID.");
     if (!accessToken) throw new MercadoPagoBillingConfigurationError(`Falta configurar el Access Token de ${environment === "production" ? "producción" : "prueba"}.`);
@@ -51,11 +51,10 @@ export function getMercadoPagoWebhookRuntimeConfigurations(): MercadoPagoRuntime
     if (!isMercadoPagoBillingEnabled()) {
         throw new MercadoPagoBillingConfigurationError("El cobro con Mercado Pago aún no está habilitado.");
     }
-    const applicationId = process.env.MERCADO_PAGO_APPLICATION_ID?.trim() || "";
-    if (!applicationId) throw new MercadoPagoBillingConfigurationError("Falta configurar MERCADO_PAGO_APPLICATION_ID.");
     const configurations = (["test", "production"] as const).flatMap((environment) => {
+        const applicationId = resolveMercadoPagoApplicationId(process.env, environment);
         const credentials = environmentCredentials(environment);
-        return credentials.accessToken && credentials.webhookSecret
+        return applicationId && credentials.accessToken && credentials.webhookSecret
             ? [{ environment, applicationId, ...credentials }]
             : [];
     });

@@ -1,7 +1,7 @@
 import "server-only";
 
 import { getControlDb } from "@/lib/control-db";
-import { resolveMercadoPagoCredentials, type MercadoPagoEnvironment } from "@/lib/billing/mercado-pago-runtime-helpers";
+import { resolveMercadoPagoCredentials, resolveMercadoPagoApplicationId, type MercadoPagoEnvironment } from "@/lib/billing/mercado-pago-runtime-helpers";
 
 export const PLATFORM_BILLING_RUNTIME_KEY = "billing.runtime";
 
@@ -44,9 +44,12 @@ export async function getMercadoPagoControlState() {
     const legacyEnvironment = getMercadoPagoEnvironmentFallback();
     const testCredentials = resolveMercadoPagoCredentials(process.env, "test", legacyEnvironment);
     const productionCredentials = resolveMercadoPagoCredentials(process.env, "production", legacyEnvironment);
+    const environment = await getMercadoPagoEnvironment();
     return {
-        environment: await getMercadoPagoEnvironment(),
-        applicationIdConfigured: configured(process.env.MERCADO_PAGO_APPLICATION_ID),
+        environment,
+        applicationIdConfigured: configured(resolveMercadoPagoApplicationId(process.env, environment)),
+        testApplicationIdConfigured: configured(resolveMercadoPagoApplicationId(process.env, "test")),
+        productionApplicationIdConfigured: configured(resolveMercadoPagoApplicationId(process.env, "production")),
         testAccessTokenConfigured: configured(testCredentials.accessToken),
         testWebhookSecretConfigured: configured(testCredentials.webhookSecret),
         productionAccessTokenConfigured: configured(productionCredentials.accessToken),

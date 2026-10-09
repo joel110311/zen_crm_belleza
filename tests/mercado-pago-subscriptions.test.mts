@@ -237,11 +237,14 @@ test("hosted API creates a pending authorization, never an immediate card charge
         "server-only": {}, "@/lib/billing/platform-runtime": { getMercadoPagoEnvironment: async () => "production", getMercadoPagoEnvironmentFallback: () => "test" },
         "@/lib/billing/mercado-pago-runtime-helpers": runtimeHelpers,
     }, {
-        process: { env: { MERCADO_PAGO_ENABLED: "true", MERCADO_PAGO_APPLICATION_ID: "app", MERCADO_PAGO_TEST_ACCESS_TOKEN: "fake-test", MERCADO_PAGO_PRODUCTION_ACCESS_TOKEN: "fake-production", MERCADO_PAGO_WEBHOOK_SECRET: "fake-secret" } },
+        process: { env: { MERCADO_PAGO_ENABLED: "true", MERCADO_PAGO_APPLICATION_ID: "app", MERCADO_PAGO_TEST_APPLICATION_ID: "test-seller-app", MERCADO_PAGO_TEST_ACCESS_TOKEN: "fake-test", MERCADO_PAGO_PRODUCTION_ACCESS_TOKEN: "fake-production", MERCADO_PAGO_WEBHOOK_SECRET: "fake-secret" } },
         fetch: async (url: string, init: RequestInit) => { requests.push({ url, init }); return new Response(JSON.stringify({ id: "pre" }), { status: 200 }); },
     }) as Row;
-    const pinned = api.getMercadoPagoAgreementRuntime("test", "app");
+    const pinned = api.getMercadoPagoAgreementRuntime("test", "test-seller-app");
     assert.equal(pinned.accessToken, "fake-test");
+    assert.equal(pinned.applicationId, "test-seller-app");
+    assert.throws(() => api.getMercadoPagoAgreementRuntime("test", "app"));
+    assert.equal(api.getMercadoPagoAgreementRuntime("production", "app").accessToken, "fake-production");
     await api.createMercadoPagoPreapproval(pinned, { externalReference: "tenant-reference", title: "Monthly plan", payerEmail: "fake@example.com", amountCents: 20000, currency: "MXN", startsAt: debit, backUrl: "https://app.test/billing/salon" });
     assert.equal(requests[0].url, "https://api.mercadopago.com/preapproval");
     const body = JSON.parse(requests[0].init.body);

@@ -67,9 +67,9 @@ export async function PATCH(request: NextRequest) {
             const environment = cleanText(body.mercadoPagoEnvironment, 20, true);
             if (!["test", "production"].includes(environment)) throw new ControlValidationError("Selecciona un entorno válido.");
             const state = await getMercadoPagoControlState();
-            const ready = state.applicationIdConfigured && (environment === "production"
-                ? state.productionAccessTokenConfigured && state.productionWebhookSecretConfigured
-                : state.testAccessTokenConfigured && state.testWebhookSecretConfigured);
+            const ready = environment === "production"
+                ? state.productionApplicationIdConfigured && state.productionAccessTokenConfigured && state.productionWebhookSecretConfigured
+                : state.testApplicationIdConfigured && state.testAccessTokenConfigured && state.testWebhookSecretConfigured;
             if (!ready) throw new ControlValidationError(`Carga en Portainer las credenciales de ${environment === "production" ? "producción" : "prueba"} antes de activarlas.`);
             await db.$transaction(async (tx) => {
                 await tx.platformRuntimeSetting.upsert({

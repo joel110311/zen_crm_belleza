@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { resolveMercadoPagoCredentials, resolveMercadoPagoWebhookPayment } from "../src/lib/billing/mercado-pago-runtime-helpers.ts";
+import { resolveMercadoPagoCredentials, resolveMercadoPagoWebhookPayment, resolveMercadoPagoApplicationId } from "../src/lib/billing/mercado-pago-runtime-helpers.ts";
+
+test("test seller and production application IDs stay separate, with backward-compatible fallback", () => {
+    const env = { MERCADO_PAGO_APPLICATION_ID: "common", MERCADO_PAGO_TEST_APPLICATION_ID: "test-seller", MERCADO_PAGO_PRODUCTION_APPLICATION_ID: "production" };
+    assert.equal(resolveMercadoPagoApplicationId(env, "test"), "test-seller");
+    assert.equal(resolveMercadoPagoApplicationId(env, "production"), "production");
+    assert.equal(resolveMercadoPagoApplicationId({ MERCADO_PAGO_APPLICATION_ID: "common", MERCADO_PAGO_TEST_APPLICATION_ID: " " }, "test"), "common");
+});
 
 test("Eventtia's shared webhook secret supports test and production with separate tokens", () => {
     const env = {

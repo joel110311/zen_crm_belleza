@@ -1,5 +1,11 @@
 export type MercadoPagoEnvironment = "test" | "production";
 
+/** Checkout Pro's automatically created test seller can belong to a different application. */
+export function resolveMercadoPagoApplicationId(env: Record<string, string | undefined>, environment: MercadoPagoEnvironment) {
+    const key = environment === "production" ? "MERCADO_PAGO_PRODUCTION_APPLICATION_ID" : "MERCADO_PAGO_TEST_APPLICATION_ID";
+    return env[key]?.trim() || env.MERCADO_PAGO_APPLICATION_ID?.trim() || "";
+}
+
 export function resolveMercadoPagoCredentials(
     env: Record<string, string | undefined>,
     environment: MercadoPagoEnvironment,

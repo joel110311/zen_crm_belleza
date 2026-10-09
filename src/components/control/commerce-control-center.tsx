@@ -14,6 +14,8 @@ type BillingControl = {
     mercadoPagoEnabled: boolean;
     environment: "test" | "production";
     applicationIdConfigured: boolean;
+    testApplicationIdConfigured: boolean;
+    productionApplicationIdConfigured: boolean;
     testAccessTokenConfigured: boolean;
     testWebhookSecretConfigured: boolean;
     productionAccessTokenConfigured: boolean;
