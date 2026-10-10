@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/use-toast";
-import { META_COEXISTENCE_GUIDANCE, metaSignupCompletionData, metaSignupExtras, metaSignupFailure, isMetaSignupOrigin, parseMetaSignupMessage, type MetaSignupMode } from "@/lib/meta-signup";
+import { META_COEXISTENCE_GUIDANCE, META_COEXISTENCE_STEPS, metaSignupCompletionData, metaSignupExtras, metaSignupFailure, isMetaSignupOrigin, parseMetaSignupMessage, type MetaSignupMode } from "@/lib/meta-signup";
 
 type Session = {
     metaConfigured?: boolean;
@@ -223,8 +223,18 @@ export function MetaWhatsAppPanel() {
             ) : null}
 
             <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2 md:col-span-2"><Label>Forma de conexión oficial</Label><select className="w-full rounded-xl border bg-background p-2 text-sm" value={mode} onChange={e => setMode(e.target.value === "cloud" ? "cloud" : "coexistence")} disabled={working}><option value="coexistence">API + WhatsApp Business en el celular</option><option value="cloud">Número solo para API</option></select><p className="text-xs text-muted-foreground">Coexistencia conserva tu cuenta del celular. No borres la cuenta ni desinstales la app; el historial requiere tu autorización en Meta.</p></div>
-                {mode === "coexistence" ? <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/5 p-3 text-xs leading-5 md:col-span-2"><p className="font-semibold">Usar el número que ya tienes</p><p className="mt-1">{META_COEXISTENCE_GUIDANCE}</p></div> : null}
+                <fieldset className="space-y-2 md:col-span-2" disabled={working}>
+                    <legend className="mb-2 text-sm font-medium">Modalidad del canal oficial</legend>
+                    <label className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 ${mode === "coexistence" ? "border-emerald-600 bg-emerald-500/5 ring-1 ring-emerald-600/20" : "bg-background"}`}>
+                        <input type="radio" name="meta-admin-mode" value="coexistence" checked={mode === "coexistence"} onChange={() => setMode("coexistence")} className="mt-1 accent-emerald-700" />
+                        <span><span className="block font-medium">WhatsApp Business del celular + API</span><span className="mt-1 block text-xs text-muted-foreground">Coexistencia para conectar el número que ya usa la app.</span></span>
+                    </label>
+                    <label className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 ${mode === "cloud" ? "border-primary bg-primary/5 ring-1 ring-primary/20" : "bg-background"}`}>
+                        <input type="radio" name="meta-admin-mode" value="cloud" checked={mode === "cloud"} onChange={() => setMode("cloud")} className="mt-1 accent-primary" />
+                        <span><span className="block font-medium">Número dedicado a la API</span><span className="mt-1 block text-xs text-muted-foreground">Para una línea nueva o que no se mantendrá en la app del celular.</span></span>
+                    </label>
+                </fieldset>
+                {mode === "coexistence" ? <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/5 p-3 text-xs leading-5 md:col-span-2"><p className="font-semibold">Pasos de coexistencia</p><ol className="mt-2 list-decimal space-y-1.5 pl-4 text-muted-foreground">{META_COEXISTENCE_STEPS.map(step => <li key={step}>{step}</li>)}</ol><p className="mt-2 rounded-lg bg-background/80 p-2 text-amber-900 dark:text-amber-200">{META_COEXISTENCE_GUIDANCE}</p></div> : null}
                 <div className="space-y-2"><Label>Meta App ID</Label><Input value={form.appId} onChange={(e) => field("appId", e.target.value)} placeholder="App ID" /></div>
                 <div className="space-y-2"><Label>App Secret</Label><Input type="password" value={form.appSecret} onChange={(e) => field("appSecret", e.target.value)} placeholder="Dejar vacio para conservarlo" /></div>
                 <div className="space-y-2"><Label>Configuration ID (v4)</Label><Input value={form.configId} onChange={(e) => field("configId", e.target.value)} /></div>

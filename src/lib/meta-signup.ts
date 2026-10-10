@@ -1,6 +1,12 @@
 export type MetaSignupMode = "cloud" | "coexistence";
 
-export const META_COEXISTENCE_GUIDANCE = "En Meta, elige la opción para ingresar un número (puede decir «Crea uno nuevo») y captura el que ya usas en WhatsApp Business; no elijas un número virtual. Meta v4 detecta tu cuenta existente y debe mostrar su perfil y el QR de coexistencia. Si te pide borrar la cuenta o migrarla fuera del celular, no continúes. Compartir el historial con el CRM es opcional.";
+export const META_COEXISTENCE_GUIDANCE = "En Meta, selecciona el número que ya usas en WhatsApp Business si aparece en la lista. Si el flujo de coexistencia te pide capturarlo, escribe ese mismo número; no elijas un número virtual ni otro para forzar el registro. Debes poder confirmar el enlace desde WhatsApp Business, normalmente con un QR o aviso en el celular. Si Meta solo ofrece una conexión exclusiva para API o te pide borrar la cuenta, no continúes: cancela y vuelve al CRM. Compartir el historial con el CRM es opcional.";
+
+export const META_COEXISTENCE_STEPS = [
+    "En Meta, elige el portafolio del negocio y la línea activa de WhatsApp Business; si no aparece, captura ese mismo número cuando el flujo de coexistencia lo solicite.",
+    "Confirma la vinculación desde WhatsApp Business siguiendo el QR o aviso que Meta muestre en pantalla.",
+    "Decide si quieres compartir el historial. Es opcional; si lo aceptas, deja WhatsApp Business abierto mientras termina la sincronización.",
+] as const;
 
 export function metaSignupExtras(mode: MetaSignupMode, solutionId?: string) {
     // v4 is selected by the Login for Business configuration's products, not version: "v4".
