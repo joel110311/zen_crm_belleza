@@ -3,12 +3,13 @@ import "server-only";
 import { getControlDb } from "@/lib/control-db";
 import {
     DEFAULT_CHAT_MODEL_ID,
+    GEMINI_ROUTER_MODEL_ID,
     normalizeChatModelSelection,
     resolveChatModelSelection,
 } from "@/lib/ai/models";
 
 export const PLATFORM_AI_RUNTIME_KEY = "ai.runtime";
-export const DEFAULT_PLATFORM_CHAT_MODEL = "gemini:gemini-2.5-flash";
+export const DEFAULT_PLATFORM_CHAT_MODEL = GEMINI_ROUTER_MODEL_ID;
 
 function record(value: unknown): Record<string, unknown> {
     return value && typeof value === "object" && !Array.isArray(value)

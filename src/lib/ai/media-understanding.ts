@@ -3,7 +3,7 @@ import { readFile } from "fs/promises";
 import { extractTextFromFileBuffer } from "@/lib/brain/knowledge";
 import { callGeminiGenerateContent, getOpenAIClient, transcribeAudioBuffer } from "@/lib/ai/openai";
 import { prisma } from "@/lib/db";
-import { resolveChatModelSelection } from "@/lib/ai/models";
+import { GEMINI_ROUTER_MODEL_PATH, resolveChatModelSelection } from "@/lib/ai/models";
 import { resolveAiProviderKey } from "@/lib/ai/provider-keys";
 import { localMediaFilename } from "@/lib/chat-media-policy";
 import { assertLocalMediaOwnership } from "@/lib/local-media-access";
@@ -89,7 +89,7 @@ async function runGeminiInlinePrompt(
     const model =
         selectedModel.provider === "gemini"
             ? selectedModel.model
-            : "gemini-2.5-flash";
+            : GEMINI_ROUTER_MODEL_PATH;
     return callGeminiGenerateContent({
         apiKey,
         preferredModel: model,
@@ -107,9 +107,6 @@ async function runGeminiInlinePrompt(
                     ],
                 },
             ],
-            generationConfig: {
-                temperature: 0.2,
-            },
         },
     });
 }

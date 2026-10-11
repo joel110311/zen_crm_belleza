@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/db";
 import { resolveAiProviderKey } from "@/lib/ai/provider-keys";
 import { callGeminiGenerateContent } from "@/lib/ai/openai";
+import { GEMINI_ROUTER_MODEL_PATH } from "@/lib/ai/models";
 import { hasExplicitCompanyDisclosure } from "@/lib/contact-enrichment-guards";
 
 /**
@@ -64,11 +65,10 @@ Si no encuentras ningún dato nuevo, responde: {}`;
     try {
         const text = await callGeminiGenerateContent({
             apiKey,
-            preferredModel: "gemini-2.5-flash",
+            preferredModel: GEMINI_ROUTER_MODEL_PATH,
             payload: {
                 contents: [{ parts: [{ text: prompt }] }],
                 generationConfig: {
-                    temperature: 0.1,
                     maxOutputTokens: 200,
                 },
             },

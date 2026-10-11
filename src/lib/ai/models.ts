@@ -9,6 +9,8 @@ export type SupportedChatModelOption = {
 };
 
 export const DEFAULT_CHAT_MODEL_ID = "openai:gpt-4o-mini";
+export const GEMINI_ROUTER_MODEL_ID = "gemini:models/gemini-3.1-flash-lite";
+export const GEMINI_ROUTER_MODEL_PATH = "models/gemini-3.1-flash-lite";
 
 export const SUPPORTED_CHAT_MODELS: SupportedChatModelOption[] = [
     {
@@ -40,13 +42,6 @@ export const SUPPORTED_CHAT_MODELS: SupportedChatModelOption[] = [
         description: "Respuesta veloz con buena calidad para chat diario.",
     },
     {
-        id: "gemini:gemini-2.5-flash",
-        provider: "gemini",
-        model: "gemini-2.5-flash",
-        label: "Gemini 2.5 Flash",
-        description: "Flash mas reciente para uso general.",
-    },
-    {
         id: "gemini:gemini-2.5-pro",
         provider: "gemini",
         model: "gemini-2.5-pro",
@@ -58,7 +53,7 @@ export const SUPPORTED_CHAT_MODELS: SupportedChatModelOption[] = [
         provider: "gemini",
         model: "models/gemini-3.1-flash-lite",
         label: "Gemini 3.1 Flash Lite",
-        description: "Ultrarrapido. Si no esta disponible, el sistema usa fallback estable.",
+        description: "Ultrarrapido. Utiliza el modelo configurado sin cambiar a versiones anteriores.",
     },
 ];
 
@@ -73,6 +68,9 @@ const DEPRECATED_CHAT_MODEL_MAP: Record<string, string> = {
 
 export function normalizeChatModelSelection(value?: string | null) {
     const trimmed = (value || "").trim();
+    if (/^(?:gemini:)?(?:models\/)?gemini-2\.5-flash(?:$|-)/i.test(trimmed)) {
+        return GEMINI_ROUTER_MODEL_ID;
+    }
     if (!trimmed) {
         return DEFAULT_CHAT_MODEL_ID;
     }
@@ -123,9 +121,12 @@ export function resolveChatModelSelection(value?: string | null) {
 }
 
 export function resolveGeminiRestModelPath(value?: string | null) {
-    const trimmed = (value || "").trim();
+    const trimmed = (value || "").trim().replace(/^gemini:/, "").replace(/^\/+/, "");
+    if (/^(?:models\/)?gemini-2\.5-flash(?:$|-)/i.test(trimmed)) {
+        return GEMINI_ROUTER_MODEL_PATH;
+    }
     if (!trimmed) {
-        return "models/gemini-2.5-flash";
+        return GEMINI_ROUTER_MODEL_PATH;
     }
 
     if (trimmed.startsWith("models/")) {
