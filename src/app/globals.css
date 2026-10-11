@@ -575,13 +575,13 @@ body {
   --chart-4: hsl(15 82% 56%);
   --chart-5: hsl(280 47% 49%);
 
-  --sidebar: hsl(77 34% 20%);
-  --sidebar-foreground: hsl(44 35% 91%);
+  --sidebar: hsl(228 28% 9%);
+  --sidebar-foreground: hsl(220 16% 86%);
   --sidebar-primary: hsl(77 35% 25%);
   --sidebar-primary-foreground: hsl(44 48% 97%);
-  --sidebar-accent: hsl(77 30% 27%);
-  --sidebar-accent-foreground: hsl(44 48% 97%);
-  --sidebar-border: hsl(45 18% 84%);
+  --sidebar-accent: hsl(228 24% 15%);
+  --sidebar-accent-foreground: hsl(220 24% 94%);
+  --sidebar-border: hsl(228 20% 17%);
   --sidebar-ring: hsl(42 53% 48%);
 
   --audio-bar-active: rgba(65, 79, 39, 0.9);
@@ -597,24 +597,24 @@ body {
 }
 
 :root.dark[data-color-theme="green"] {
-  --background: hsl(142 20% 8%);
+  --background: hsl(228 21% 7%);
   --foreground: hsl(142 15% 92%);
-  --card: hsl(146 19% 12%);
+  --card: hsl(228 18% 12%);
   --card-foreground: hsl(142 15% 92%);
-  --popover: hsl(146 19% 12%);
+  --popover: hsl(228 18% 13%);
   --popover-foreground: hsl(142 15% 92%);
   --primary: hsl(140 53% 44%);
   --primary-foreground: hsl(0 0% 100%);
-  --secondary: hsl(145 14% 16%);
+  --secondary: hsl(228 14% 17%);
   --secondary-foreground: hsl(142 15% 92%);
-  --muted: hsl(145 14% 16%);
+  --muted: hsl(228 14% 17%);
   --muted-foreground: hsl(142 9% 64%);
-  --accent: hsl(145 14% 20%);
+  --accent: hsl(228 14% 21%);
   --accent-foreground: hsl(142 15% 95%);
   --destructive: hsl(0 65% 45%);
   --destructive-foreground: hsl(0 0% 100%);
-  --border: hsl(145 14% 24%);
-  --input: hsl(145 14% 24%);
+  --border: hsl(228 14% 23%);
+  --input: hsl(228 14% 23%);
   --ring: hsl(140 53% 44%);
   --gold: hsl(42 59% 58%);
   --shadow-soft: 0 1px 2px 0 rgba(0, 0, 0, 0.22), 0 10px 24px -16px rgba(0, 0, 0, 0.45);
@@ -627,13 +627,13 @@ body {
   --chart-4: hsl(16 86% 60%);
   --chart-5: hsl(286 56% 62%);
 
-  --sidebar: hsl(146 22% 8%);
-  --sidebar-foreground: hsl(142 12% 78%);
+  --sidebar: hsl(228 30% 8%);
+  --sidebar-foreground: hsl(220 14% 80%);
   --sidebar-primary: hsl(140 53% 44%);
   --sidebar-primary-foreground: hsl(0 0% 100%);
-  --sidebar-accent: hsl(146 20% 13%);
-  --sidebar-accent-foreground: hsl(142 15% 92%);
-  --sidebar-border: hsl(145 20% 17%);
+  --sidebar-accent: hsl(228 24% 14%);
+  --sidebar-accent-foreground: hsl(220 16% 90%);
+  --sidebar-border: hsl(228 18% 16%);
   --sidebar-ring: hsl(140 53% 44%);
 
   --audio-bar-active: rgba(226, 247, 233, 0.95);
@@ -642,10 +642,10 @@ body {
   --chat-outbound-border: rgba(128, 197, 166, 0.48);
   --chat-outbound-bg: linear-gradient(180deg, rgba(86, 134, 111, 0.96) 0%, rgba(78, 124, 103, 0.95) 52%, rgba(70, 114, 95, 0.94) 100%);
 
-  --scrollbar-track: hsl(146 16% 13%);
-  --scrollbar-thumb: hsl(146 13% 29%);
-  --scrollbar-thumb-hover: hsl(146 13% 38%);
-  --scrollbar-thumb-border: hsl(146 16% 13%);
+  --scrollbar-track: hsl(228 16% 13%);
+  --scrollbar-thumb: hsl(228 12% 34%);
+  --scrollbar-thumb-hover: hsl(228 12% 44%);
+  --scrollbar-thumb-border: hsl(228 16% 13%);
 }
 
 :root[data-color-theme="apple"] {
@@ -1154,7 +1154,7 @@ body {
 }
 
 :root.dark[data-color-theme="green"] body {
-  background-image: radial-gradient(circle at 0% 0%, hsl(141 28% 11%) 0%, hsl(142 20% 8%) 44%, hsl(146 18% 7%) 100%);
+  background-image: radial-gradient(circle at 0% 0%, hsl(222 42% 13%) 0%, hsl(228 21% 7%) 45%, hsl(228 24% 6%) 100%);
 }
 
 :root.dark[data-color-theme="apple"] body {

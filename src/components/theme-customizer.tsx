@@ -26,8 +26,8 @@ const COLOR_THEME_OPTIONS: Array<{
     {
         id: "green",
         name: "Green",
-        description: "Tema secundario en verdes naturales",
-        gradient: "from-[#6f843d] to-[#263116]",
+        description: "Verdes naturales con menú lateral negro",
+        gradient: "from-[#6f843d] to-[#080b10]",
     },
     {
         id: "apple",

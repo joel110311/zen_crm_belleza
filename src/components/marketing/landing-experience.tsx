@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Pause, Play } from "lucide-react";
 
-const businessNames = ["Estética", "Barbería", "Studio de uñas", "Studio de pestañas", "Spa"];
+const businessNames = ["Estética", "Barbería", "Estudio de uñas", "Estudio de pestañas", "Spa"];
 
 export function RotatingBusiness() {
     const wordRef = useRef<HTMLSpanElement>(null);
@@ -58,7 +58,7 @@ export function RotatingBusiness() {
     }, [paused]);
 
     return <span className="landing-business-word">
-        <span className="landing-sr-only">Estética, Barbería, Studio de uñas, Studio de pestañas o Spa</span>
+        <span className="landing-sr-only">Estética, Barbería, Estudio de uñas, Estudio de pestañas o Spa</span>
         <span aria-hidden="true" className="landing-business-visual"><span ref={wordRef}>Estética</span><span className={`landing-word-cursor ${paused ? "is-paused" : ""}`} /></span>
         <button type="button" className="landing-word-pause" aria-label={paused ? "Reanudar nombres de negocios" : "Pausar nombres de negocios"} aria-pressed={paused} onClick={() => setPaused((value) => !value)}>{paused ? <Play size={12} /> : <Pause size={12} />}</button>
     </span>;

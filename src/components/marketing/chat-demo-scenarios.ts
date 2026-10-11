@@ -30,7 +30,7 @@ export const chatDemoScenarios: { name: string; initial: string; steps: DemoStep
         ],
     },
     {
-        name: "Studio de uñas", initial: "U", steps: [
+        name: "Estudio de uñas", initial: "U", steps: [
             { type: "message", sender: "customer", text: "Quiero regalar un día de spa para el cumpleaños de mi mamá.", delay: 1000 },
             { type: "typing", delay: 1500 },
             { type: "message", sender: "agent", text: "¡Qué excelente regalo! Manejamos Certificados Digitales. ¿Te gustaría regalar un monto específico o un paquete armado?", delay: 3000 },
