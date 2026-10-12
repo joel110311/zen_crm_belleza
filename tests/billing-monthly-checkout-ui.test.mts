@@ -5,15 +5,16 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { hasActiveTrial, shouldOfferBillingPortal } from "../src/lib/billing/provider-policy.ts";
 import { RECURRING_CONSENT_VERSION } from "../src/lib/billing/recurring-policy.ts";
 import { loadTsModule } from "./helpers/load-ts-module.mts";
+import * as planCatalog from "../src/lib/plan-catalog.ts";
 
 const controls = loadTsModule("src/app/billing/[tenantSlug]/recurring-controls.tsx", {
     "next/navigation": { useRouter: () => ({ refresh() {} }) },
     "@/lib/billing/recurring-policy": { RECURRING_CONSENT_VERSION },
 });
-const checkoutProps = { tenantSlug: "logicapp", planSlug: "esencial", price: "$200.00", amountCents: 20000, currency: "MXN", disabled: false };
+const checkoutProps = { tenantSlug: "logicapp", planSlug: "esencial", price: "$299.00", amountCents: 29900, currency: "MXN", disabled: false };
 
 async function page(recurringEnabled: boolean) {
-    const plan = { id: "plan", slug: "esencial", name: "Esencial", currency: "MXN", monthlyAmountCents: 20000, prices: [] };
+    const plan = { id: "plan", slug: "esencial", name: "Esencial", currency: "MXN", monthlyAmountCents: 29900, limits: { chatbotMessagesPerMonth: 1000 }, features: { chatbot: true }, prices: [] };
     const mod = loadTsModule("src/app/billing/[tenantSlug]/page.tsx", {
         "next/navigation": { notFound() { throw new Error("not found"); }, redirect() { throw new Error("redirect"); } },
         "next/link": (props: React.ComponentProps<"a">) => React.createElement("a", props),
@@ -25,6 +26,7 @@ async function page(recurringEnabled: boolean) {
         "@/lib/billing/context": { requireBillingOwner: async () => ({ tenant: { tenantId: "tenant", slug: "logicapp", displayName: "Logicapp" } }) },
         "@/lib/billing/provider": { getActiveBillingProvider: () => "MERCADO_PAGO" },
         "@/lib/billing/provider-policy": { hasActiveTrial, shouldOfferBillingPortal },
+        "@/lib/plan-catalog": planCatalog,
         "@/lib/control-db": { getControlDb: () => ({
             plan: { findMany: async () => [plan] }, trial: { findUnique: async () => null },
             subscription: { findMany: async () => [] }, billingSelection: { findUnique: async () => null },
@@ -40,6 +42,11 @@ test("enabled monthly billing renders a single subscription CTA, no one-time che
     assert.match(html, /Contratar plan mensual/);
     assert.match(html, /Renovación mensual automática hasta que canceles/);
     assert.match(html, /no necesitas hacer un pago por separado/);
+    assert.match(html, /\$299\.00/);
+    assert.match(html, /1,000 respuestas al mes/);
+    assert.match(html, /1 o 2 lugares/);
+    assert.match(html, /href="\/delete-account"/);
+    assert.match(html, /Solicitar eliminación de mi cuenta/);
     assert.doesNotMatch(html, /Pagar solo un mes|paga solo un mes/);
     assert.match(html, /type="checkbox"/);
     assert.doesNotMatch(html, /checked=""/);
@@ -50,6 +57,7 @@ test("disabled recurring feature retains the explicit legacy one-time fallback w
     assert.match(html, /Pagar solo un mes/);
     assert.match(html, /sin renovación automática/);
     assert.doesNotMatch(html, /Contratar plan mensual/);
+    assert.match(html, /href="\/delete-account"/);
 });
 
 for (const consent of [false, true]) {
@@ -73,7 +81,7 @@ for (const consent of [false, true]) {
         if (consent) {
             assert.equal(requests[0].url, "/api/billing/subscription");
             assert.equal(requests[0].body.action, "start");
-            assert.equal(requests[0].body.amountCents, 20000);
+            assert.equal(requests[0].body.amountCents, 29900);
             assert.equal(requests[0].body.tenantSlug, "logicapp");
             assert.equal(requests[0].body.consent, true);
             assert.equal(requests[0].body.consentVersion, RECURRING_CONSENT_VERSION);

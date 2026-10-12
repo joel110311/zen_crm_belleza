@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
-import { Bot, BrainCircuit, Loader2, MessagesSquare, RotateCcw, Save, SearchCheck, SlidersHorizontal } from "lucide-react";
+import { Bot, Loader2, MessagesSquare, RotateCcw, Save, SearchCheck, SlidersHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -15,6 +15,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { KnowledgeBase } from "@/components/brain/knowledge-base";
 import { AssistantPlayground } from "@/components/brain/assistant-playground";
+import { ChatbotUsageCounter } from "@/components/brain/chatbot-usage-counter";
 import { PhonePrefixInput } from "@/components/shared/phone-prefix-input";
 import { getSystemSettings, updateSystemSettings } from "@/app/actions/settings";
 import { useToast } from "@/components/ui/use-toast";
@@ -312,16 +313,14 @@ export default function BrainConfigPage() {
     return (
         <div className={`mx-auto flex h-full max-w-[1280px] flex-col gap-4 ${isDirty ? "pb-28" : ""}`}>
             <div className="flex flex-col gap-4 rounded-xl border bg-card px-5 py-4 shadow-[0_12px_28px_-22px_rgba(15,23,42,0.25)] lg:flex-row lg:items-center lg:justify-between">
-                <div className="flex items-center gap-3">
-                    <div className="h-11 w-11 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
-                        <BrainCircuit className="h-6 w-6" />
-                    </div>
-                    <div>
-                        <h1 className="text-[1.85rem] font-semibold tracking-tight">Cerebro IA</h1>
-                        <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                            Aqui se concentra la logica del agente, sus fuentes y el contexto que usara para contestar en WhatsApp.
-                        </p>
-                    </div>
+                <div className="space-y-2">
+                    <h1 className="inline-flex items-center gap-3 rounded-lg bg-primary px-4 py-2.5 text-xl font-semibold tracking-tight text-primary-foreground sm:text-2xl">
+                        <Bot className="size-6 shrink-0" aria-hidden="true" />
+                        Asistente IA
+                    </h1>
+                    <p className="text-sm leading-6 text-muted-foreground">
+                        Aquí se concentra la lógica del agente, sus fuentes y el contexto que usará para contestar en WhatsApp.
+                    </p>
                 </div>
 
             </div>
@@ -352,6 +351,7 @@ export default function BrainConfigPage() {
                                         <p className="text-sm text-muted-foreground mt-1">
                                             Usa el historial del contacto y la base de conocimiento antes de responder por WhatsApp.
                                         </p>
+                                        <div className="mt-2"><ChatbotUsageCounter /></div>
                                     </div>
                                     <Switch
                                         id="bot-enabled"

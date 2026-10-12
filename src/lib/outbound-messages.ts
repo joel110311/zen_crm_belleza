@@ -9,7 +9,7 @@ import {
 import { getSystemSettingsOrDefaults } from "@/lib/system-settings";
 import { findOrCreateActiveConversationForContactSource } from "@/lib/source-conversations";
 import { sendChannelMedia, sendChannelText } from "@/lib/channel-delivery";
-import { assertChatbotUsageAvailable, recordChatbotReply } from "@/lib/billing/chatbot-usage";
+import { withChatbotReplyUsage } from "@/lib/billing/chatbot-usage";
 import { resolveAssignableTenantUserId } from "@/lib/user-assignment";
 import { requireProviderMessageId } from "@/lib/whatsapp-audio";
 
@@ -47,7 +47,6 @@ export async function sendOutboundConversationMessage(
     const type = params.type || "text";
     const content = typeof params.content === "string" ? params.content.trim() : "";
     const isBotReply = params.senderType === "bot";
-    const usageAllowance = isBotReply ? await assertChatbotUsageAvailable() : null;
 
     if (!params.conversationId || (!content && !params.mediaUrl)) {
         throw new Error("conversationId and content or mediaUrl are required");
@@ -152,59 +151,63 @@ export async function sendOutboundConversationMessage(
 
     try {
         if (conversation.contact?.phone) {
-            let providerMessageId: string | null = null;
+            const phone = conversation.contact.phone;
+            const deliver = async () => {
+                let providerMessageId: string | null = null;
 
-            if (type === "text") {
-                const result = await sendChannelText({
-                    sourceType: selectedSourceType,
-                    sourceId: selectedSourceId,
-                    to: conversation.contact.phone,
-                    body: content,
-                });
-                providerMessageId = requireProviderMessageId(result);
-            } else if (params.mediaUrl) {
-                let result: { Id?: string | null } | null = null;
-
-                if (selectedSourceType === "meta") {
-                    const appBaseUrl = (process.env.APP_BASE_URL || process.env.AUTH_URL || "").trim();
-                    const publicMediaUrl = getPublicMediaUrl(params.mediaUrl, appBaseUrl);
-
-                    result = await sendChannelMedia({
-                        sourceType: "meta",
+                if (type === "text") {
+                    const result = await sendChannelText({
+                        sourceType: selectedSourceType,
                         sourceId: selectedSourceId,
-                        to: conversation.contact.phone,
-                        mediaType: type,
-                        link: publicMediaUrl,
-                        caption: content && content !== `[${type}]` ? content : undefined,
-                        fileName: params.mediaFileName || undefined,
-                        mimeType: params.mediaType || undefined,
+                        to: phone,
+                        body: content,
                     });
-                } else {
-                    const resolvedMedia = await resolveMediaToDataUrl(params.mediaUrl, params.mediaType);
-                    result = await sendChannelMedia({
-                        sourceType: "wuzapi",
-                        to: conversation.contact.phone,
-                        mediaType: type,
-                        dataUrl: resolvedMedia.dataUrl,
-                        caption: content && content !== `[${type}]` ? content : undefined,
-                        fileName: params.mediaFileName || resolvedMedia.fileName,
-                        mimeType: resolvedMedia.mimeType,
-                    });
+                    providerMessageId = requireProviderMessageId(result);
+                } else if (params.mediaUrl) {
+                    let result: { Id?: string | null } | null = null;
+
+                    if (selectedSourceType === "meta") {
+                        const appBaseUrl = (process.env.APP_BASE_URL || process.env.AUTH_URL || "").trim();
+                        const publicMediaUrl = getPublicMediaUrl(params.mediaUrl, appBaseUrl);
+
+                        result = await sendChannelMedia({
+                            sourceType: "meta",
+                            sourceId: selectedSourceId,
+                            to: phone,
+                            mediaType: type,
+                            link: publicMediaUrl,
+                            caption: content && content !== `[${type}]` ? content : undefined,
+                            fileName: params.mediaFileName || undefined,
+                            mimeType: params.mediaType || undefined,
+                        });
+                    } else {
+                        const resolvedMedia = await resolveMediaToDataUrl(params.mediaUrl, params.mediaType);
+                        result = await sendChannelMedia({
+                            sourceType: "wuzapi",
+                            to: phone,
+                            mediaType: type,
+                            dataUrl: resolvedMedia.dataUrl,
+                            caption: content && content !== `[${type}]` ? content : undefined,
+                            fileName: params.mediaFileName || resolvedMedia.fileName,
+                            mimeType: resolvedMedia.mimeType,
+                        });
+                    }
+
+                    providerMessageId = requireProviderMessageId(result);
                 }
 
-                providerMessageId = requireProviderMessageId(result);
-            }
-
-            if (!providerMessageId) throw new Error("WhatsApp no confirmó el envío del mensaje.");
+                if (!providerMessageId) throw new Error("WhatsApp no confirmó el envío del mensaje.");
+                return { Id: providerMessageId };
+            };
+            const delivery = isBotReply ? await withChatbotReplyUsage(message.id, deliver) : await deliver();
 
             await prisma.message.updateMany({ where: { id: message.id, status: "sending" }, data: { status: "sent" } });
             const updatedMessage = await prisma.message.update({
                 where: { id: message.id },
                 data: {
-                    providerMessageId,
+                    providerMessageId: delivery.Id,
                 },
             });
-            if (isBotReply) await recordChatbotReply(updatedMessage.id, usageAllowance);
 
             return {
                 message: updatedMessage,

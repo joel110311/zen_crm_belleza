@@ -10,6 +10,7 @@ import { BillingAccessError, requireBillingOwner } from "@/lib/billing/context";
 import { getActiveBillingProvider } from "@/lib/billing/provider";
 import { hasActiveTrial, shouldOfferBillingPortal } from "@/lib/billing/provider-policy";
 import { getControlDb } from "@/lib/control-db";
+import { planFeatures, planRecommendation } from "@/lib/plan-catalog";
 
 export const dynamic = "force-dynamic";
 
@@ -52,6 +53,8 @@ export default async function BillingPage({
                 currency: true,
                 monthlyAmountCents: true,
                 annualAmountCents: true,
+                limits: true,
+                features: true,
                 prices: {
                     where: { provider: billingProvider, countryCode: null, isActive: true },
                     select: { interval: true },
@@ -114,7 +117,7 @@ export default async function BillingPage({
             </Link>
             <header className="max-w-2xl">
                 <p className="text-sm font-semibold text-primary">Facturación · {context.tenant.displayName}</p>
-                <h1 className="mt-2 text-3xl font-semibold tracking-tight">Elige y administra tu plan</h1>
+                <h1 className="mt-2 text-3xl font-semibold tracking-tight">Plan y facturación</h1>
                 <p className="mt-3 text-sm leading-6 text-muted-foreground">
                     {billingProvider === "MERCADO_PAGO"
                         ? recurringEnabled
@@ -138,8 +141,10 @@ export default async function BillingPage({
                     return (
                         <article key={plan.slug} className="flex flex-col rounded-xl border bg-card p-5 shadow-sm">
                             <div className="flex items-center justify-between gap-2"><h2 className="text-lg font-semibold">{plan.name}</h2>{plan.slug === "automatiza" ? <span className="rounded-full bg-primary/10 px-2 py-1 text-[11px] font-semibold text-primary">Más elegido</span> : null}</div>
+                            <p className="mt-1 text-xs leading-5 text-muted-foreground">{planRecommendation(plan.slug)}</p>
                             <p className="mt-2 min-h-10 text-sm text-muted-foreground">{plan.description || "Plan de suscripción"}</p>
                             <p className="mt-5 text-2xl font-semibold">{formatMoney(amount, plan.currency)}<span className="ml-1 text-sm font-normal text-muted-foreground">/{interval === "annual" ? "año" : "mes"}</span></p>
+                            <ul className="mt-4 flex-1 space-y-2 text-xs leading-5 text-muted-foreground">{planFeatures(plan).map((feature) => <li key={feature}>{feature}</li>)}</ul>
                             {recurringEnabled && plan.monthlyAmountCents ? <p className="mt-2 text-xs leading-5 text-muted-foreground">Renovación mensual automática hasta que canceles.</p> : null}
                             <div className="mt-6">
                                 {canChange && agreement && plan.id !== agreement.planId && plan.monthlyAmountCents && plan.monthlyAmountCents !== agreement.amountCents && plan.currency === agreement.currency
@@ -156,6 +161,7 @@ export default async function BillingPage({
                     );
                 })}
             </section>
+            <p className="mt-4 text-xs leading-5 text-muted-foreground">El cupo del chatbot se renueva en cada periodo mensual y se comparte dentro de este negocio. Sólo cuentan los mensajes automáticos enviados a WhatsApp; las respuestas manuales y el simulador no consumen cupo. Al agotarlo, puedes seguir atendiendo manualmente. Los lugares o sillas son una recomendación de tamaño, no un límite de usuarios. Cada espacio contratado mantiene su propia suscripción.</p>
             <section className="mt-7 rounded-xl border bg-card p-5 shadow-sm">
                 <h2 className="font-semibold">Estado actual</h2>
                 <p className="mt-2 text-sm text-muted-foreground">
@@ -188,6 +194,11 @@ export default async function BillingPage({
                 </div> : null}
                 <RecurringManagement tenantSlug={context.tenant.slug} canCancel={Boolean(agreement.activeKey)} />
             </section> : null}
+            <section className="mt-10 border-t pt-6" aria-labelledby="account-deletion-title">
+                <h2 id="account-deletion-title" className="text-sm font-semibold">Eliminación de cuenta</h2>
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">Revisa qué datos y negocios se verán afectados antes de confirmar la eliminación. Si sólo quieres detener los cobros futuros, cancela la renovación desde Administrar suscripción.</p>
+                <Link href="/delete-account" prefetch={false} className="mt-3 inline-flex text-sm font-medium text-destructive underline underline-offset-4">Solicitar eliminación de mi cuenta</Link>
+            </section>
         </main>
     );
 }

@@ -83,7 +83,7 @@ const SECTIONS: Array<{
 }> = [
     { id: "theme", label: "Apariencia", description: "Tema y estilo general del CRM", icon: Palette },
     { id: "users", label: "Usuarios", description: "Accesos, roles y permisos", icon: Users, permission: "users.manage" },
-    { id: "ai", label: "Cerebro IA", description: "Claves y servicios de inteligencia", icon: Bot, permission: "ai.manage", platformInternal: true },
+    { id: "ai", label: "Asistente IA", description: "Claves y servicios de inteligencia", icon: Bot, permission: "ai.manage", platformInternal: true },
     { id: "whatsapp", label: "Canal WhatsApp", description: "WhatsApp API oficial y conexion alternativa por QR", icon: WhatsAppIcon, permission: "integrations.manage", platformInternal: true },
     { id: "tenantChannels", label: "WhatsApp", description: "Conecta WhatsApp de forma oficial o mediante una conexión no oficial por QR", icon: WhatsAppIcon, permission: "integrations.manage", tenantOnly: true },
     { id: "calendar", label: "Calendario", description: "Google Calendar y recordatorios de citas", icon: CalendarDays, permissions: ["calendar.manage", "integrations.manage"] },
@@ -490,7 +490,6 @@ export function SettingsWorkspace({
                             ? "Administra la apariencia, los usuarios, el calendario y las notificaciones del negocio."
                             : "Ajusta la apariencia, los canales y las integraciones del CRM sin tocar la operación diaria del equipo."}
                 </p>
-                {!businessOnly && isTenantWorkspace && <a href="/delete-account" className="mt-3 inline-block text-sm text-destructive underline">Eliminar mi cuenta</a>}
             </div>
 
             {!businessOnly ? <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">

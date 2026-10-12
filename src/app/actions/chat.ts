@@ -41,7 +41,7 @@ import {
 import { findOrCreateActiveConversationForContactSource } from "@/lib/source-conversations";
 import { markBulkCampaignReplyForContact } from "@/lib/bulk-campaigns";
 import { refreshWhatsAppAvatarForContact } from "@/lib/whatsapp-avatar";
-import { assertChatbotUsageAvailable, recordChatbotReply } from "@/lib/billing/chatbot-usage";
+import { withChatbotReplyUsage } from "@/lib/billing/chatbot-usage";
 import {
     buildInboundAdPreviewFingerprint,
     buildInboundAdPreviewMessageContent,
@@ -1233,7 +1233,6 @@ async function sendAutomatedBotText(params: {
 }) {
     const content = formatBotReplyForReadability(stripInternalDisclosureLines(params.content));
     if (!content) return;
-    const usageAllowance = await assertChatbotUsageAvailable();
 
     const source = await getAutomatedConversationSource(params.conversationId);
 
@@ -1243,15 +1242,14 @@ async function sendAutomatedBotText(params: {
             conversationId: params.conversationId, content, type: "text",
             sourceType: source.sourceType, sourceId: source.sourceId,
         },
-        send: () => sendChannelText({
+        send: (messageId) => withChatbotReplyUsage(messageId, () => sendChannelText({
             sourceType: source.sourceType,
             sourceId: source.sourceId,
             to: params.phone,
             body: content,
-        }),
+        })),
     });
     if (message) {
-        await recordChatbotReply(message.id, usageAllowance);
         queueAvatarRefreshForConversation(params.conversationId);
     }
 }
@@ -1290,7 +1288,7 @@ async function sendAutomatedBotMedia(params: {
                 sourceType: source.sourceType, sourceId: source.sourceId,
                 mediaUrl: storedMediaUrl, mediaType: resolvedMedia.mimeType, mediaFileName: resolvedMedia.fileName,
             },
-            send: async () => source.sourceType === "meta"
+            send: (messageId) => withChatbotReplyUsage(messageId, async () => source.sourceType === "meta"
             ? await sendChannelMedia({
                 sourceType: "meta",
                 sourceId: source.sourceId,
@@ -1309,7 +1307,7 @@ async function sendAutomatedBotMedia(params: {
                 fileName: resolvedMedia.fileName,
                 mimeType: resolvedMedia.mimeType,
                 caption,
-            }),
+            })),
         });
         if (!message) return false;
         queueAvatarRefreshForConversation(params.conversationId);

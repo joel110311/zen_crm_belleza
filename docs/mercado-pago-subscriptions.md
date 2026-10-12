@@ -22,8 +22,8 @@ La contratación principal usa **Contratar plan mensual**: el primer mes y las r
 
 - Disponible para suscripciones automáticas autorizadas con un periodo mensual **pagado y vigente**. No convierte pagos individuales anteriores ni cobra mejoras durante la prueba.
 - El propietario consulta primero un importe válido por diez minutos; consultar no cobra. Una casilla inicialmente vacía acepta expresamente el proporcional de hoy y el nuevo importe mensual. El precio se verifica otra vez al aceptar.
-- Al subir de $200 a $500, el proporcional es `(500-200) × tiempo restante / duración real del periodo`. Se calcula en centavos, con los límites y duración del mes pagado (no se supone que todos tienen treinta días). Con quince días restantes de un periodo de treinta días, serían $150 hoy.
-- Ese proporcional se paga por Checkout Pro. No es otra mensualidad ni extiende el acceso. Sólo se activa el nuevo plan tras aprobar el pago y confirmar, por API, el cambio de precio del **mismo** acuerdo recurrente. La próxima renovación cobra $500, no $200 más $500.
+- Al subir de Esencial ($299) a Crecimiento ($499), el proporcional es `(499-299) × tiempo restante / duración real del periodo`. Se calcula en centavos, con los límites y duración del mes pagado (no se supone que todos tienen treinta días). Con quince días restantes de un periodo de treinta días, serían $100 hoy.
+- Ese proporcional se paga por Checkout Pro. No es otra mensualidad ni extiende el acceso. Sólo se activa el nuevo plan tras aprobar el pago y confirmar, por API, el cambio de precio del **mismo** acuerdo recurrente. La próxima renovación cobra $499, no $299 más $499. Los acuerdos antiguos conservan su importe autorizado hasta confirmar un cambio; ver [catálogo vigente](plan-catalog.md).
 - Una bajada no cobra hoy. Cambia el importe de la siguiente renovación, manteniendo el plan y sus funciones actuales hasta terminar el periodo pagado. El siguiente pago aprobado aplica el plan menor; si falla, se usa la política de recuperación y no se concede otro mes.
 - Se permite un cambio confirmado por periodo. El historial conserva precios de ciclos anteriores, para verificar pagos tardíos o devoluciones correctamente. Tras confirmar la siguiente renovación se libera la posibilidad de otro cambio.
 - Se bloquean cambios dentro de la hora anterior al corte, o cuando Mercado Pago ya preparó un cobro con otro importe. Es una restricción de seguridad: actualizar el estado y esperar la renovación; no abrir otra suscripción como alternativa.
@@ -74,7 +74,7 @@ npm run build
 node --experimental-strip-types tests/mercado-pago-subscriptions.integration.mts --database-url=postgresql://postgres@127.0.0.1:PUERTO/crm_recurring_test
 ```
 
-La prueba de integración sólo admite localhost y una base desechable llamada `crm_recurring_test`. Aplica toda la cadena de migraciones, comprueba ciclos y mejoras simultáneas en PostgreSQL real, simula la siguiente renovación de $500 y la posterior bajada a $200 sin perder el periodo pagado, conserva el periodo tras cancelar y ejecuta el worker de vencimientos. Las respuestas de Mercado Pago son simuladas: **esto no sustituye la prueba con su sandbox ni certifica cobros reales**.
+La prueba de integración sólo admite localhost y una base desechable llamada `crm_recurring_test`. Aplica toda la cadena de migraciones, comprueba ciclos y mejoras simultáneas en PostgreSQL real, simula renovación y bajada con importes de prueba históricos sin perder el periodo pagado, conserva el periodo tras cancelar y ejecuta el worker de vencimientos. Esos fixtures no definen el catálogo comercial. Las respuestas de Mercado Pago son simuladas: **esto no sustituye la prueba con su sandbox ni certifica cobros reales**.
 
 ## Referencias oficiales
 

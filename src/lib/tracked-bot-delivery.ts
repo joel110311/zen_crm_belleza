@@ -5,7 +5,7 @@ import { requireProviderMessageId } from "./whatsapp-audio.ts";
 export async function sendTrackedBotMessage(params: {
     db: Pick<PrismaClient, "message" | "conversation">;
     data: Omit<Prisma.MessageUncheckedCreateInput, "direction">;
-    send: () => Promise<{ Id?: string | null } | null | undefined>;
+    send: (messageId: string) => Promise<{ Id?: string | null } | null | undefined>;
 }) {
     const conversation = await params.db.conversation.findUnique({
         where: { id: params.data.conversationId }, select: { botActive: true, status: true, sourceType: true, sessionExpiresAt: true },
@@ -19,7 +19,7 @@ export async function sendTrackedBotMessage(params: {
         ...params.data, direction: "outbound", senderType: "bot", status: "sending",
     } });
     try {
-        const result = await params.send();
+        const result = await params.send(message.id);
         const providerMessageId = requireProviderMessageId(result);
         // A delivery receipt/echo may already have advanced the state during the request.
         await params.db.message.updateMany({

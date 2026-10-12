@@ -4,7 +4,7 @@
 
 La página `/` muestra la landing cuando el registro público está habilitado. Los precios y la duración de prueba se leen del catálogo y de la política activa del centro de mando; si no se pueden consultar, no se anuncian importes ni duraciones sin verificar.
 
-Para revisar el diseño sin habilitar registro, cobros o una base real, inicia el servidor de desarrollo y abre `/signup/landing-preview`. Esta ruta sólo existe en desarrollo y muestra los valores ilustrativos actuales: Esencial $200, Automatiza $500 y Pro $800 MXN por mes, con prueba de 14 días. Sus enlaces llevan a las rutas normales de registro y acceso; no simulan cuentas ni pagos.
+Para revisar el diseño sin habilitar registro, cobros o una base real, inicia el servidor de desarrollo y abre `/signup/landing-preview`. Esta ruta sólo existe en desarrollo y muestra Esencial $299, Crecimiento $499 y Elite $799 MXN por mes, con 1,000 / 3,000 / 10,000 respuestas del chatbot respectivamente y prueba de 14 días. Sus enlaces llevan a las rutas normales de registro y acceso; no simulan cuentas ni pagos. El catálogo real se actualiza mediante la migración `20261011000000_simple_monthly_plans`; consulta [la definición y compatibilidad](docs/plan-catalog.md).
 
 La migración `20261006010000_fourteen_day_introductory_trial` establece una nueva política de 14 días para futuros registros, conservando los plazos y políticas de las pruebas ya iniciadas. La duración sigue siendo editable desde el centro de mando.
 
@@ -134,16 +134,16 @@ El acceso del CRM clásico no se modifica y el permiso efectivo continúa resolv
 
 ### Facturación temporal con Mercado Pago
 
-El proveedor de esta etapa es `BILLING_PROVIDER=mercado_pago`, con `BILLING_STRIPE_ENABLED=false`. Mercado Pago utiliza Checkout Pro alojado: el CRM nunca recibe datos de tarjeta y cada preferencia lleva importe fijo y una referencia única del intento de cobro. El pago se realiza al confirmar el Checkout, no al consultar planes ni automáticamente al vencer la prueba. Cada pago renueva un mes; no hay renovación automática. El adaptador de Stripe y sus registros históricos se reservan para una segunda etapa y requieren activación explícita.
+El proveedor de esta etapa es `BILLING_PROVIDER=mercado_pago`, con `BILLING_STRIPE_ENABLED=false`. Con `MERCADO_PAGO_SUBSCRIPTIONS_ENABLED=true`, la contratación usa una suscripción mensual con renovación automática, autorizada expresamente por el propietario en el checkout alojado de Mercado Pago. Se puede cancelar la renovación desde Plan y facturación. Consultar planes o comenzar la prueba no programa cobros; el CRM nunca recibe datos de tarjeta. La landing refleja la configuración de renovación del servidor. El adaptador de Stripe y sus registros históricos se conservan y requieren activación explícita.
 
 - Configura en Portainer `MERCADO_PAGO_ENABLED=true`, `MERCADO_PAGO_APPLICATION_ID`, `MERCADO_PAGO_TEST_ACCESS_TOKEN`, `MERCADO_PAGO_TEST_WEBHOOK_SECRET`, `MERCADO_PAGO_PRODUCTION_ACCESS_TOKEN` y `MERCADO_PAGO_PRODUCTION_WEBHOOK_SECRET`.
 - `MERCADO_PAGO_ENVIRONMENT=test|production` es únicamente el valor inicial o de respaldo. El administrador puede cambiar el entorno activo desde `/control`; el selector no almacena ni expone las credenciales.
-- Registra `https://app.synapselogik.com/api/webhooks/mercado-pago` como URL de pruebas y producción en la aplicación correspondiente y suscribe el tópico `payment`.
+- Registra `https://app.synapselogik.com/api/webhooks/mercado-pago` como URL de pruebas y producción en la aplicación correspondiente y suscribe los tópicos `payment`, `subscription_preapproval` y `subscription_authorized_payment`. Si se comparte la aplicación con Eventiia, sigue la configuración del router compartido en [la guía de suscripciones](docs/mercado-pago-subscriptions.md).
 - Mantén el Access Token y la clave secreta exclusivamente en Portainer; no se necesitan en el navegador ni deben guardarse en Git.
 - En pruebas usa credenciales y compradores de prueba. Cambia a `production` únicamente después de configurar el webhook productivo y realizar una validación completa.
 - El webhook valida la firma HMAC, vuelve a consultar `/v1/payments/{id}` y compara aplicación, entorno, moneda, importe y referencia antes de modificar acceso.
 
-Los pagos de Mercado Pago cubren un mes y no son recurrentes en esta primera etapa. Si se pagan durante una prueba, el periodo pagado comienza al terminarla. El worker de ciclo de vida cierra el acceso al vencer la mensualidad si no existe otra prueba o suscripción activa.
+Con suscripciones habilitadas, el primer cobro respeta la prueba o el periodo ya pagado y los siguientes ciclos se verifican individualmente. Si la bandera está apagada, se conserva el pago de una sola mensualidad sin renovación automática; los pagos históricos no se convierten en suscripciones. Consulta [despliegue, consentimiento y cancelación](docs/mercado-pago-subscriptions.md). La eliminación de cuenta se solicita desde Plan y facturación y conserva su ruta directa `/delete-account`.
 
 ### Equipo y portal público multitenant
 

@@ -4,10 +4,10 @@ import { readFile, readdir } from "node:fs/promises";
 import { LANDING_PREVIEW_OFFER, landingMoney, landingStartingPrice, landingTrialLabel } from "../src/lib/landing-offer.ts";
 
 test("landing preview has current monthly prices and a 14-day introductory trial", () => {
-    assert.deepEqual(LANDING_PREVIEW_OFFER.plans.map((plan) => plan.monthlyAmountCents), [20000, 50000, 80000]);
-    assert.equal(landingStartingPrice(LANDING_PREVIEW_OFFER.plans), 20000);
+    assert.deepEqual(LANDING_PREVIEW_OFFER.plans.map((plan) => plan.monthlyAmountCents), [29900, 49900, 79900]);
+    assert.equal(landingStartingPrice(LANDING_PREVIEW_OFFER.plans), 29900);
     assert.equal(landingTrialLabel(14), "Probar gratis 14 días");
-    assert.equal(landingMoney(20000), "$200");
+    assert.equal(landingMoney(29900), "$299");
 });
 
 test("landing follows policy changes and never advertises an unavailable offer", () => {

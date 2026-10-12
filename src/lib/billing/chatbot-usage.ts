@@ -3,8 +3,12 @@ import "server-only";
 import { getActiveTenantRuntimeContext } from "@/lib/active-tenant-context";
 import { getControlDb } from "@/lib/control-db";
 import { getScopedTenantId } from "@/lib/routed-prisma";
+import { requireProviderMessageId } from "@/lib/whatsapp-audio";
 
 type UsageAllowance = { tenantId: string; planId: string | null; periodStart: Date; periodEnd: Date; limit: number | null };
+class ChatbotAccessError extends Error {}
+
+export type ChatbotUsage = { used: number; limit: number | null; periodStart: string; periodEnd: string; isTrial: boolean };
 
 function calendarMonth(now: Date) {
     return {
@@ -33,8 +37,8 @@ async function usageTenantId() {
     }
 }
 
-async function allowance(): Promise<UsageAllowance | null> {
-    const tenantId = await usageTenantId();
+async function allowance(explicitTenantId?: string): Promise<UsageAllowance | null> {
+    const tenantId = explicitTenantId ?? await usageTenantId();
     if (!tenantId) return null;
     const now = new Date();
     const db = getControlDb();
@@ -51,7 +55,7 @@ async function allowance(): Promise<UsageAllowance | null> {
             ? subscription.plan.limits as Record<string, unknown> : {};
         const features = subscription.plan.features && typeof subscription.plan.features === "object" && !Array.isArray(subscription.plan.features)
             ? subscription.plan.features as Record<string, unknown> : {};
-        if (features.chatbot !== true) throw new Error("Tu plan actual no incluye respuestas del chatbot.");
+        if (features.chatbot !== true) throw new ChatbotAccessError("Tu plan actual no incluye respuestas del chatbot.");
         const fallback = calendarMonth(now);
         return {
             tenantId,
@@ -64,7 +68,24 @@ async function allowance(): Promise<UsageAllowance | null> {
     if (trial && ["ACTIVE", "ENDING"].includes(trial.status) && trial.endsAt > now) {
         return { tenantId, planId: null, periodStart: trial.startsAt, periodEnd: trial.endsAt, limit: 500 };
     }
-    throw new Error("El chatbot requiere una prueba activa o un plan que lo incluya.");
+    throw new ChatbotAccessError("El chatbot requiere una prueba activa o un plan que lo incluya.");
+}
+
+function limitError(limit: number) {
+    return new Error(`Alcanzaste el límite de ${limit.toLocaleString("es-MX")} respuestas del chatbot. El CRM continúa disponible y puedes cambiar de plan desde Facturación.`);
+}
+
+/** Caller must first authorize membership in this exact tenant. */
+export async function getChatbotUsage(tenantId: string): Promise<ChatbotUsage | null> {
+    let current;
+    try { current = await allowance(tenantId); }
+    catch (error) { if (error instanceof ChatbotAccessError) return null; throw error; }
+    if (!current) return null;
+    const aggregate = await getControlDb().usageLedger.aggregate({
+        where: { tenantId, metric: "chatbot_reply", periodStart: current.periodStart },
+        _sum: { quantity: true },
+    });
+    return { used: aggregate._sum.quantity || 0, limit: current.limit, periodStart: current.periodStart.toISOString(), periodEnd: current.periodEnd.toISOString(), isTrial: current.planId === null };
 }
 
 export async function assertChatbotUsageAvailable() {
@@ -75,7 +96,7 @@ export async function assertChatbotUsageAvailable() {
         _sum: { quantity: true },
     });
     if ((aggregate._sum.quantity || 0) >= current.limit) {
-        throw new Error(`Alcanzaste el límite de ${current.limit.toLocaleString("es-MX")} respuestas del chatbot. El CRM continúa disponible y puedes cambiar de plan desde Facturación.`);
+        throw limitError(current.limit);
     }
     return current;
 }
@@ -95,6 +116,42 @@ export async function recordChatbotReply(messageId: string, current?: UsageAllow
             idempotencyKey: `chatbot-reply:${resolved.tenantId}:${messageId}`,
             source: "delivered_bot_message",
         },
-        update: {},
+        update: { source: "delivered_bot_message" },
     });
+}
+
+/** Reserve before the external send, under a per-tenant DB lock shared by all workers. */
+export async function withChatbotReplyUsage<T extends { Id?: string | null } | null | undefined>(messageId: string, send: () => Promise<T>): Promise<T> {
+    const current = await allowance();
+    if (!current) return send(); // Legacy workspace has no commercial subscription.
+    const db = getControlDb();
+    const idempotencyKey = `chatbot-reply:${current.tenantId}:${messageId}`;
+    await db.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT id FROM "Tenant" WHERE id = ${current.tenantId} FOR UPDATE`;
+        if (await tx.usageLedger.findUnique({ where: { idempotencyKey } })) {
+            throw new Error("Esta respuesta del chatbot ya se envió o está en proceso.");
+        }
+        const aggregate = await tx.usageLedger.aggregate({
+            where: { tenantId: current.tenantId, metric: "chatbot_reply", periodStart: current.periodStart },
+            _sum: { quantity: true },
+        });
+        if (current.limit !== null && (aggregate._sum.quantity || 0) >= current.limit) throw limitError(current.limit);
+        await tx.usageLedger.create({ data: {
+            tenantId: current.tenantId, planId: current.planId, metric: "chatbot_reply",
+            periodStart: current.periodStart, periodEnd: current.periodEnd, quantity: 1,
+            idempotencyKey, source: "reserved_bot_message",
+        } });
+    });
+    let acknowledged = false;
+    try {
+        const result = await send();
+        requireProviderMessageId(result);
+        acknowledged = true;
+        await recordChatbotReply(messageId, current);
+        return result;
+    } catch (error) {
+        // Never release an acknowledged send if only the bookkeeping failed.
+        if (!acknowledged) await db.usageLedger.deleteMany({ where: { idempotencyKey, source: "reserved_bot_message" } });
+        throw error;
+    }
 }

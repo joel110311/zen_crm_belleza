@@ -418,7 +418,7 @@ export function TenantOnboardingWizard({
         <div className="mt-4 rounded-xl border bg-muted/25 p-4">
           <p className="font-medium">Elige tu plan cuando lo necesites</p>
           <p className="mt-1 text-sm leading-6 text-muted-foreground">Puedes explorar los planes sin pagar hoy. Para contratar debes completar el pago en una página segura; si tu prueba sigue activa, el mes pagado comienza al terminarla. Consultar los planes no registra una tarjeta ni programa un cobro.</p>
-          <Button asChild variant="outline" className="mt-3"><Link href={`/billing/${tenantSlug}`}>Ver planes desde $200 al mes</Link></Button>
+          <Button asChild variant="outline" className="mt-3"><Link href={`/billing/${tenantSlug}`}>Ver planes y precios</Link></Button>
         </div>
         <div className="mt-7 flex flex-wrap gap-3">
           <Button asChild>
