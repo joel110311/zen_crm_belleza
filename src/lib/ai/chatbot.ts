@@ -1,5 +1,6 @@
 import type OpenAI from "openai";
 import { assertChatbotUsageAvailable } from "@/lib/billing/chatbot-usage";
+import { getTrainedFaqContext } from "@/lib/ai/trained-faqs";
 import { prisma } from "@/lib/db";
 import { generateCompletion } from "@/lib/ai/openai";
 import { buildKnowledgeContext } from "@/lib/brain/knowledge";
@@ -163,6 +164,7 @@ function buildAssistantSystemPrompt(params: {
     identity: AssistantIdentityContext;
     knowledgeContext: string;
     knowledgeSourceLines: string;
+    trainedFaqContext: string;
     automationInstruction?: string | null;
 }) {
     const {
@@ -231,6 +233,8 @@ ${businessScheduleLines}
 CONTEXTO RAG
 ${knowledgeContext || "No se recuperaron fuentes relevantes para esta consulta."}
 
+${params.trainedFaqContext}
+
 FUENTES ENCONTRADAS
 ${knowledgeSourceLines || "- Ninguna"}
 
@@ -249,6 +253,7 @@ async function generateConfiguredAssistantReply(params: {
     const businessHours = normalizeBusinessHours(params.settings);
     const businessContext = await buildBeautyBusinessContext(params.settings);
     const history = mapHistoryToMessages(params.history);
+    const trainedFaqs = await getTrainedFaqContext();
     const knowledgeLookupQuery = buildKnowledgeLookupQuery(params.history, params.latestUserMessage);
     const { context, chunks } = await buildKnowledgeContext(
         knowledgeLookupQuery || params.latestUserMessage,
@@ -265,6 +270,7 @@ async function generateConfiguredAssistantReply(params: {
         identity: params.identity,
         knowledgeContext: context,
         knowledgeSourceLines,
+        trainedFaqContext: trainedFaqs.context,
         automationInstruction: params.automationInstruction,
     });
     const response = await generateCompletion(
@@ -284,10 +290,10 @@ async function generateConfiguredAssistantReply(params: {
         }),
         knowledgeSources: Array.from(
             new Map(
-                chunks.map((chunk) => [
+                [...chunks.map((chunk) => [
                     `${chunk.sourceTitle}:${chunk.sourceUri || ""}`,
                     { title: chunk.sourceTitle, uri: chunk.sourceUri },
-                ]),
+                ] as const), ...trainedFaqs.sources.map((source) => [`faq:${source.title}`, source] as const)],
             ).values(),
         ),
     };

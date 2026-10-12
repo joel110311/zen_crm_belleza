@@ -48,6 +48,8 @@ import {
 import { INBOX_DRAFT_STORAGE_KEY, type InboxDraftPayload } from "@/lib/inbox-drafts";
 import { tenantSlugFromPath } from "@/lib/tenant-request-routing";
 import { NewContactDialog } from "@/components/contacts/new-contact-dialog";
+import { AiTrainingDialog } from "@/components/brain/ai-training-dialog";
+import { canTrainAiMessage } from "@/lib/ai/trained-faq-policy";
 
 const REACTION_EMOJIS = [
     "👍", "👎", "❤️", "🩵", "🔥", "🎉", "👏",
@@ -1192,6 +1194,8 @@ export default function InboxPage() {
     const sessionUser = session?.user as { id?: string; email?: string | null; role?: string; permissions?: unknown } | undefined;
     const currentUserId = sessionUser?.id || null;
     const canAssignAnyUser = hasPermission(sessionUser, "users.manage");
+    const canTrainAi = hasPermission(sessionUser, "ai.manage");
+    const [trainingMessageId, setTrainingMessageId] = useState<string | null>(null);
     const currentUserName = session?.user?.name || "";
     const [conversations, setConversations] = useState<Conversation[]>([]);
     const [conversationLoadError, setConversationLoadError] = useState<string | null>(null);
@@ -1479,7 +1483,6 @@ export default function InboxPage() {
     const oldestConversationCursorRef = useRef<string | null>(null);
     const hasMoreConversationsRef = useRef(true);
     const isLoadingMoreConversationsRef = useRef(false);
-    const conversationsPollInFlightRef = useRef(false);
 
     // Ref to keep the selected chat ID accessible inside polling closures
     const selectedChatIdRef = useRef<string | null>(null);
@@ -1657,6 +1660,7 @@ export default function InboxPage() {
     // ──── Fetch conversations ────
     useEffect(() => {
         let disposed = false;
+        let inFlight = false;
 
         const updateConversationCursor = (items: Conversation[]) => {
             for (const conversation of items) {
@@ -1671,9 +1675,9 @@ export default function InboxPage() {
         const fetchConversations = async (mode: "full" | "delta") => {
             if (disposed) return;
             if (mode === "delta" && !conversationsCursorRef.current) return;
-            if (conversationsPollInFlightRef.current) return;
+            if (inFlight) return;
 
-            conversationsPollInFlightRef.current = true;
+            inFlight = true;
 
             try {
                 const url = new URL("/api/chat", window.location.origin);
@@ -1684,6 +1688,7 @@ export default function InboxPage() {
 
                 const response = await fetch(url.toString(), { cache: "no-store" });
                 const data = await response.json().catch(() => null);
+                if (disposed) return;
                 if (!response.ok) {
                     throw new Error(
                         data && typeof data.error === "string"
@@ -1691,7 +1696,7 @@ export default function InboxPage() {
                             : "No se pudieron cargar los chats.",
                     );
                 }
-                if (!Array.isArray(data) || disposed) {
+                if (!Array.isArray(data)) {
                     throw new Error("El servidor devolvió una respuesta inválida al cargar los chats.");
                 }
 
@@ -1815,7 +1820,7 @@ export default function InboxPage() {
                     );
                 }
             } finally {
-                conversationsPollInFlightRef.current = false;
+                inFlight = false;
             }
         };
 
@@ -3320,7 +3325,7 @@ export default function InboxPage() {
                                                         <div className="relative">
                                                             <DropdownMenu>
                                                                 <DropdownMenuTrigger asChild>
-                                                                    <button className="self-start mt-1 opacity-0 group-hover/msg:opacity-100 transition-opacity h-6 w-6 flex items-center justify-center rounded-full hover:bg-muted/60 shrink-0">
+                                                                    <button type="button" aria-label={`Opciones del mensaje${responderLabel ? ` de ${responderLabel}` : " del cliente"}`} className="self-start mt-1 opacity-0 group-hover/msg:opacity-100 focus-visible:opacity-100 transition-opacity h-6 w-6 flex items-center justify-center rounded-full hover:bg-muted/60 shrink-0">
                                                                         <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
                                                                     </button>
                                                                 </DropdownMenuTrigger>
@@ -3348,6 +3353,9 @@ export default function InboxPage() {
                                                                     }}>
                                                                         <Forward className="h-4 w-4" /> Reenviar
                                                                     </DropdownMenuItem>
+                                                                    {canTrainAi && canTrainAiMessage(msg) && <DropdownMenuItem className="gap-2 text-sm" onSelect={() => setTrainingMessageId(msg.id)}>
+                                                                        <Bot className="h-4 w-4" /> Entrenar IA
+                                                                    </DropdownMenuItem>}
                                                                     <DropdownMenuSeparator />
                                                                     <DropdownMenuItem
                                                                         className="gap-2 text-sm text-destructive focus:text-destructive"
@@ -3713,6 +3721,7 @@ export default function InboxPage() {
                 />
             )}
             {/* Forward Message Dialog */}
+            {trainingMessageId && <AiTrainingDialog key={trainingMessageId} messageId={trainingMessageId} onClose={() => setTrainingMessageId(null)} />}
             {forwardMsg && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setForwardMsg(null)}>
                     <div className="bg-card border rounded-2xl shadow-2xl w-full max-w-sm mx-4 animate-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>

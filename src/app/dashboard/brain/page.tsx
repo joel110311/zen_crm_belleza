@@ -16,6 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { KnowledgeBase } from "@/components/brain/knowledge-base";
 import { AssistantPlayground } from "@/components/brain/assistant-playground";
 import { ChatbotUsageCounter } from "@/components/brain/chatbot-usage-counter";
+import { TrainedFaqsPanel } from "@/components/brain/trained-faqs-panel";
 import { PhonePrefixInput } from "@/components/shared/phone-prefix-input";
 import { getSystemSettings, updateSystemSettings } from "@/app/actions/settings";
 import { useToast } from "@/components/ui/use-toast";
@@ -326,10 +327,11 @@ export default function BrainConfigPage() {
             </div>
 
             <Tabs defaultValue="config" className="flex-1">
-                <TabsList className="grid h-auto w-full max-w-[560px] grid-cols-3 gap-2 rounded-xl border bg-card p-1.5 shadow-[0_12px_24px_-20px_rgba(15,23,42,0.22)]">
+                <TabsList className="grid h-auto w-full max-w-[760px] grid-cols-2 gap-2 rounded-xl border bg-card p-1.5 shadow-[0_12px_24px_-20px_rgba(15,23,42,0.22)] sm:grid-cols-4">
                     <TabsTrigger value="config" className="min-w-0 h-10 rounded-lg border border-transparent bg-background px-2 text-[13px] font-semibold leading-tight text-foreground/75 data-[state=active]:border-primary/30 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-[0_14px_28px_-18px_rgba(37,99,235,0.72)] sm:h-11 sm:px-4 sm:text-sm">Configuracion</TabsTrigger>
                     <TabsTrigger value="knowledge" className="min-w-0 h-10 rounded-lg border border-transparent bg-background px-2 text-[13px] font-semibold leading-tight text-foreground/75 data-[state=active]:border-primary/30 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-[0_14px_28px_-18px_rgba(37,99,235,0.72)] sm:h-11 sm:px-4 sm:text-sm">Conocimiento</TabsTrigger>
                     <TabsTrigger value="test" className="min-w-0 h-10 rounded-lg border border-transparent bg-background px-2 text-[13px] font-semibold leading-tight text-foreground/75 data-[state=active]:border-primary/30 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-[0_14px_28px_-18px_rgba(37,99,235,0.72)] sm:h-11 sm:px-4 sm:text-sm">Probar agente</TabsTrigger>
+                    <TabsTrigger value="trained-faqs" className="h-10 rounded-lg bg-background px-2 text-[13px] font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground sm:h-11 sm:text-sm">FAQs entrenadas</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="config" className="mt-4 space-y-5 sm:mt-5">
@@ -817,6 +819,7 @@ export default function BrainConfigPage() {
                 <TabsContent value="test" className="mt-4 sm:mt-6">
                     <AssistantPlayground />
                 </TabsContent>
+                <TabsContent value="trained-faqs" className="mt-4 sm:mt-6"><TrainedFaqsPanel /></TabsContent>
             </Tabs>
 
             {isDirty && (

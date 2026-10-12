@@ -65,6 +65,7 @@ export async function getKnowledgeSources() {
     await requirePermission("ai.manage");
     try {
         return await prisma.knowledgeSource.findMany({
+            where: { type: { not: "trained_faq" } },
             select: {
                 id: true,
                 title: true,
