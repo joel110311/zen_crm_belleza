@@ -244,8 +244,8 @@ export default function CalendarPage() {
         const appointment = appointments.find((entry) => entry.id === requestedAppointmentId);
         if (!appointment) return;
 
-        openedAppointmentRef.current = requestedAppointmentId;
         const timer = window.setTimeout(() => {
+            openedAppointmentRef.current = requestedAppointmentId;
             setSelectedEvent(appointmentToSelectedEvent(appointment));
             setSelectedSlot(null);
             setIsDialogOpen(true);
@@ -255,8 +255,8 @@ export default function CalendarPage() {
 
     useEffect(() => {
         if (!requestedNewAppointment || openedNewAppointmentRef.current) return;
-        openedNewAppointmentRef.current = true;
         const timer = window.setTimeout(() => {
+            openedNewAppointmentRef.current = true;
             setSelectedEvent(null);
             setSelectedSlot(null);
             setIsDialogOpen(true);

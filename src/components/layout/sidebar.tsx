@@ -5,390 +5,372 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { signOut, useSession } from "next-auth/react";
 import {
-    Bot,
-    Calendar,
-    ChevronLeft,
-    ChevronRight,
-    ClipboardCheck,
-    LayoutDashboard,
-    LayoutTemplate,
-    LogOut,
-    Menu,
-    Settings,
-    ShieldCheck,
-    Store,
-    UserRoundCog,
-    Users,
-    X,
+  Bot,
+  CalendarDays,
+  ChevronLeft,
+  ChevronRight,
+  ClipboardCheck,
+  CreditCard,
+  Grid2X2,
+  House,
+  LayoutTemplate,
+  LogOut,
+  Menu,
+  Settings,
+  ShieldCheck,
+  Store,
+  UserRoundCog,
+  Users,
 } from "lucide-react";
 import { WhatsAppIcon } from "@/components/icons/whatsapp-icon";
 import { BeautyLeafIcon } from "@/components/icons/beauty-leaf-icon";
 import { BrandLogo } from "@/components/brand/brand-logo";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { resolveBranding, type BrandingSettings } from "@/lib/branding";
+import {
+  getWorkspaceDestinations,
+  isWorkspaceDestinationActive,
+  type WorkspaceDestination,
+} from "@/lib/workspace-navigation";
+import { tenantSlugFromPath } from "@/lib/tenant-request-routing";
 import { cn } from "@/lib/utils";
-import { hasPermission, type PermissionKey } from "@/lib/permissions";
-import { tenantDashboardPath, tenantSlugFromPath } from "@/lib/tenant-request-routing";
+import styles from "./workspace.module.css";
 
-type SidebarNavItem = {
-    title: string;
-    href: string;
-    icon: React.ComponentType<{ className?: string }>;
-    permission?: PermissionKey;
-    tenantOnly?: boolean;
-    platformOnly?: boolean;
+const icons = {
+  home: House,
+  calendar: CalendarDays,
+  chat: WhatsAppIcon,
+  clients: Users,
+  reception: ClipboardCheck,
+  templates: LayoutTemplate,
+  business: Store,
+  services: BeautyLeafIcon,
+  team: UserRoundCog,
+  ai: Bot,
+  settings: Settings,
+  control: ShieldCheck,
+  billing: CreditCard,
 };
 
-type SidebarNavSection = {
-    title: string;
-    items: SidebarNavItem[];
-};
+export function Sidebar({
+  className,
+  initialBranding,
+  canManageBilling = false,
+}: React.HTMLAttributes<HTMLDivElement> & {
+  initialBranding?: BrandingSettings;
+  canManageBilling?: boolean;
+}) {
+  const pathname = usePathname();
+  const tenantSlug = tenantSlugFromPath(pathname);
+  const [open, setOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
+  const [keyboardOpen, setKeyboardOpen] = useState(false);
+  const [legacyBranding, setBranding] = useState<BrandingSettings>(() =>
+    resolveBranding(null),
+  );
+  const branding = initialBranding || legacyBranding;
+  const { data: session, status } = useSession();
+  const user = session?.user as
+    | { role?: string; permissions?: unknown; isPlatformAdmin?: boolean }
+    | undefined;
+  const userName = session?.user?.name || "Mi cuenta";
+  const home = tenantSlug
+    ? `/t/${encodeURIComponent(tenantSlug)}/dashboard`
+    : "/dashboard";
+  const items = getWorkspaceDestinations({
+    subject: user,
+    tenantSlug,
+    isPlatformAdmin: user?.isPlatformAdmin,
+    loading: status === "loading",
+    canManageBilling,
+  });
+  const primary = items.filter((item) => item.primary);
+  const moreActive = items.some(
+    (item) => !item.primary && isWorkspaceDestinationActive(pathname, item),
+  );
 
-const sidebarNavSections: SidebarNavSection[] = [
-    {
-        title: "Operación",
-        items: [
-            { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard, permission: "dashboard.view" },
-            { title: "Calendario", href: "/dashboard/calendar", icon: Calendar, permission: "calendar.manage" },
-            { title: "Recepción", href: "/dashboard/reception", icon: ClipboardCheck, permission: "reception.manage" },
-        ],
-    },
-    {
-        title: "Clientes y comunicación",
-        items: [
-            { title: "Clientes", href: "/dashboard/contacts", icon: Users, permission: "contacts.manage" },
-            { title: "Chats", href: "/dashboard/inbox", icon: WhatsAppIcon, permission: "chats.manage" },
-            { title: "Plantillas", href: "/dashboard/templates", icon: LayoutTemplate, permission: "templates.manage" },
-        ],
-    },
-    {
-        title: "Negocio",
-        items: [
-            { title: "Mi Negocio", href: "/dashboard/business", icon: Store, permission: "settings.manage" },
-            { title: "Servicios", href: "/dashboard/services", icon: BeautyLeafIcon, permission: "services.manage" },
-            { title: "Especialistas", href: "/dashboard/specialists", icon: UserRoundCog, permission: "specialists.manage", tenantOnly: true },
-        ],
-    },
-    {
-        title: "Automatización",
-        items: [
-            { title: "Asistente IA", href: "/dashboard/brain", icon: Bot, permission: "ai.manage" },
-        ],
-    },
-    {
-        title: "Administración",
-        items: [
-            { title: "Configuración", href: "/dashboard/settings", icon: Settings },
-            { title: "Centro de mando", href: "/control", icon: ShieldCheck, platformOnly: true },
-        ],
-    },
-];
-
-export function Sidebar({ className, initialBranding }: React.HTMLAttributes<HTMLDivElement> & { initialBranding?: BrandingSettings }) {
-    const pathname = usePathname();
-    const tenantSlug = tenantSlugFromPath(pathname);
-    const dashboardHome = tenantSlug ? `/t/${encodeURIComponent(tenantSlug)}/dashboard` : "/dashboard";
-    const resolveHref = (href: string) => href === "/control" ? href : tenantSlug ? tenantDashboardPath(tenantSlug, href) : href;
-    const [open, setOpen] = useState(false);
-    const [desktopCollapsed, setDesktopCollapsed] = useState(true);
-    const [legacyBranding, setBranding] = useState<BrandingSettings>(() => resolveBranding(null));
-    const branding = initialBranding || legacyBranding;
-    const { data: session, status } = useSession();
-    const sessionLoading = status === "loading";
-    const sessionUser = session?.user as { role?: string; permissions?: unknown; isPlatformAdmin?: boolean } | undefined;
-    const userName = session?.user?.name || (sessionLoading ? "..." : "Usuario");
-
-    useEffect(() => {
-        document.body.style.overflow = open ? "hidden" : "";
-        return () => {
-            document.body.style.overflow = "";
-        };
-    }, [open]);
-
-    const toggleDesktopSidebar = () => {
-        setDesktopCollapsed((current) => !current);
+  useEffect(() => {
+    if (initialBranding) return;
+    let ignore = false;
+    fetch("/api/branding", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((data) => {
+        if (!ignore) setBranding(resolveBranding(data));
+      })
+      .catch(() => {});
+    return () => {
+      ignore = true;
     };
+  }, [initialBranding, tenantSlug]);
 
-    useEffect(() => {
-        // Tenant branding arrives from its authorized server layout. Do not race the
-        // active-tenant cookie or fetch a global default when switching businesses.
-        if (initialBranding) return;
-        let ignore = false;
-        fetch("/api/branding", { cache: "no-store" })
-            .then((response) => response.json())
-            .then((data) => {
-                if (!ignore) setBranding(resolveBranding(data));
-            })
-            .catch(() => {
-                if (!ignore) setBranding(resolveBranding(null));
-            });
-        return () => {
-            ignore = true;
-        };
-    }, [initialBranding, tenantSlug]);
-
-    const canShowNavItem = (item: SidebarNavItem) => {
-        if (item.tenantOnly && !tenantSlug) return false;
-        if (item.platformOnly && !sessionUser?.isPlatformAdmin) return false;
-        if (sessionLoading) return !item.permission;
-        return !item.permission || hasPermission(sessionUser, item.permission);
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    const sync = () => {
+      const editing = document.activeElement?.matches(
+        "input, textarea, select, [contenteditable=true]",
+      );
+      setKeyboardOpen(
+        Boolean(
+          editing && viewport && window.innerHeight - viewport.height > 150,
+        ),
+      );
     };
-
-    const filteredNavSections = sidebarNavSections
-        .map((section) => ({
-            ...section,
-            items: section.items.filter(canShowNavItem),
-        }))
-        .filter((section) => section.items.length > 0);
-
-    const isItemActive = (item: SidebarNavItem) => {
-        const href = resolveHref(item.href);
-        return item.href === "/dashboard" ? pathname === href : pathname.startsWith(href);
+    viewport?.addEventListener("resize", sync);
+    document.addEventListener("focusin", sync);
+    document.addEventListener("focusout", sync);
+    return () => {
+      viewport?.removeEventListener("resize", sync);
+      document.removeEventListener("focusin", sync);
+      document.removeEventListener("focusout", sync);
     };
+  }, []);
 
+  const navigationLink = (item: WorkspaceDestination, compact = false) => {
+    const Icon = icons[item.icon];
+    const active = isWorkspaceDestinationActive(pathname, item);
     return (
-        <>
-            <header className="apple-mobile-bar fixed inset-x-0 top-0 z-40 flex h-14 items-center justify-between border-b px-4 md:hidden">
-                <button
-                    type="button"
-                    onClick={() => setOpen(true)}
-                    className="flex h-9 w-9 items-center justify-center rounded-full border border-border/80 bg-background/80 text-foreground transition-[background-color,transform] duration-200 active:scale-95"
-                    aria-label="Abrir menú"
-                >
-                    <Menu className="h-4 w-4" />
-                </button>
-                <Link href={dashboardHome} className="flex items-center gap-2.5">
-                    <span className="flex h-8 w-8 items-center justify-center rounded-full bg-sidebar text-gold">
-                        <BrandLogo brandName={branding.brandName} logoUrl={branding.brandLogoUrl} className="h-5 w-5" />
-                    </span>
-                    <span className="max-w-48 truncate text-sm font-semibold text-foreground">{branding.brandName}</span>
-                </Link>
-                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
-                    {!sessionLoading && userName.charAt(0).toUpperCase()}
-                </span>
-            </header>
-
-            <button
-                type="button"
-                aria-label="Cerrar menú"
-                aria-hidden={!open}
-                className={cn(
-                    "fixed inset-0 z-40 bg-black/25 backdrop-blur-sm transition-opacity duration-200 md:hidden",
-                    open ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0",
-                )}
-                onClick={() => setOpen(false)}
-            />
-
-            <aside
-                className={cn(
-                    "fixed inset-y-0 left-0 z-50 flex w-[17rem] flex-col border-r border-sidebar-border bg-sidebar px-3 py-3 text-sidebar-foreground transition-transform duration-[260ms] ease-[cubic-bezier(.22,.8,.24,1)] md:hidden",
-                    open ? "translate-x-0" : "-translate-x-full",
-                )}
-            >
-                <div className="flex items-center justify-between border-b border-sidebar-border px-2 pb-3">
-                    <Link href={dashboardHome} className="flex min-w-0 items-center gap-3" onClick={() => setOpen(false)}>
-                        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-sidebar-accent text-gold">
-                            <BrandLogo brandName={branding.brandName} logoUrl={branding.brandLogoUrl} className="h-6 w-6" />
-                        </span>
-                        <div className="min-w-0">
-                            <p className="truncate text-sm font-semibold">{branding.brandName}</p>
-                            <p className="text-xs text-sidebar-foreground/55">Centro de operaciones</p>
-                        </div>
-                    </Link>
-                    <button type="button" onClick={() => setOpen(false)} className="rounded-full p-2 text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground">
-                        <X className="h-4 w-4" />
-                    </button>
-                </div>
-
-                <nav className="mt-2 min-h-0 flex-1 overflow-y-auto px-1 pb-2" aria-label="Módulos del CRM">
-                    {filteredNavSections.map((section, sectionIndex) => (
-                        <section
-                            key={section.title}
-                            aria-labelledby={`mobile-nav-${sectionIndex}`}
-                            className={cn(sectionIndex > 0 && "mt-4")}
-                        >
-                            <h2
-                                id={`mobile-nav-${sectionIndex}`}
-                                className="px-3 pb-1.5 pt-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-gold"
-                            >
-                                {section.title}
-                            </h2>
-                            <div className="space-y-1">
-                                {section.items.map((item) => {
-                                    const Icon = item.icon;
-                                    const active = isItemActive(item);
-                                    return (
-                                        <Link
-                                            key={item.href}
-                                            href={resolveHref(item.href)}
-                                            onClick={() => setOpen(false)}
-                                            aria-current={active ? "page" : undefined}
-                                            className={cn(
-                                                "flex h-11 items-center gap-3 rounded-full px-3 text-sm font-medium transition-[background-color,color,transform] duration-200 active:scale-[.98]",
-                                                active
-                                                    ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                                                    : "text-sidebar-foreground/75 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-                                            )}
-                                        >
-                                            <Icon className="h-[18px] w-[18px]" aria-hidden="true" />
-                                            {item.title}
-                                        </Link>
-                                    );
-                                })}
-                            </div>
-                        </section>
-                    ))}
-                </nav>
-
-                <div className="border-t border-sidebar-border pt-3">
-                    <div className="mb-2 flex items-center gap-3 rounded-2xl bg-sidebar-accent px-3 py-2.5">
-                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-sidebar-primary text-xs font-bold text-sidebar-primary-foreground">
-                            {!sessionLoading && userName.charAt(0).toUpperCase()}
-                        </span>
-                        <span className="min-w-0 flex-1 truncate text-sm font-medium">{userName}</span>
-                    </div>
-                    <button
-                        type="button"
-                        onClick={() => signOut({ callbackUrl: "/login" })}
-                        className="flex h-10 w-full items-center gap-3 rounded-full px-3 text-sm text-sidebar-foreground/70 transition-[background-color,color,transform] active:scale-[.98] hover:bg-destructive/15 hover:text-red-300"
-                    >
-                        <LogOut className="h-4 w-4" />
-                        Cerrar sesión
-                    </button>
-                </div>
-            </aside>
-
-            <aside
-                className={cn(
-                    "hidden h-screen shrink-0 flex-col overflow-hidden border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width] duration-[320ms] ease-[cubic-bezier(.22,.8,.24,1)] md:flex",
-                    desktopCollapsed ? "w-[4.75rem]" : "w-[17rem]",
-                    className,
-                )}
-            >
-                <div className={cn(
-                    "flex shrink-0 border-b border-sidebar-border p-3",
-                    desktopCollapsed ? "flex-col items-center gap-2" : "items-center gap-2.5",
-                )}>
-                    <Link
-                        href={dashboardHome}
-                        title={branding.brandName}
-                        aria-label={branding.brandName}
-                        className={cn("flex min-w-0 items-center", desktopCollapsed ? "justify-center" : "flex-1 gap-3")}
-                    >
-                        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-sidebar-accent text-gold">
-                            <BrandLogo brandName={branding.brandName} logoUrl={branding.brandLogoUrl} className="h-6 w-6" />
-                        </span>
-                        <span className={cn(
-                            "min-w-0 overflow-hidden transition-[max-width,opacity,transform] duration-[240ms]",
-                            desktopCollapsed ? "max-w-0 -translate-x-1 opacity-0" : "max-w-[11rem] translate-x-0 opacity-100",
-                        )}>
-                            <span className="block truncate text-sm font-semibold text-sidebar-accent-foreground">{branding.brandName}</span>
-                            <span className="block truncate text-xs text-sidebar-foreground/55">Centro de operaciones</span>
-                        </span>
-                    </Link>
-                    <button
-                        type="button"
-                        onClick={toggleDesktopSidebar}
-                        aria-label={desktopCollapsed ? "Desplegar menú lateral" : "Plegar menú lateral"}
-                        aria-expanded={!desktopCollapsed}
-                        title={desktopCollapsed ? "Desplegar menú" : "Plegar menú"}
-                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-sidebar-border bg-sidebar-accent text-sidebar-foreground/70 transition-[background-color,color,transform] duration-200 hover:text-sidebar-accent-foreground active:scale-95"
-                    >
-                        {desktopCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
-                    </button>
-                </div>
-
-                <nav className={cn(
-                    "min-h-0 flex-1 overflow-y-auto py-2",
-                    desktopCollapsed ? "items-center px-2" : "px-3",
-                )} aria-label="Módulos del CRM">
-                    {filteredNavSections.map((section, sectionIndex) => (
-                        <section
-                            key={section.title}
-                            aria-labelledby={`desktop-nav-${sectionIndex}`}
-                            className={cn(sectionIndex > 0 && (desktopCollapsed ? "mt-2" : "mt-3"))}
-                        >
-                            {desktopCollapsed && sectionIndex > 0 ? (
-                                <div className="mx-auto mb-2 w-7 border-t border-sidebar-border" aria-hidden="true" />
-                            ) : null}
-                            <h2
-                                id={`desktop-nav-${sectionIndex}`}
-                                className={cn(
-                                    "overflow-hidden text-[10px] font-semibold uppercase tracking-[0.18em] text-gold transition-[max-height,padding,opacity] duration-200",
-                                    desktopCollapsed ? "sr-only" : "max-h-10 px-3 pb-1.5 pt-2 opacity-100",
-                                )}
-                            >
-                                {section.title}
-                            </h2>
-                            <div className={cn("flex flex-col gap-1", desktopCollapsed && "items-center")}>
-                                {section.items.map((item) => {
-                                    const Icon = item.icon;
-                                    const active = isItemActive(item);
-                                    return (
-                                        <Link
-                                            key={item.href}
-                                            href={resolveHref(item.href)}
-                                            title={item.title}
-                                            aria-label={item.title}
-                                            aria-current={active ? "page" : undefined}
-                                            className={cn(
-                                                "relative flex shrink-0 items-center rounded-full text-sm font-medium transition-[background-color,color,transform] duration-200 active:scale-[.97]",
-                                                desktopCollapsed ? "h-10 w-10 justify-center" : "h-11 w-full gap-3 px-3",
-                                                active
-                                                    ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                                                    : "text-sidebar-foreground/75 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-                                            )}
-                                        >
-                                            {active && desktopCollapsed && <span className="absolute -left-[1.15rem] h-5 w-1 rounded-r-full bg-gold" />}
-                                            <Icon className="h-[18px] w-[18px]" aria-hidden="true" />
-                                            <span className={cn(
-                                                "overflow-hidden whitespace-nowrap transition-[max-width,opacity,transform] duration-[220ms]",
-                                                desktopCollapsed ? "max-w-0 -translate-x-1 opacity-0" : "max-w-[11rem] translate-x-0 opacity-100",
-                                            )}>{item.title}</span>
-                                        </Link>
-                                    );
-                                })}
-                            </div>
-                        </section>
-                    ))}
-                </nav>
-
-                <div className={cn("mt-2 border-t border-sidebar-border p-3", desktopCollapsed && "flex flex-col items-center gap-2")}>
-                    <span
-                        title={userName}
-                        className={cn(
-                            "flex items-center justify-center overflow-hidden rounded-full border border-sidebar-primary/30 bg-sidebar-primary/15 text-xs font-bold text-sidebar-foreground transition-[width,height,opacity] duration-200",
-                            desktopCollapsed ? "mb-2 h-9 w-9 opacity-100" : "h-0 w-0 opacity-0",
-                        )}
-                    >
-                        {!sessionLoading && userName.charAt(0).toUpperCase()}
-                    </span>
-                    <div className={cn(
-                        "flex items-center gap-3 overflow-hidden rounded-2xl bg-sidebar-accent transition-[max-height,margin,opacity,transform] duration-[240ms]",
-                        desktopCollapsed ? "max-h-0 -translate-y-1 px-3 py-0 opacity-0" : "mb-2 max-h-14 translate-y-0 px-3 py-2.5 opacity-100",
-                    )}>
-                            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-sidebar-primary text-xs font-bold text-sidebar-primary-foreground">
-                                {!sessionLoading && userName.charAt(0).toUpperCase()}
-                            </span>
-                            <span className="min-w-0 flex-1 truncate text-sm font-medium">{userName}</span>
-                    </div>
-                    <button
-                        type="button"
-                        onClick={() => signOut({ callbackUrl: "/login" })}
-                        title="Cerrar sesión"
-                        aria-label="Cerrar sesión"
-                        className={cn(
-                            "flex h-9 items-center rounded-full text-sm text-sidebar-foreground/70 transition-[background-color,color,transform] duration-200 hover:bg-destructive/15 hover:text-red-300 active:scale-[.97]",
-                            desktopCollapsed ? "w-9 justify-center" : "w-full gap-3 px-3",
-                        )}
-                    >
-                        <LogOut className="h-4 w-4" />
-                        <span className={cn(
-                            "overflow-hidden whitespace-nowrap transition-[max-width,opacity] duration-200",
-                            desktopCollapsed ? "max-w-0 opacity-0" : "max-w-[10rem] opacity-100",
-                        )}>Cerrar sesión</span>
-                    </button>
-                </div>
-            </aside>
-        </>
+      <Link
+        key={item.href}
+        href={item.href}
+        onClick={() => setOpen(false)}
+        title={compact ? item.title : undefined}
+        aria-label={item.title}
+        aria-current={active ? "page" : undefined}
+        className={cn(
+          "flex min-h-11 min-w-0 items-center rounded-xl px-3 text-sm font-medium transition-colors",
+          compact ? "justify-center" : "gap-3",
+          active
+            ? "bg-primary/10 text-primary"
+            : "text-muted-foreground hover:bg-secondary hover:text-foreground",
+        )}
+      >
+        <Icon className="size-[18px] shrink-0" aria-hidden="true" />
+        <span className={compact ? "sr-only" : "min-w-0 break-words"}>
+          {item.title}
+        </span>
+      </Link>
     );
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <header
+        className={cn(
+          styles.mobileHeader,
+          "border-b border-border bg-card px-4",
+        )}
+      >
+        <DialogTrigger asChild>
+          <button
+            type="button"
+            className="flex size-11 shrink-0 items-center justify-center rounded-xl text-muted-foreground"
+            aria-label="Abrir menú"
+          >
+            <Menu className="size-5" />
+          </button>
+        </DialogTrigger>
+        <Link
+          href={home}
+          className="flex min-w-0 flex-1 items-center justify-center gap-2.5 px-2"
+        >
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <BrandLogo
+              brandName={branding.brandName}
+              logoUrl={branding.brandLogoUrl}
+              className="size-5"
+            />
+          </span>
+          <span
+            className="min-w-0 truncate text-sm font-semibold"
+            title={branding.brandName}
+          >
+            {branding.brandName}
+          </span>
+        </Link>
+        <span
+          title={userName}
+          className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary"
+        >
+          {status === "loading" ? "…" : userName.charAt(0).toUpperCase()}
+        </span>
+      </header>
+
+      <aside
+        className={cn(
+          styles.sidebar,
+          collapsed && styles.collapsed,
+          "border-r border-border bg-card",
+          className,
+        )}
+        aria-label="Menú principal"
+      >
+        <div
+          className={cn(
+            "flex items-center gap-2 border-b border-border px-3 py-5",
+            collapsed && "flex-col",
+          )}
+        >
+          <Link
+            href={home}
+            aria-label={branding.brandName}
+            className="flex min-w-0 flex-1 items-center gap-3"
+          >
+            <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <BrandLogo
+                brandName={branding.brandName}
+                logoUrl={branding.brandLogoUrl}
+                className="size-6"
+              />
+            </span>
+            {!collapsed && (
+              <span className="min-w-0 break-words text-sm font-semibold leading-snug">
+                {branding.brandName}
+              </span>
+            )}
+          </Link>
+          <button
+            type="button"
+            onClick={() => setCollapsed((value) => !value)}
+            aria-label={
+              collapsed ? "Desplegar menú lateral" : "Plegar menú lateral"
+            }
+            aria-expanded={!collapsed}
+            className="flex size-9 shrink-0 items-center justify-center rounded-xl text-muted-foreground hover:bg-secondary"
+          >
+            {collapsed ? (
+              <ChevronRight className="size-4" />
+            ) : (
+              <ChevronLeft className="size-4" />
+            )}
+          </button>
+        </div>
+        <nav
+          className="min-h-0 flex-1 overflow-y-auto px-3 py-4"
+          aria-label="Módulos del CRM"
+        >
+          {Array.from(new Set(items.map((item) => item.section))).map(
+            (section) => (
+              <section key={section} className="mb-4 last:mb-0">
+                {!collapsed && (
+                  <h2 className="mb-2 px-3 text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
+                    {section}
+                  </h2>
+                )}
+                <div className="space-y-1">
+                  {items
+                    .filter((item) => item.section === section)
+                    .map((item) => navigationLink(item, collapsed))}
+                </div>
+              </section>
+            ),
+          )}
+        </nav>
+        <div className="shrink-0 border-t border-border p-3">
+          {!collapsed && (
+            <p className="mb-2 break-words px-3 text-sm font-medium">
+              {userName}
+            </p>
+          )}
+          <button
+            type="button"
+            onClick={() => void signOut({ callbackUrl: "/login" })}
+            aria-label="Cerrar sesión"
+            title="Cerrar sesión"
+            className={cn(
+              "flex min-h-11 w-full items-center rounded-xl px-3 text-sm text-muted-foreground hover:bg-secondary",
+              collapsed ? "justify-center" : "gap-3",
+            )}
+          >
+            <LogOut className="size-4 shrink-0" />
+            {!collapsed && "Cerrar sesión"}
+          </button>
+        </div>
+      </aside>
+
+      <nav
+        aria-label="Navegación móvil"
+        hidden={keyboardOpen}
+        className={cn(
+          styles.mobileNavigation,
+          "border-t border-border bg-card",
+        )}
+      >
+        {primary.map((item) => {
+          const Icon = icons[item.icon];
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              aria-current={
+                isWorkspaceDestinationActive(pathname, item)
+                  ? "page"
+                  : undefined
+              }
+              className="flex min-h-14 min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-lg px-1 text-[11px] text-muted-foreground aria-[current=page]:font-semibold aria-[current=page]:text-primary"
+            >
+              <Icon className="size-5" aria-hidden="true" />
+              {item.title}
+            </Link>
+          );
+        })}
+        <DialogTrigger asChild>
+          <button
+            type="button"
+            aria-label="Más herramientas"
+            aria-current={moreActive ? "page" : undefined}
+            className="flex min-h-14 min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-lg px-1 text-[11px] text-muted-foreground aria-[current=page]:font-semibold aria-[current=page]:text-primary"
+          >
+            <Grid2X2 className="size-5" aria-hidden="true" />
+            Más
+          </button>
+        </DialogTrigger>
+      </nav>
+
+      <DialogContent className="flex max-h-[calc(100dvh-2rem)] flex-col gap-0 overflow-hidden p-0">
+        <DialogHeader className="shrink-0 border-b border-border p-5 pr-12 text-left">
+          <DialogTitle>Tu negocio</DialogTitle>
+          <DialogDescription>
+            Módulos y opciones de tu cuenta.
+          </DialogDescription>
+        </DialogHeader>
+        <nav
+          className="min-h-0 flex-1 overflow-y-auto p-4"
+          aria-label="Todos los módulos"
+        >
+          {Array.from(new Set(items.map((item) => item.section))).map(
+            (section) => (
+              <section key={section} className="mb-4 last:mb-0">
+                <h2 className="mb-2 px-3 text-xs font-medium text-muted-foreground">
+                  {section}
+                </h2>
+                <div className="space-y-1">
+                  {items
+                    .filter((item) => item.section === section)
+                    .map((item) => navigationLink(item))}
+                </div>
+              </section>
+            ),
+          )}
+        </nav>
+        <div className="shrink-0 border-t border-border px-5 py-3">
+          <p className="break-words text-sm font-medium">{userName}</p>
+          <button
+            type="button"
+            onClick={() => void signOut({ callbackUrl: "/login" })}
+            className="flex min-h-11 items-center gap-2 text-sm text-muted-foreground"
+          >
+            <LogOut className="size-4" />
+            Cerrar sesión
+          </button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
 }

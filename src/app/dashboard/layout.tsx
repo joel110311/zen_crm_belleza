@@ -19,7 +19,7 @@ export default async function DashboardLayout({
 
     return (
         <SessionProvider session={session}>
-            <div className="apple-workspace flex h-screen w-full overflow-hidden bg-background" data-apple-workspace>
+            <div className="apple-workspace flex h-dvh w-full overflow-hidden bg-background" data-apple-workspace>
                 <InboxNotifier />
                 <WaitingRoomNotifier />
                 <UnreadTabBadge />

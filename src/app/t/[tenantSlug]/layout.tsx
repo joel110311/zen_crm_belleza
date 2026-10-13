@@ -93,14 +93,14 @@ export default async function TenantLayout({
     return (
         <SessionProvider session={session}>
             <div
-                className="apple-workspace flex h-screen w-full overflow-hidden bg-background"
+                className="apple-workspace flex h-dvh w-full overflow-hidden bg-background"
                 data-apple-workspace
                 data-business={tenant.slug}
             >
                 {!tenant.support ? <ActiveTenantCookie tenantSlug={tenant.slug} /> : null}
                 <TenantNavigationBridge tenantSlug={tenant.slug} />
                 {tenant.accessMode === "FULL" ? <><InboxNotifier /><WaitingRoomNotifier /><UnreadTabBadge /></> : null}
-                <Sidebar key={tenant.tenantId} initialBranding={branding} />
+                <Sidebar key={tenant.tenantId} initialBranding={branding} canManageBilling={tenant.role === "OWNER"} />
                 <DashboardShell trialNotice={tenant.expiryNotice ? null : trialNotice} expiryNotice={tenant.expiryNotice}>
                     {children}
                 </DashboardShell>
