@@ -1,4 +1,5 @@
 import "dotenv/config";
+import { runTenantRetentionOnce } from "./lib/tenant-data-retention.mjs";
 import crypto from "node:crypto";
 import path from "node:path";
 import { readdir, lstat, unlink, realpath } from "node:fs/promises";
@@ -177,7 +178,7 @@ async function cancelBilling(control, tenantId) {
     }
 }
 
-async function purgeTenant(control, admin, tenantId) {
+export async function purgeTenant(control, admin, tenantId) {
     const ids = databaseIdentifiers(tenantId);
     const registered = (await control.query('SELECT * FROM "TenantDatabase" WHERE "tenantId"=$1', [tenantId])).rows[0];
     if (registered && (registered.databaseName !== ids.database || registered.clusterKey !== (process.env.TENANT_POSTGRES_CLUSTER_KEY || "primary"))) throw new Error("database_registry_mismatch");
@@ -301,6 +302,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
     try {
         do {
             await runDeletionOnce(control, admin);
+            await runTenantRetentionOnce(control, admin, purgeTenant);
             if (process.argv.includes("--once")) break;
             await new Promise((resolve) => setTimeout(resolve, 5000));
         } while (true);

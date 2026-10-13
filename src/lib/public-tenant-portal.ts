@@ -1,4 +1,5 @@
 import "server-only";
+import { workspaceBillingSelection, workspaceBillingState } from "@/lib/billing/workspace-access";
 import { publicPortalSocialLinks } from "@/lib/portal-social-links";
 
 import { randomUUID } from "node:crypto";
@@ -77,10 +78,10 @@ export async function resolvePublicPortalContext(rawSlug: string): Promise<Publi
     }
     const tenant = await getControlDb().tenant.findUnique({
         where: { slug },
-        select: { id: true, slug: true, displayName: true, timeZone: true, status: true, accessMode: true },
+        select: { id: true, slug: true, displayName: true, timeZone: true, status: true, accessMode: true, ...workspaceBillingSelection },
     });
     // Public operations need an operational tenant; READ_ONLY is intentionally not a booking portal.
-    if (!tenant || tenant.status !== "READY" || tenant.accessMode !== "FULL") return null;
+    if (!tenant || tenant.status !== "READY" || workspaceBillingState(tenant).accessMode !== "FULL") return null;
     const db = await getTenantPrismaManager().getForTenant(tenant.id);
     const [settings, onboarding] = await Promise.all([
         getTenantSystemSettingsOrDefaults(db),

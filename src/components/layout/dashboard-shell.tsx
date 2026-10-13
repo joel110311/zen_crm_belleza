@@ -4,8 +4,10 @@ import { usePathname } from "next/navigation";
 import { Header } from "@/components/layout/header";
 import { cn } from "@/lib/utils";
 import { TrialExpiryBanner, type TrialNotice } from "@/components/billing/trial-expiry-banner";
+import { ExpiredWorkspaceNotice } from "@/components/billing/expired-workspace-notice";
+import type { ExpiredWorkspaceNotice as ExpiryNotice } from "@/lib/billing/workspace-access";
 
-export function DashboardShell({ children, trialNotice }: { children: React.ReactNode; trialNotice?: TrialNotice | null }) {
+export function DashboardShell({ children, trialNotice, expiryNotice }: { children: React.ReactNode; trialNotice?: TrialNotice | null; expiryNotice?: ExpiryNotice | null }) {
     const pathname = usePathname();
     const workspacePath = pathname.replace(/^\/t\/[^/]+/, "/dashboard");
     const isInbox = workspacePath === "/dashboard/inbox";
@@ -18,6 +20,7 @@ export function DashboardShell({ children, trialNotice }: { children: React.Reac
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden bg-background pt-14 md:pt-0">
             {!hidesGlobalHeader && <Header />}
             {trialNotice ? <TrialExpiryBanner notice={trialNotice} /> : null}
+            {expiryNotice ? <ExpiredWorkspaceNotice key={`${expiryNotice.expiredAt}:${expiryNotice.phase}`} notice={expiryNotice} /> : null}
             <main
                 className={cn(
                     "min-h-0 flex-1 overflow-auto",

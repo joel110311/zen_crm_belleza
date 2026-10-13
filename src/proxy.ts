@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { ENVIRONMENT_ADMIN_ID } from "@/lib/platform-admin-policy";
 import { getPlatformSupportGrant } from "@/lib/platform-support";
+import { getTenantAccessForUser } from "@/lib/control-plane";
 import { hasPermission, type PermissionKey } from "@/lib/permissions";
 import {
     ACTIVE_TENANT_COOKIE,
@@ -160,6 +161,22 @@ export async function proxy(req: NextRequest) {
             const response = NextResponse.rewrite(recovery, { request: { headers: forwardedHeaders } });
             response.headers.set("Cache-Control", "private, no-store, max-age=0");
             return response;
+        }
+    }
+
+    // Reject operational API mutations before any WhatsApp, AI, upload or calendar side effect.
+    // Billing and account management remain available; server-action reads use POST too and
+    // continue through the DAL's separate read/write checks.
+    const billingOrAccountApi = /^\/api\/(?:billing|auth|account)(?:\/|$)/.test(pathname);
+    if (tokenUserId && isControlSession && activeTenantSlug && pathname.startsWith("/api/")
+        && !isPlatformControlPath && !isPublicPath && !billingOrAccountApi && !["GET", "HEAD", "OPTIONS"].includes(req.method)) {
+        try {
+            const access = await getTenantAccessForUser(tokenUserId, activeTenantSlug);
+            if (!access || access.status !== "READY" || access.accessMode !== "FULL") {
+                return NextResponse.json({ error: "Tu cuenta está en solo lectura. Selecciona un plan para seguir trabajando.", code: "READ_ONLY" }, { status: 403 });
+            }
+        } catch {
+            return NextResponse.json({ error: "No se pudo verificar el acceso al negocio." }, { status: 503 });
         }
     }
 

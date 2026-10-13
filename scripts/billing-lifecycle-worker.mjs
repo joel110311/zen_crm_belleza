@@ -3,6 +3,7 @@ import "dotenv/config";
 import crypto from "node:crypto";
 import { Pool } from "pg";
 import Stripe from "stripe";
+import { synchronizeTenantRetention } from "./lib/tenant-data-retention.mjs";
 
 const controlDatabaseUrl = process.env.CONTROL_DATABASE_URL?.trim();
 const maxBatch = positiveInteger(process.env.BILLING_LIFECYCLE_MAX_BATCH, 100);
@@ -329,8 +330,9 @@ try {
     const graceExpired = await expirePaymentGrace(pool);
     const mercadoPagoExpired = await expireMercadoPagoPeriods(pool);
     const abandonedCheckoutsExpired = await expireAbandonedCheckouts(pool);
+    const retainedWorkspaces = await synchronizeTenantRetention(pool, { limit: maxBatch });
     await warnFailedRecurringPayments(pool);
-    console.log(`[Billing lifecycle] warnings48=${warning48} warnings24=${warning24} selectionsActivated=${selectionsActivated} expired=${expired} graceExpired=${graceExpired} mercadoPagoExpired=${mercadoPagoExpired} abandonedCheckoutsExpired=${abandonedCheckoutsExpired}`);
+    console.log(`[Billing lifecycle] warnings48=${warning48} warnings24=${warning24} selectionsActivated=${selectionsActivated} expired=${expired} graceExpired=${graceExpired} mercadoPagoExpired=${mercadoPagoExpired} abandonedCheckoutsExpired=${abandonedCheckoutsExpired} retainedWorkspaces=${retainedWorkspaces}`);
 } finally {
     await pool.end();
 }

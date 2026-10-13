@@ -4,6 +4,7 @@ import path from "node:path";
 
 import { getActiveTenantRuntimeContext } from "@/lib/active-tenant-context";
 import { getScopedTenantId } from "@/lib/routed-prisma";
+import { isTenantOperational } from "@/lib/billing/operational-access";
 import { isMultitenantRuntimeEnabled } from "@/lib/multitenant-features";
 import { sendMetaMediaMessage, sendMetaReaction, sendMetaTextMessage, sendMetaTemplateMessage, listMetaTemplates, createMetaTemplate, deleteMetaTemplate } from "@/lib/meta-whatsapp";
 import { sendTenantChannelMedia, sendTenantChannelReaction, sendTenantChannelText, sendTenantChannelTemplate, manageTenantMetaTemplates, getTenantMetaSourceId } from "@/lib/tenant-channels";
@@ -16,7 +17,10 @@ import { validateMetaMedia } from "@/lib/meta-media-policy";
 
 export async function resolveDeliveryTenantId() {
     const scoped = getScopedTenantId();
-    if (scoped && scoped !== "legacy") return scoped;
+    if (scoped && scoped !== "legacy") {
+        if (!await isTenantOperational(scoped)) throw new Error("Tu cuenta está en solo lectura. Selecciona un plan para seguir trabajando.");
+        return scoped;
+    }
     if (!isMultitenantRuntimeEnabled()) return null;
     try {
         return (await getActiveTenantRuntimeContext("write"))?.tenantId || null;

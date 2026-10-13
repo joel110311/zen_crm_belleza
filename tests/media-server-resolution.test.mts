@@ -36,6 +36,7 @@ test("official media URLs are signed only after owner validation; QR and reactio
     let denyOwner = false;
     const filename = `private-t-${policy.tenantMediaNamespace("a")}-file.mp4`;
     const loaded = loadTsModule("src/lib/channel-delivery.ts", {
+        "@/lib/billing/operational-access": { isTenantOperational: async () => true },
         "server-only": {}, "@/lib/chat-media-policy": policy,
         "@/lib/system-settings": {}, "@/lib/message-source": {}, "@/lib/meta-media-policy": metaPolicy,
         "node:fs/promises": { stat: async () => ({ size: 100 }), open: async () => ({ read: async () => {}, close: async () => {} }) },

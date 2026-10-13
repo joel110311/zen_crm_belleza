@@ -11,6 +11,7 @@ import {
 import { resolveMessageSourceId } from "@/lib/message-source";
 import { getSystemSettingsOrDefaults } from "@/lib/system-settings";
 import { requireAnyPermission } from "@/lib/authz";
+import { getActiveTenantRuntimeContext } from "@/lib/active-tenant-context";
 
 const CONTACT_LIST_INCLUDE = {
     conversations: {
@@ -341,14 +342,16 @@ export async function getContacts(query?: string) {
     await requireClientAccess();
 
     try {
-        await synchronizeClientRecords();
+        const runtime = await getActiveTenantRuntimeContext("read");
+        const operational = !runtime || runtime.accessMode === "FULL";
+        if (operational) await synchronizeClientRecords();
         const contacts = await prisma.contact.findMany({
             where: buildContactSearchWhere(query),
             orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
             include: CONTACT_LIST_INCLUDE,
         });
 
-        refreshWhatsAppAvatarForContactsInBackground(
+        if (operational) refreshWhatsAppAvatarForContactsInBackground(
             contacts.map((contact) => contact.id).slice(0, 20),
             { limit: 6, concurrency: 2 },
         );
@@ -364,7 +367,8 @@ export async function getContact(id: string) {
     await requireClientAccess();
 
     try {
-        await refreshWhatsAppAvatarForContact(id).catch((error) => {
+        const runtime = await getActiveTenantRuntimeContext("read");
+        if (!runtime || runtime.accessMode === "FULL") await refreshWhatsAppAvatarForContact(id).catch((error) => {
             console.warn("[Contacts] Could not refresh WhatsApp avatar for contact details", error);
         });
 

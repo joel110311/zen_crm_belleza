@@ -8,6 +8,7 @@ import {
     processKnowledgeSource,
 } from "@/lib/brain/knowledge";
 import { requirePermission } from "@/lib/authz";
+import { getActiveTenantRuntimeContext } from "@/lib/active-tenant-context";
 
 type CreateKnowledgeSourceInput = {
     title?: string;
@@ -131,6 +132,7 @@ export async function createKnowledgeSource(input: CreateKnowledgeSourceInput) {
 
 export async function uploadKnowledgeFile(formData: FormData) {
     await requirePermission("ai.manage");
+    await getActiveTenantRuntimeContext("write");
     try {
         const file = formData.get("file") as File | null;
         if (!file) {
@@ -177,6 +179,7 @@ export async function uploadKnowledgeFile(formData: FormData) {
 
 export async function reindexKnowledgeSource(sourceId: string) {
     await requirePermission("ai.manage");
+    await getActiveTenantRuntimeContext("write");
     try {
         await processKnowledgeSource(sourceId);
         revalidatePath("/dashboard/brain");

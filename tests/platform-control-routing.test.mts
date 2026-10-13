@@ -7,6 +7,7 @@ import * as adminPolicy from "../src/lib/platform-admin-policy.ts";
 test("control requests never inherit an unrelated workspace cookie or spoofed tenant scope headers", async () => {
     let token: unknown = { id: "platform-env-admin", authScope: "control" };
     const mod = loadTsModule("src/proxy.ts", {
+        "@/lib/control-plane": { getTenantAccessForUser: async () => ({ status: "READY", accessMode: "FULL" }) },
         "next-auth/jwt": { getToken: async () => token },
         "next/server": { NextResponse: { next: (value: unknown) => value, redirect: (url: URL) => ({ redirect: String(url), headers: new Headers() }), rewrite: (url: URL, value: object) => ({ rewrite: String(url), headers: new Headers(), ...value }), json: (_value: unknown, init: unknown) => init } },
         "@/lib/platform-admin-policy": adminPolicy,

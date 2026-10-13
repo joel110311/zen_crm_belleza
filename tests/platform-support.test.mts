@@ -113,6 +113,7 @@ test("DAL resolves only the selected support tenant, retains member permissions 
     let grant: Grant | null = null;
     const tenant = { id: "tenant-a", slug: "new-salon", displayName: "New salon", timeZone: "America/Mexico_City", status: "READY", accessMode: "BILLING_ONLY", memberships: [] as Array<{ role: string }> };
     const plane = loadTsModule("src/lib/control-plane.ts", {
+        "@/lib/billing/workspace-access": { workspaceBillingSelection: {}, workspaceBillingState: (tenant: { accessMode: string }) => ({ accessMode: tenant.accessMode, notice: null }) },
         "server-only": {}, "@/generated/control-plane": {},
         "@/lib/control-db": { getControlDb: () => ({ accountDeletion: { findUnique: async () => null }, tenant: { findUnique: async () => tenant } }) },
         "@/lib/platform-support": { getPlatformSupportGrant: async () => grant },
@@ -146,6 +147,7 @@ test("proxy permits supported tenant pages, APIs and private media but denies di
     let grant: Grant | null = { id: "grant", tenantId: "tenant-a", slug: "new-salon", adminUserId: policy.ENVIRONMENT_ADMIN_ID, mode: "FULL", reason: "Test", expiresAt: new Date(Date.now() + 60000).toISOString(), securityVersion: 1, credentialVersion: "current" };
     const token = { id: policy.ENVIRONMENT_ADMIN_ID, authScope: "control", platformAdminCredentialVersion: "current" };
     const mod = loadTsModule("src/proxy.ts", {
+        "@/lib/control-plane": { getTenantAccessForUser: async () => ({ status: "READY", accessMode: "FULL" }) },
         "@/lib/platform-admin-policy": policy, "@/lib/platform-support": { getPlatformSupportGrant: async () => grant },
         "next-auth/jwt": { getToken: async () => token }, "@/lib/tenant-request-routing": routing,
         "@/lib/permissions": { hasPermission: () => true },
@@ -211,6 +213,7 @@ test("an explicit support session survives refresh beyond 30 minutes but expires
 test("refresh and business/chat navigation stay scoped even when the routing cookie is missing", async () => {
     let grant: Grant | null = { id: "grant", tenantId: "tenant-a", slug: "new-salon", adminUserId: policy.ENVIRONMENT_ADMIN_ID, mode: "FULL", reason: "Test", expiresAt: new Date(Date.now() + 60000).toISOString(), securityVersion: 1, credentialVersion: "current" };
     const mod = loadTsModule("src/proxy.ts", {
+        "@/lib/control-plane": { getTenantAccessForUser: async () => ({ status: "READY", accessMode: "FULL" }) },
         "@/lib/platform-admin-policy": policy, "@/lib/platform-support": { getPlatformSupportGrant: async () => grant },
         "next-auth/jwt": { getToken: async () => ({ id: policy.ENVIRONMENT_ADMIN_ID, authScope: "control", platformAdminCredentialVersion: "current" }) },
         "@/lib/tenant-request-routing": routing, "@/lib/permissions": { hasPermission: () => true },

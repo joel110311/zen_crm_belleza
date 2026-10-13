@@ -6,6 +6,7 @@ import { formatPhoneForDisplay } from "@/lib/operation-context";
 import type { Prisma } from "@prisma/client";
 import { auth } from "@/lib/auth";
 import { ensurePermissionResponse } from "@/lib/authz";
+import { getActiveTenantRuntimeContext } from "@/lib/active-tenant-context";
 import { consolidateConversationsList } from "@/lib/contact-deduplication";
 
 let lastAvatarRefreshKickAt = 0;
@@ -233,7 +234,8 @@ export async function GET(request: NextRequest) {
                 .map((conv) => conv.contact?.id)
                 .filter((id): id is string => Boolean(id))
                 .slice(0, 20);
-            if (shouldKickAvatarRefresh()) {
+            const runtime = await getActiveTenantRuntimeContext("read");
+            if ((!runtime || runtime.accessMode === "FULL") && shouldKickAvatarRefresh()) {
                 refreshWhatsAppAvatarForContactsInBackground(contactIds, {
                     limit: 8,
                     concurrency: 2,

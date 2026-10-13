@@ -126,6 +126,11 @@ export default async function BillingPage({
                         : "El pago se completa en una página segura del proveedor; nunca almacenamos los datos de tu tarjeta. Revisa las condiciones del plan antes de confirmar."}
                 </p>
             </header>
+            {context.tenant.expiryNotice ? <section className="mt-6 rounded-xl border border-primary/20 bg-primary/5 p-5 text-sm leading-6">
+                <h2 className="font-semibold">{context.tenant.expiryNotice.phase === "DELETION_DUE" ? "Plazo de conservación finalizado" : "Tu negocio está en solo lectura"}</h2>
+                <p className="mt-2">Los datos activos de este negocio se conservan hasta el <strong>{new Intl.DateTimeFormat("es-MX", { dateStyle: "long", timeZone: context.tenant.timeZone }).format(new Date(context.tenant.expiryNotice.deletionAt))}</strong>: tres meses desde el fin del último periodo vigente. Reactiva un plan antes de esa fecha para seguir trabajando y conservarlos.</p>
+                {context.tenant.expiryNotice.phase !== "DELETION_DUE" ? <a className="mt-3 inline-block font-medium text-primary underline underline-offset-4" href={`/api/t/${encodeURIComponent(context.tenant.slug)}/export`}>Exportar datos del CRM</a> : null}
+            </section> : null}
             {checkoutNotice ? <p className="mt-6 rounded-lg border bg-muted/40 px-4 py-3 text-sm">{checkoutNotice}</p> : null}
             <section className="mt-6 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm leading-6">
                 Acceso anticipado: al pagar se entrega un comprobante digital de pago. Aún no emitimos comprobante fiscal.

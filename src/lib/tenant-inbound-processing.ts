@@ -1,4 +1,5 @@
 import "server-only";
+import { isTenantOperational } from "@/lib/billing/operational-access";
 import { processInboundMessage } from "@/app/actions/chat";
 import { getControlDb } from "@/lib/control-db";
 import { runWithTenantPrisma } from "@/lib/routed-prisma";
@@ -34,6 +35,10 @@ export async function processTenantInboundWebhookEvent(tenantId: string, webhook
     const payload = record(event?.payload);
     if (!event || !["message", "history", "contacts", "sync", "channel", "message_change"].includes(text(payload.kind))) {
         throw new Error("Inbound tenant webhook event was not found.");
+    }
+    if (!await isTenantOperational(tenantId)) {
+        await controlDb.webhookEvent.update({ where: { id: webhookEventId, tenantId }, data: { status: "IGNORED", processedAt: new Date(), processingError: "billing_read_only" } });
+        return { duplicate: false, skipped: true };
     }
 
     if (payload.sourceType === "meta" && (payload.kind !== "message" || payload.direction === "outbound")) {

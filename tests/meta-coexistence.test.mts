@@ -208,6 +208,7 @@ test("tenant history processing bypasses AI and rejects nested messages from a f
     const payload: Row = { kind: "history", sourceType: "meta", sourceId: "official", historyItems: [{ kind: "message", sourceType: "meta", sourceId: "official", isHistorical: true }] };
     const db = { webhookEvent: { findFirst: async () => ({ payload }), update: async ({ data }: { data: Row }) => { if (data.status === "PROCESSED") processed++; } }, channelConnection: { findFirst: async () => ({ id: "conn" }) } };
     const loaded = loadTsModule("src/lib/tenant-inbound-processing.ts", {
+        "@/lib/billing/operational-access": { isTenantOperational: async () => true },
         "server-only": {}, "@/app/actions/chat": { processInboundMessage: () => assert.fail("history must never enqueue the AI") },
         "@/lib/control-db": { getControlDb: () => db }, "@/lib/routed-prisma": { runWithTenantPrisma: (_db: unknown, run: () => Promise<unknown>) => run() },
         "@/lib/tenant-prisma-manager": { getTenantPrismaManager: () => ({ getForTenant: async () => ({}) }) }, "@/lib/wuzapi-outbound-echo-runtime": {},

@@ -99,11 +99,9 @@ export default async function TenantLayout({
             >
                 {!tenant.support ? <ActiveTenantCookie tenantSlug={tenant.slug} /> : null}
                 <TenantNavigationBridge tenantSlug={tenant.slug} />
-                <InboxNotifier />
-                <WaitingRoomNotifier />
-                <UnreadTabBadge />
+                {tenant.accessMode === "FULL" ? <><InboxNotifier /><WaitingRoomNotifier /><UnreadTabBadge /></> : null}
                 <Sidebar key={tenant.tenantId} initialBranding={branding} />
-                <DashboardShell trialNotice={trialNotice}>
+                <DashboardShell trialNotice={tenant.expiryNotice ? null : trialNotice} expiryNotice={tenant.expiryNotice}>
                     {children}
                 </DashboardShell>
             </div>

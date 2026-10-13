@@ -272,6 +272,23 @@ model Tenant {
   @@index([billingStatus, accessMode])
 }
 
+/** Minimal, tenant-only cleanup job. Kept as a non-personal tombstone after Tenant is erased. */
+model TenantDataRetention {
+  tenantId    String   @id
+  expiredAt   DateTime
+  warningAt   DateTime
+  deletionAt  DateTime
+  status      String   @default("RETAINED")
+  nextRunAt   DateTime @default(now())
+  claimedAt   DateTime?
+  completedAt DateTime?
+  lastError   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([status, deletionAt, nextRunAt])
+}
+
 model TenantMembership {
   id        String     @id @default(cuid())
   userId    String

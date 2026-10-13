@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { processDueAppointmentReminders } from "@/lib/appointment-reminders";
 import { processDueBulkCampaigns } from "@/lib/bulk-campaigns";
 import { getControlDb } from "@/lib/control-db";
+import { isTenantOperational } from "@/lib/billing/operational-access";
 import { isMultitenantRuntimeEnabled } from "@/lib/multitenant-features";
 import { runWithTenantPrisma } from "@/lib/routed-prisma";
 import { getTenantPrismaManager } from "@/lib/tenant-prisma-manager";
@@ -44,7 +45,7 @@ export async function POST(request: NextRequest) {
         },
         select: { id: true },
     });
-    if (!tenant) {
+    if (!tenant || !await isTenantOperational(tenantId)) {
         return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 

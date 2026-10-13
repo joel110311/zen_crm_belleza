@@ -42,6 +42,9 @@ import { findOrCreateActiveConversationForContactSource } from "@/lib/source-con
 import { markBulkCampaignReplyForContact } from "@/lib/bulk-campaigns";
 import { refreshWhatsAppAvatarForContact } from "@/lib/whatsapp-avatar";
 import { withChatbotReplyUsage } from "@/lib/billing/chatbot-usage";
+import { getScopedTenantId } from "@/lib/routed-prisma";
+import { isTenantOperational } from "@/lib/billing/operational-access";
+import { getActiveTenantRuntimeContext } from "@/lib/active-tenant-context";
 import {
     buildInboundAdPreviewFingerprint,
     buildInboundAdPreviewMessageContent,
@@ -1635,6 +1638,8 @@ async function maybeSendAutomatedReply(
     options?: { skipInitialDelay?: boolean; batchMessageIds?: string[] },
 ) {
     try {
+        const scopedTenantId = getScopedTenantId();
+        if (scopedTenantId && scopedTenantId !== "legacy" && !await isTenantOperational(scopedTenantId)) return;
         const settings = await getSystemSettingsOrDefaults();
         const catalogAssistantEnabled = isCatalogAssistantEnabled(settings);
         if (!settings.isBotEnabled) return;
@@ -2468,6 +2473,7 @@ export async function getMessages(conversationId: string) {
 
 export async function sendMessage(conversationId: string, content: string, direction: "inbound" | "outbound" = "outbound") {
     await requirePermission("chats.manage");
+    await getActiveTenantRuntimeContext("write");
     if (direction === "outbound") {
         const result = await sendOutboundConversationMessage({ conversationId, content });
         revalidatePath("/dashboard/inbox");

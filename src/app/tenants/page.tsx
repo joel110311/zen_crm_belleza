@@ -35,7 +35,7 @@ export default async function TenantPickerPage() {
     if (memberships.length === 1) {
         const tenant = memberships[0].tenant;
         redirect(tenant.status === "READY"
-            ? tenant.accessMode === "BILLING_ONLY" ? `/billing/${tenant.slug}` : `/t/${tenant.slug}`
+            ? `/t/${tenant.slug}`
             : `/onboarding/${tenant.slug}`);
     }
 
@@ -50,7 +50,7 @@ export default async function TenantPickerPage() {
                     <ul className="mt-6 grid gap-3">
                         {memberships.map(({ role, tenant }) => {
                             const href = tenant.status === "READY"
-                                ? tenant.accessMode === "BILLING_ONLY" ? `/billing/${tenant.slug}` : `/t/${tenant.slug}`
+                                ? `/t/${tenant.slug}`
                                 : `/onboarding/${tenant.slug}`;
                             return <li key={tenant.slug}><Link href={href} className="block rounded-lg border p-4 transition-colors hover:bg-muted/50"><p className="font-semibold">{tenant.displayName}</p><p className="mt-1 text-sm text-muted-foreground">{MEMBERSHIP_LABELS[role]} · {tenant.status === "READY" ? "Disponible" : "En preparación"}</p></Link></li>;
                         })}

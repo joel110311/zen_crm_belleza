@@ -22,6 +22,7 @@ import {
 } from "@/lib/appointment-reminders";
 import { getSystemSettingsOrDefaults } from "@/lib/system-settings";
 import { requireAnyPermission, requirePermission } from "@/lib/authz";
+import { getActiveTenantRuntimeContext } from "@/lib/active-tenant-context";
 import { buildOperationContext } from "@/lib/operation-context";
 import { businessDayBounds } from "@/lib/calendar/business-hours";
 
@@ -80,7 +81,8 @@ export async function getAppointments() {
 
     try {
         try {
-            await syncGoogleCalendarToCrm(false);
+            const runtime = await getActiveTenantRuntimeContext("read");
+            if (!runtime || runtime.accessMode === "FULL") await syncGoogleCalendarToCrm(false);
         } catch (syncError) {
             console.error("[Google Calendar] Background sync failed while loading appointments:", syncError);
         }

@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import { getControlDb } from "@/lib/control-db";
 import { Prisma } from "@/generated/control-plane";
 import { getPlatformSupportGrant, type SupportGrant } from "@/lib/platform-support";
+import { workspaceBillingSelection, workspaceBillingState, type ExpiredWorkspaceNotice } from "@/lib/billing/workspace-access";
 
 const tenantSlugPattern = /^[a-z0-9](?:[a-z0-9-]{1,46}[a-z0-9])?$/;
 
@@ -31,6 +32,7 @@ export type TenantAccess = {
     role: "OWNER" | "ADMIN" | "PROFESSIONAL" | "RECEPTION";
     status: "PROVISIONING" | "READY" | "SUSPENDED" | "ARCHIVED" | "FAILED";
     accessMode: "FULL" | "READ_ONLY" | "BILLING_ONLY" | "SUSPENDED";
+    expiryNotice?: ExpiredWorkspaceNotice | null;
     support?: Pick<SupportGrant, "id" | "mode" | "reason" | "expiresAt">;
 };
 
@@ -376,6 +378,7 @@ export async function getTenantAccessForUser(
             timeZone: true,
             status: true,
             accessMode: true,
+            ...workspaceBillingSelection,
             memberships: {
                 where: {
                     userId: normalizedUserId,
@@ -410,6 +413,7 @@ export async function getTenantAccessForUser(
     }
     if (!membership) return null;
 
+    const billingState = workspaceBillingState(tenant);
     return {
         tenantId: tenant.id,
         slug: tenant.slug,
@@ -417,6 +421,7 @@ export async function getTenantAccessForUser(
         timeZone: tenant.timeZone,
         role: membership.role,
         status: tenant.status,
-        accessMode: tenant.accessMode,
+        accessMode: billingState.accessMode as TenantAccess["accessMode"],
+        expiryNotice: billingState.notice ? { ...billingState.notice, tenantSlug: tenant.slug, canManage: membership.role === "OWNER" } : null,
     };
 }
