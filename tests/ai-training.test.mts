@@ -2,14 +2,16 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { loadTsModule } from "./helpers/load-ts-module.mts";
 import * as policy from "../src/lib/ai/trained-faq-policy.ts";
+import * as resolver from "../src/lib/ai/trained-faq-resolver.ts";
 
-type Source = { id: string; type: string; title: string; rawContent: string; status: string };
-type SaveInput = { messageId?: string; faqId?: string; question: string; answer: string; active?: boolean };
+type Source = { id: string; type: string; title: string; rawContent: string; status: string; updatedAt?: Date };
+type SaveInput = { messageId?: string; faqId?: string; question: string; answer: string; active?: boolean; expectedRevision?: string | null };
 type Actions = {
     getAiTrainingDraft: (id: string) => Promise<{ question: string; answer: string; originalAnswer: string }>;
     saveTrainedFaq: (input: SaveInput) => Promise<unknown>;
     getTrainedFaqs: () => Promise<policy.TrainedFaq[]>;
-    deleteTrainedFaq: (id: string) => Promise<unknown>;
+    deleteTrainedFaq: (id: string, revision?: string) => Promise<unknown>;
+    saveTrainedFaqWithFeedback: (input: SaveInput) => Promise<{ success: boolean; error?: string }>;
 };
 
 function fixture() {
@@ -24,8 +26,9 @@ function fixture() {
         upsert: async ({ where, create, update }: { where: { id: string }; create: Source; update: Partial<Source> }) => {
             const existing = stores[tenant].find((row) => row.id === where.id);
             if (existing) Object.assign(existing, update); else stores[tenant].push(create);
+            stores[tenant].find((row) => row.id === where.id)!.updatedAt = new Date((existing?.updatedAt?.getTime() ?? Date.now()) + 1);
         },
-        deleteMany: async ({ where }: { where: { id: string; type: string } }) => { stores[tenant] = stores[tenant].filter((row) => row.id !== where.id || row.type !== where.type); },
+        deleteMany: async ({ where }: { where: { id: string; type: string; updatedAt: Date } }) => { const before = stores[tenant].length; stores[tenant] = stores[tenant].filter((row) => row.id !== where.id || row.type !== where.type || row.updatedAt?.getTime() !== where.updatedAt.getTime()); return { count: before - stores[tenant].length }; },
     };
     const db = {
         knowledgeSource: source,
@@ -42,6 +45,7 @@ function fixture() {
     const mockedPolicy = policy;
     const actions = loadTsModule("src/app/actions/ai-training.ts", {
         "@/lib/db": { prisma: db }, "@/lib/ai/trained-faq-policy": mockedPolicy,
+        "@/lib/ai/trained-faq-resolver": resolver,
         "@/lib/authz": { requirePermission: async (permission: string) => {
             assert.ok(["ai.manage", "chats.manage"].includes(permission));
             if (!permitted) throw new Error("Unauthorized");
@@ -51,7 +55,11 @@ function fixture() {
     const context = loadTsModule("src/lib/ai/trained-faqs.ts", {
         "server-only": {}, "@/lib/db": { prisma: db }, "@/lib/ai/trained-faq-policy": mockedPolicy,
     }) as { getTrainedFaqContext: () => Promise<{ context: string; sources: unknown[] }> };
-    return { actions, context, stores, message, reads, deny: () => { permitted = false; }, tenantB: () => { tenant = "b"; } };
+    const rawActions = { ...actions };
+    // Existing behavioral cases use a freshly loaded version, like the current UI.
+    actions.saveTrainedFaq = (input) => rawActions.saveTrainedFaq({ ...input, expectedRevision: input.expectedRevision === undefined ? stores[tenant].find((row) => row.id === (input.faqId || `trained-faq:${input.messageId}`))?.updatedAt?.toISOString() ?? null : input.expectedRevision });
+    actions.deleteTrainedFaq = (id, revision) => rawActions.deleteTrainedFaq(id, revision ?? stores[tenant].find((row) => row.id === id)?.updatedAt?.toISOString() ?? new Date().toISOString());
+    return { actions, rawActions, context, stores, message, reads, deny: () => { permitted = false; }, tenantB: () => { tenant = "b"; } };
 }
 
 test("approved FAQs remain available to the assistant in production", async () => {
@@ -125,7 +133,7 @@ test("active tenant isolation applies to draft, edits, list, context and delete"
     await assert.rejects(f.actions.saveTrainedFaq({ faqId: "trained-faq:bot", question: "Overwrite", answer: "B" }), /no existe/);
     assert.equal((await f.actions.getTrainedFaqs()).length, 0);
     assert.equal((await f.context.getTrainedFaqContext()).context, "");
-    await f.actions.deleteTrainedFaq("trained-faq:bot");
+    await assert.rejects(f.actions.deleteTrainedFaq("trained-faq:bot"), /cambió o fue eliminada/);
     assert.equal(f.stores.a.length, 1);
 });
 
@@ -145,4 +153,35 @@ test("FAQ context preserves approved data, recognizes paraphrases and respects c
     assert.match(context, /prioridad sobre el RAG/);
     assert.match(context, /disponibilidad verificada/);
     assert.match(context, /\$250/); assert.doesNotMatch(context, /No usar/);
+});
+
+test("stale edits, toggles and deletes cannot overwrite a newer correction", async () => {
+    const f = fixture();
+    await f.actions.saveTrainedFaq({ messageId: "bot", question: "¿Precio?", answer: "$250" });
+    const revision = f.stores.a[0].updatedAt!.toISOString();
+    await f.actions.saveTrainedFaq({ faqId: "trained-faq:bot", question: "¿Precio?", answer: "$280" });
+    await assert.rejects(f.rawActions.saveTrainedFaq({ faqId: "trained-faq:bot", question: "¿Precio?", answer: "$250", active: false, expectedRevision: revision }), /cambió mientras/);
+    await assert.rejects(f.rawActions.saveTrainedFaq({ faqId: "trained-faq:bot", question: "¿Precio?", answer: "$250" }), /cambió mientras/);
+    await assert.rejects(f.rawActions.deleteTrainedFaq("trained-faq:bot", revision), /cambió o fue eliminada/);
+    assert.equal(f.stores.a[0].rawContent, "$280");
+    await f.actions.deleteTrainedFaq("trained-faq:bot");
+    await assert.rejects(f.rawActions.saveTrainedFaq({ messageId: "bot", question: "¿Precio?", answer: "$250", expectedRevision: revision }), /fue eliminada/);
+});
+
+test("accents and question marks cannot create duplicate contradictory questions", async () => {
+    const f = fixture();
+    f.stores.a.push({ id: "trained-faq:other", type: policy.TRAINED_FAQ_TYPE, title: "¿Cuánto cuesta?", rawContent: "$200", status: "ready", updatedAt: new Date() });
+    await assert.rejects(f.actions.saveTrainedFaq({ messageId: "bot", question: "CUANTO cuesta", answer: "$250" }), /Ya existe/);
+});
+
+test("production feedback returns readable validation errors without exposing unexpected authorization details", async () => {
+    const f = fixture();
+    await f.actions.saveTrainedFaq({ messageId: "bot", question: "Precio", answer: "$250" });
+    const result = await f.rawActions.saveTrainedFaqWithFeedback({ faqId: "trained-faq:bot", question: "Precio", answer: "$300" });
+    assert.equal(result.success, false);
+    assert.match(result.error!, /cambió mientras/);
+    f.deny();
+    const unauthorized = await f.rawActions.saveTrainedFaqWithFeedback({ messageId: "bot", question: "Precio", answer: "$300" });
+    assert.equal(unauthorized.success, false);
+    assert.doesNotMatch(unauthorized.error!, /Unauthorized/);
 });

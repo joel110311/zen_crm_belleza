@@ -307,7 +307,7 @@ async function warnFailedRecurringPayments(pool) {
     for (const item of rows) {
         try {
             await sendLifecycleEmail(pool, item, `recurring_payment_failed_${item.id}`, "No se confirmó la renovación de tu CRM", "Revisa tu medio de pago",
-                "Mercado Pago rechazó un intento de renovación. Revisa tu medio de pago en Mercado Pago y el estado de tu suscripción en el CRM. No eliminaremos tus datos; el acceso puede quedar en solo lectura durante el plazo de recuperación.");
+                "Mercado Pago rechazó un intento de renovación. Revisa tu medio de pago en Mercado Pago y el estado de tu suscripción en el CRM. Al vencer el periodo vigente, podrás consultar y exportar tus datos durante tres meses. Reactiva tu plan antes de la fecha indicada en el CRM para conservarlos.");
         } catch (error) { console.error(`[Billing lifecycle] Recurring payment warning failed for ${item.tenantId}:`, error instanceof Error ? error.message : error); }
     }
 }

@@ -9,10 +9,12 @@ export async function getTrainedFaqContext() {
         select: { id: true, title: true, rawContent: true },
         orderBy: { id: "asc" },
     });
-    return {
-        context: buildTrainedFaqContext(rows.map((row) => ({
+    const faqs = rows.map((row) => ({
             id: row.id, question: row.title, answer: row.rawContent || "", active: true,
-        }))),
+        }));
+    return {
+        faqs,
+        context: buildTrainedFaqContext(faqs),
         sources: rows.map((row) => ({ title: `FAQ aprobada: ${row.title}`, uri: null })),
     };
 }

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Bot, Loader2 } from "lucide-react";
-import { getAiTrainingDraft, saveTrainedFaq } from "@/app/actions/ai-training";
+import { getAiTrainingDraft, saveTrainedFaqWithFeedback } from "@/app/actions/ai-training";
 import { FAQ_ANSWER_LIMIT, FAQ_QUESTION_LIMIT, type TrainedFaq } from "@/lib/ai/trained-faq-policy";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,7 @@ export function AiTrainingDialog({ messageId, faq, onClose, onSaved }: {
     const [question, setQuestion] = useState(faq?.question || "");
     const [answer, setAnswer] = useState(faq?.answer || "");
     const [original, setOriginal] = useState("");
+    const [revision, setRevision] = useState<string | null>(faq?.revision ?? null);
     const [loading, setLoading] = useState(Boolean(messageId));
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState("");
@@ -29,6 +30,7 @@ export function AiTrainingDialog({ messageId, faq, onClose, onSaved }: {
             setQuestion(draft.question);
             setAnswer(draft.answer);
             setOriginal(draft.originalAnswer);
+            setRevision(draft.revision);
         }).catch((cause) => {
             if (!ignore) setError(cause instanceof Error ? cause.message : "No se pudo cargar la respuesta.");
         }).finally(() => { if (!ignore) setLoading(false); });
@@ -39,7 +41,8 @@ export function AiTrainingDialog({ messageId, faq, onClose, onSaved }: {
         setSaving(true);
         setError("");
         try {
-            await saveTrainedFaq({ messageId, faqId: faq?.id, question, answer, active: faq?.active ?? true });
+            const result = await saveTrainedFaqWithFeedback({ messageId, faqId: faq?.id, question, answer, active: faq?.active ?? true, expectedRevision: revision });
+            if (!result.success) throw new Error(result.error);
             toast({ title: "FAQ guardada", description: "La IA consultará esta corrección en sus próximas respuestas." });
             onSaved?.();
             onClose();
@@ -52,7 +55,7 @@ export function AiTrainingDialog({ messageId, faq, onClose, onSaved }: {
         <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-xl">
             <DialogHeader>
                 <DialogTitle className="flex items-center gap-2"><Bot className="h-5 w-5 text-primary" />Entrenar IA</DialogTitle>
-                <DialogDescription>Corrige cómo debe responder a preguntas similares. Se guardará como una FAQ aprobada de tu negocio.</DialogDescription>
+                <DialogDescription>Corrige cómo debe responder a preguntas similares. Se añadirá a la hoja de FAQs aprobadas, con prioridad sobre el prompt y la base de conocimientos.</DialogDescription>
             </DialogHeader>
             <span className="w-fit rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">Experimental</span>
             {loading ? <div role="status" className="flex items-center gap-2 py-8 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Cargando pregunta y respuesta…</div> : <>

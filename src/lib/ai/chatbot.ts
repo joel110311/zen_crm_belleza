@@ -1,6 +1,7 @@
 import type OpenAI from "openai";
 import { assertChatbotUsageAvailable } from "@/lib/billing/chatbot-usage";
 import { getTrainedFaqContext } from "@/lib/ai/trained-faqs";
+import { resolveTrainedFaq } from "@/lib/ai/trained-faq-resolver";
 import { prisma } from "@/lib/db";
 import { generateCompletion } from "@/lib/ai/openai";
 import { buildKnowledgeContext } from "@/lib/brain/knowledge";
@@ -250,10 +251,24 @@ async function generateConfiguredAssistantReply(params: {
     identity: AssistantIdentityContext;
     automationInstruction?: string | null;
 }) {
-    const businessHours = normalizeBusinessHours(params.settings);
-    const businessContext = await buildBeautyBusinessContext(params.settings);
     const history = mapHistoryToMessages(params.history);
     const trainedFaqs = await getTrainedFaqContext();
+    const selection = await resolveTrainedFaq({
+        faqs: trainedFaqs.faqs,
+        question: params.latestUserMessage,
+        history: params.history.map((item) => ({ role: item.direction === "inbound" ? "user" : "assistant", content: item.content })),
+        classify: async (messages) => (await generateCompletion(messages, 0)) || "",
+    });
+    if (selection.kind === "match") {
+        // Send stored, approved facts directly. No RAG, old assistant message or second model rewrites them.
+        return { reply: formatBotReplyForReadability(selection.faq.answer.replace(/\r\n?/g, "\n").replace(/\*\*([^*]+)\*\*/g, "*$1*").trim()),
+            knowledgeSources: [{ title: `FAQ aprobada: ${selection.faq.question}`, uri: null }] };
+    }
+    if (selection.kind === "ambiguous" || selection.kind === "invalid") {
+        return { reply: "¿Me confirmas el servicio o producto y la opción que te interesa? Quiero darte la información correcta.", knowledgeSources: [] };
+    }
+    const businessHours = normalizeBusinessHours(params.settings);
+    const businessContext = await buildBeautyBusinessContext(params.settings);
     const knowledgeLookupQuery = buildKnowledgeLookupQuery(params.history, params.latestUserMessage);
     const { context, chunks } = await buildKnowledgeContext(
         knowledgeLookupQuery || params.latestUserMessage,

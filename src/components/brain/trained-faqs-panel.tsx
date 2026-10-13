@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Bot, Loader2, Pencil, Search, Trash2 } from "lucide-react";
-import { deleteTrainedFaq, getTrainedFaqs, saveTrainedFaq } from "@/app/actions/ai-training";
+import { deleteTrainedFaqWithFeedback, getTrainedFaqs, saveTrainedFaqWithFeedback } from "@/app/actions/ai-training";
 import { FAQ_MAX_COUNT, type TrainedFaq } from "@/lib/ai/trained-faq-policy";
 import { AiTrainingDialog } from "@/components/brain/ai-training-dialog";
 import { Button } from "@/components/ui/button";
@@ -29,11 +29,12 @@ export function TrainedFaqsPanel() {
     async function change(faq: TrainedFaq, remove = false) {
         setBusy(true);
         try {
-            if (remove) await deleteTrainedFaq(faq.id);
-            else await saveTrainedFaq({ faqId: faq.id, question: faq.question, answer: faq.answer, active: !faq.active });
+            const result = remove ? await deleteTrainedFaqWithFeedback(faq.id, faq.revision)
+                : await saveTrainedFaqWithFeedback({ faqId: faq.id, question: faq.question, answer: faq.answer, active: !faq.active, expectedRevision: faq.revision });
+            if (!result.success) throw new Error(result.error);
             setDeleting(null);
             await load();
-        } catch (cause) { setError(cause instanceof Error ? cause.message : "No se pudo actualizar la FAQ."); }
+        } catch (cause) { if (remove) setDeleting(null); setError(cause instanceof Error ? cause.message : "No se pudo actualizar la FAQ."); }
         finally { setBusy(false); }
     }
     const visible = faqs.filter((faq) => `${faq.question} ${faq.answer}`.toLocaleLowerCase("es").includes(query.toLocaleLowerCase("es")));
@@ -42,7 +43,7 @@ export function TrainedFaqsPanel() {
         <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="space-y-2">
                 <h2 className="flex items-center gap-2 text-lg font-semibold"><Bot className="h-5 w-5 text-primary" />FAQs entrenadas</h2>
-                <p className="max-w-2xl text-sm text-muted-foreground">Respuestas aprobadas que la IA consulta en cada mensaje y prioriza para preguntas similares. Créala desde Chats → menú de una respuesta de IA → Entrenar IA.</p>
+                <p className="max-w-2xl text-sm text-muted-foreground">Aquí se acumulan las preguntas y respuestas corregidas. La IA consulta esta hoja en cada mensaje y sus datos prevalecen sobre el prompt y la base de conocimientos. Añade correcciones desde Chats → Entrenar IA.</p>
             </div>
             <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">Experimental</span>
         </div>
@@ -64,8 +65,12 @@ export function TrainedFaqsPanel() {
                 <p className="whitespace-pre-wrap break-words text-sm text-muted-foreground">{faq.answer}</p>
             </article>)}
         </div>}
-        <p className="text-xs text-muted-foreground">Pausar una FAQ deja de incluirla en las próximas respuestas. Prueba preguntas con otras palabras en Probar agente para evaluar el resultado.</p>
-        {editing && <AiTrainingDialog key={editing.id} faq={editing} onClose={() => setEditing(null)} onSaved={() => void load()} />}
+        {faqs.some((faq) => faq.active) && <details className="rounded-xl border p-4 text-sm">
+            <summary className="cursor-pointer font-medium text-primary">Ver hoja de FAQs aprobadas</summary>
+            <pre className="mt-4 max-h-80 overflow-y-auto whitespace-pre-wrap break-words rounded-lg bg-muted/40 p-4 font-sans text-sm leading-6">{faqs.filter((faq) => faq.active).map((faq) => `Pregunta: ${faq.question}\nRespuesta: ${faq.answer}`).join("\n\n")}</pre>
+        </details>}
+        <p className="text-xs text-muted-foreground">Pausar una FAQ la retira de la hoja activa. Prueba preguntas con otras palabras en Probar agente para evaluar el resultado.</p>
+        {editing && <AiTrainingDialog key={editing.id} faq={editing} onClose={() => { setEditing(null); setLoading(true); void load(); }} />}
         <Dialog open={Boolean(deleting)} onOpenChange={(open) => { if (!open && !busy) setDeleting(null); }}>
             <DialogContent><DialogHeader><DialogTitle>Eliminar FAQ</DialogTitle><DialogDescription>Esta corrección dejará de usarse. El mensaje original del chat se conservará.</DialogDescription></DialogHeader>
                 <p className="text-sm">{deleting?.question}</p><DialogFooter><Button variant="outline" disabled={busy} onClick={() => setDeleting(null)}>Cancelar</Button><Button variant="destructive" disabled={busy} onClick={() => { if (deleting) void change(deleting, true); }}>Eliminar FAQ</Button></DialogFooter>

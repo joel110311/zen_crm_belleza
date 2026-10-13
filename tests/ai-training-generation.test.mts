@@ -10,6 +10,7 @@ test("both the customer pipeline and playground include fresh approved FAQs befo
     let quotaChecks = 0;
     const chatbot = loadTsModule("src/lib/ai/chatbot.ts", {
         "@/lib/billing/chatbot-usage": { assertChatbotUsageAvailable: async () => { quotaChecks++; } },
+        "@/lib/ai/trained-faq-resolver": { resolveTrainedFaq: async () => ({ kind: "operational" }) },
         "@/lib/ai/trained-faqs": { getTrainedFaqContext: async () => {
             faqReads++;
             return { context: buildTrainedFaqContext([{ id: "faq", question: "¿Precio del corte?", answer, active: true }]), sources: [{ title: "FAQ aprobada: ¿Precio del corte?", uri: null }] };
