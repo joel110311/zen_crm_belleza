@@ -5,7 +5,7 @@ import * as businessHours from "../src/lib/calendar/business-hours.ts";
 import { resolveCalendarClient } from "../src/lib/calendar/client-selection.ts";
 const dates = loadTsModule("src/lib/operation-dates.ts", {
   "@/lib/calendar/business-hours": businessHours,
-});
+}, { Date });
 const draft = loadTsModule("src/lib/calendar/draft.ts", {
   "../operation-dates.ts": dates,
 }) as {

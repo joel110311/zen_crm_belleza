@@ -384,7 +384,12 @@ export async function getContact(id: string) {
                         },
                     },
                 },
-                appointments: true,
+                appointments: CONTACT_LIST_INCLUDE.appointments,
+                patients: CONTACT_LIST_INCLUDE.patients,
+                conversations: {
+                    orderBy: { updatedAt: "desc" },
+                    select: { id: true, createdAt: true, updatedAt: true, status: true, sourceType: true, _count: { select: { messages: true } } },
+                },
             },
         });
 

@@ -21,6 +21,7 @@ type PhonePrefixInputProps = {
     required?: boolean;
     className?: string;
     inputClassName?: string;
+    inputId?: string;
 };
 
 export function PhonePrefixInput({
@@ -32,6 +33,7 @@ export function PhonePrefixInput({
     required,
     className,
     inputClassName,
+    inputId,
 }: PhonePrefixInputProps) {
     const [resolvedDefaultCountry, setResolvedDefaultCountry] = useState(defaultCountry || "MX");
     const [selectedCountry, setSelectedCountry] = useState(() => getOperationCountry(defaultCountry || "MX").code);
@@ -106,6 +108,7 @@ export function PhonePrefixInput({
                 </SelectContent>
             </Select>
             <Input
+                id={inputId}
                 value={localNumber}
                 onChange={(event) => emitChange(activeCountry, event.target.value)}
                 placeholder={placeholder}

@@ -17,6 +17,8 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/use-toast";
 import { getContactFullName } from "@/lib/contact-name";
 
+import styles from "./contacts.module.css";
+
 type BulkDeleteContact = {
     id: string;
     name?: string | null;
@@ -95,7 +97,7 @@ export function ContactsBulkDeleteDialog({
                 </Button>
             </DialogTrigger>
 
-            <DialogContent className="max-w-xl rounded-2xl p-0">
+            <DialogContent className={`${styles.dialog} max-w-xl rounded-2xl p-0`}>
                 <div className="border-b border-border/60 px-6 py-5">
                     <DialogHeader className="text-left">
                         <div className="flex items-center gap-3">

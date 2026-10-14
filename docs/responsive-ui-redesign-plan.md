@@ -1,6 +1,6 @@
 # Rediseño adaptable del CRM — propuesta para revisión
 
-Fecha: 13 de octubre de 2026. Estado: diseño aprobado; implementadas navegación/Hoy y segunda entrega de Agenda/citas. El resto de las fases sigue pendiente. Seguimiento: [primera entrega](responsive-ui-stage-1.md) y [Agenda y citas](responsive-ui-stage-2.md).
+Fecha inicial: 13 de octubre de 2026. Actualización: 14 de octubre. Estado: diseño aprobado; implementadas navegación/Hoy, Agenda/citas y Clientes/ficha. El resto de las fases sigue pendiente. Seguimiento: [primera entrega](responsive-ui-stage-1.md), [Agenda y citas](responsive-ui-stage-2.md) y [Clientes y ficha](responsive-ui-stage-3.md). El siguiente bloque es Chats.
 
 ## Objetivo y criterio de diseño
 
