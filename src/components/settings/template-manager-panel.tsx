@@ -1,5 +1,9 @@
 "use client";
 
+import styles from "@/components/shared/management-workspace.module.css";
+import { useWorkspaceAccess } from "@/components/layout/workspace-access-context";
+import { useCompactWorkspace } from "@/components/shared/use-compact-workspace";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import {
@@ -11,6 +15,7 @@ import {
     Search,
     Star,
     Trash2,
+    X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -82,6 +87,12 @@ function mapTemplateToForm(template: TemplateRecord): TemplateFormState {
 
 export function TemplateManagerPanel() {
     const { toast } = useToast();
+    const { readOnly } = useWorkspaceAccess();
+    const compact = useCompactWorkspace();
+    const [editorOpen, setEditorOpen] = useState(false);
+    const [savedForm, setSavedForm] = useState(EMPTY_TEMPLATE_FORM);
+    const [pendingForm, setPendingForm] = useState<TemplateFormState | null>(null);
+    const [deleting, setDeleting] = useState<TemplateRecord | null>(null);
     const [templates, setTemplates] = useState<TemplateRecord[]>([]);
     const [search, setSearch] = useState("");
     const [isLoading, setIsLoading] = useState(true);
@@ -134,9 +145,23 @@ export function TemplateManagerPanel() {
     );
     const previewMediaUrl = useMemo(() => getSafeMediaUrl(form.mediaUrl), [form.mediaUrl]);
 
-    const resetForm = () => setForm(EMPTY_TEMPLATE_FORM);
+    const dirty = JSON.stringify(form) !== JSON.stringify(savedForm);
+    useEffect(() => {
+        if (!dirty) return;
+        const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
+        window.addEventListener("beforeunload", warn);
+        return () => window.removeEventListener("beforeunload", warn);
+    }, [dirty]);
+    const resetForm = () => { setForm(EMPTY_TEMPLATE_FORM); setSavedForm(EMPTY_TEMPLATE_FORM); };
+    const openForm = (next: TemplateFormState) => {
+        if (isSaving || isUploading) return;
+        if (dirty) { setPendingForm(next); return; }
+        setForm(next); setSavedForm(next); setEditorOpen(true);
+    };
+
 
     const saveTemplate = async () => {
+        if (readOnly || isSaving || isUploading) return;
         setIsSaving(true);
         try {
             const payload = {
@@ -165,7 +190,8 @@ export function TemplateManagerPanel() {
                 title: form.id ? "Plantilla actualizada" : "Plantilla creada",
             });
             resetForm();
-            await loadTemplates(search);
+            setEditorOpen(false);
+            await loadTemplates();
         } catch (error) {
             toast({
                 title: "Error",
@@ -178,7 +204,8 @@ export function TemplateManagerPanel() {
     };
 
     const deleteTemplate = async (templateId: string) => {
-        if (!window.confirm("Eliminar esta plantilla?")) return;
+        if (readOnly || isSaving || isUploading) return;
+        setIsSaving(true);
 
         try {
             const response = await fetch(`/api/templates/${templateId}`, { method: "DELETE" });
@@ -186,18 +213,21 @@ export function TemplateManagerPanel() {
             if (!response.ok) throw new Error(result.error || "No se pudo eliminar la plantilla");
 
             if (form.id === templateId) resetForm();
+            setDeleting(null);
             toast({ title: "Plantilla eliminada" });
-            await loadTemplates(search);
+            await loadTemplates();
         } catch (error) {
             toast({
                 title: "Error",
                 description: error instanceof Error ? error.message : "No se pudo eliminar la plantilla",
                 variant: "destructive",
             });
-        }
+        } finally { setIsSaving(false); }
     };
 
     const duplicateTemplate = async (template: TemplateRecord) => {
+        if (readOnly || isSaving || isUploading) return;
+        setIsSaving(true);
         try {
             const response = await fetch("/api/templates", {
                 method: "POST",
@@ -219,17 +249,18 @@ export function TemplateManagerPanel() {
             const result = await response.json();
             if (!response.ok) throw new Error(result.error || "No se pudo duplicar la plantilla");
             toast({ title: "Plantilla duplicada" });
-            await loadTemplates(search);
+            await loadTemplates();
         } catch (error) {
             toast({
                 title: "Error",
                 description: error instanceof Error ? error.message : "No se pudo duplicar la plantilla",
                 variant: "destructive",
             });
-        }
+        } finally { setIsSaving(false); }
     };
 
     const handleMediaUpload = async (file: File) => {
+        if (readOnly || isUploading || isSaving) return;
         setIsUploading(true);
         try {
             const formData = new FormData();
@@ -261,115 +292,20 @@ export function TemplateManagerPanel() {
         }
     };
 
-    return (
-        <div className="grid gap-4 xl:grid-cols-[340px_minmax(0,1fr)]">
-            <div className="space-y-4 rounded-xl border bg-card p-4">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                        <h2 className="font-semibold">Plantillas internas</h2>
-                        <p className="text-sm text-muted-foreground">Respuestas guardadas para texto, imagen y documento.</p>
-                    </div>
-                    <Button variant="outline" size="sm" onClick={resetForm} className="w-full sm:w-auto">
-                        <Plus className="mr-2 h-4 w-4" />
-                        Nueva
-                    </Button>
-                </div>
-
-                <div className="relative">
-                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                        placeholder="Buscar plantilla..."
-                        value={search}
-                        onChange={(event) => setSearch(event.target.value)}
-                        className="pl-9"
-                    />
-                </div>
-
-                <div className="space-y-2">
-                    {isLoading ? (
-                        <div className="flex items-center gap-2 rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                            Cargando plantillas...
-                        </div>
-                    ) : filteredTemplates.length === 0 ? (
-                        <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
-                            No hay plantillas todavia.
-                        </div>
-                    ) : (
-                        filteredTemplates.map((template) => {
-                            const Icon = getTemplateIcon(template.type);
-                            const isSelected = form.id === template.id;
-                            return (
-                                <div
-                                    key={template.id}
-                                    className={`rounded-xl border p-3 transition ${
-                                        isSelected ? "border-primary bg-primary/5" : "hover:border-primary/35"
-                                    }`}
-                                >
-                                    <button className="w-full text-left" onClick={() => setForm(mapTemplateToForm(template))}>
-                                        <div className="flex items-start gap-3">
-                                            <div className="mt-0.5 rounded-xl bg-primary/10 p-2 text-primary">
-                                                <Icon className="h-4 w-4" />
-                                            </div>
-                                            <div className="min-w-0 flex-1">
-                                                <div className="flex items-center gap-2">
-                                                    <p className="truncate font-medium">{template.name}</p>
-                                                    {template.isFavorite ? <Star className="h-3.5 w-3.5 fill-current text-amber-500" /> : null}
-                                                </div>
-                                                <p className="text-xs text-muted-foreground">
-                                                    {humanizeTemplateType(template.type)}
-                                                    {template.category ? ` - ${template.category}` : ""}
-                                                    {template.shortcut ? ` - /${template.shortcut}` : ""}
-                                                </p>
-                                                <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
-                                                    {template.content || template.mediaFileName || "Plantilla multimedia"}
-                                                </p>
-                                            </div>
-                                        </div>
-                                    </button>
-
-                                    <div className="mt-3 flex flex-wrap items-center gap-2">
-                                        <Button variant="ghost" size="sm" className="h-8 px-2" onClick={() => duplicateTemplate(template)}>
-                                            <Copy className="mr-1.5 h-3.5 w-3.5" />
-                                            Duplicar
-                                        </Button>
-                                        <Button variant="ghost" size="sm" className="h-8 px-2 text-destructive hover:text-destructive" onClick={() => deleteTemplate(template.id)}>
-                                            <Trash2 className="mr-1.5 h-3.5 w-3.5" />
-                                            Eliminar
-                                        </Button>
-                                    </div>
-                                </div>
-                            );
-                        })
-                    )}
-                </div>
-            </div>
-
-            <div className="space-y-4 rounded-xl border bg-card p-4">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                        <h2 className="font-semibold">{form.id ? "Editar plantilla" : "Nueva plantilla"}</h2>
-                        <p className="text-sm text-muted-foreground">La seleccion se inserta primero en el composer antes de enviarse.</p>
-                    </div>
-                    <Button onClick={saveTemplate} disabled={isSaving || isUploading} className="w-full sm:w-auto">
-                        {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                        Guardar
-                    </Button>
-                </div>
-
+    const editorFields = <fieldset className={styles.editorFields} disabled={readOnly || isSaving || isUploading} aria-label="Datos de la plantilla">
                 <div className="grid gap-4 md:grid-cols-2">
                     <div className="space-y-2">
-                        <Label>Nombre</Label>
-                        <Input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} />
+                        <Label htmlFor="template-name">Nombre</Label>
+                        <Input id="template-name" value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} />
                     </div>
                     <div className="space-y-2">
-                        <Label>Categoria</Label>
-                        <Input value={form.category} onChange={(event) => setForm((current) => ({ ...current, category: event.target.value }))} placeholder="Ventas, soporte, pagos..." />
+                        <Label htmlFor="template-category">Categoria</Label>
+                        <Input id="template-category" value={form.category} onChange={(event) => setForm((current) => ({ ...current, category: event.target.value }))} placeholder="Ventas, soporte, pagos..." />
                     </div>
                     <div className="space-y-2">
-                        <Label>Tipo</Label>
+                        <Label htmlFor="template-type">Tipo</Label>
                         <select
-                            value={form.type}
+                            id="template-type" value={form.type}
                             onChange={(event) =>
                                 setForm((current) => ({
                                     ...current,
@@ -387,9 +323,9 @@ export function TemplateManagerPanel() {
                         </select>
                     </div>
                     <div className="space-y-2">
-                        <Label>Atajo</Label>
+                        <Label htmlFor="template-shortcut">Atajo</Label>
                         <Input
-                            value={form.shortcut}
+                            id="template-shortcut" value={form.shortcut}
                             onChange={(event) =>
                                 setForm((current) => ({
                                     ...current,
@@ -402,26 +338,26 @@ export function TemplateManagerPanel() {
                     </div>
                 </div>
 
-                <div className="grid gap-4 md:grid-cols-3">
+                <div className="grid gap-4 xl:grid-cols-3">
                     <div className="space-y-2">
                         <Label>Favorita</Label>
                         <div className="flex h-10 items-center justify-between rounded-lg border px-3">
                             <span className="text-sm">Mostrar primero</span>
-                            <Switch checked={form.isFavorite} onCheckedChange={(checked) => setForm((current) => ({ ...current, isFavorite: checked }))} />
+                            <Switch aria-label="Plantilla favorita" disabled={readOnly || isSaving || isUploading} checked={form.isFavorite} onCheckedChange={(checked) => setForm((current) => ({ ...current, isFavorite: checked }))} />
                         </div>
                     </div>
                     <div className="space-y-2">
                         <Label>Activa</Label>
                         <div className="flex h-10 items-center justify-between rounded-lg border px-3">
                             <span className="text-sm">Disponible en el inbox</span>
-                            <Switch checked={form.isActive} onCheckedChange={(checked) => setForm((current) => ({ ...current, isActive: checked }))} />
+                            <Switch aria-label="Plantilla activa" disabled={readOnly || isSaving || isUploading} checked={form.isActive} onCheckedChange={(checked) => setForm((current) => ({ ...current, isActive: checked }))} />
                         </div>
                     </div>
                     <div className="space-y-2">
-                        <Label>Orden</Label>
+                        <Label htmlFor="template-order">Orden</Label>
                         <Input
                             type="number"
-                            value={String(form.sortOrder)}
+                            id="template-order" value={String(form.sortOrder)}
                             onChange={(event) =>
                                 setForm((current) => ({
                                     ...current,
@@ -443,6 +379,7 @@ export function TemplateManagerPanel() {
                                 {isUploading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                                 Subir archivo
                                 <input
+                                    disabled={readOnly || isSaving || isUploading}
                                     type="file"
                                     className="hidden"
                                     accept={form.type === "image" ? "image/*" : ".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.rar"}
@@ -493,9 +430,9 @@ export function TemplateManagerPanel() {
                 )}
 
                 <div className="space-y-2">
-                    <Label>Mensaje</Label>
+                    <Label htmlFor="template-content">Mensaje</Label>
                     <Textarea
-                        value={form.content}
+                        id="template-content" value={form.content}
                         onChange={(event) => setForm((current) => ({ ...current, content: event.target.value }))}
                         placeholder={form.type === "text" ? "Escribe el contenido de la plantilla..." : "Caption o texto opcional..."}
                         className="min-h-[180px]"
@@ -505,7 +442,7 @@ export function TemplateManagerPanel() {
                     </p>
                 </div>
 
-                <div className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
+                <div className="grid gap-4 2xl:grid-cols-[0.9fr_1.1fr]">
                     <div className="rounded-2xl border bg-muted/15 p-4">
                         <p className="font-medium">Variables disponibles</p>
                         <p className="text-sm text-muted-foreground">Se reemplazan automaticamente con datos del contacto y del agente.</p>
@@ -536,7 +473,7 @@ export function TemplateManagerPanel() {
                     </div>
 
                     <div className="rounded-[1.8rem] border bg-background/80 p-4 shadow-[0_22px_55px_-38px_rgba(15,23,42,0.32)]">
-                        <p className="font-medium">Vista previa premium</p>
+                        <p className="font-medium">Vista previa</p>
                         <p className="text-sm text-muted-foreground">Asi se vera la plantilla antes de insertarla en el chat.</p>
 
                         <div className="mt-4 rounded-xl border border-sky-100/70 bg-gradient-to-br from-sky-50 via-background to-emerald-50/70 p-4">
@@ -600,7 +537,109 @@ export function TemplateManagerPanel() {
                         </div>
                     </div>
                 </div>
+    </fieldset>;
+
+    return (
+        <div className={styles.library}>
+            <div className="space-y-4 rounded-xl border bg-card p-4">
+                <div className="flex flex-col gap-3">
+                    <div>
+                        <h2 className="font-semibold">Respuestas guardadas</h2>
+                        <p className="text-sm text-muted-foreground">Texto, imágenes y documentos para responder desde Chats.</p>
+                    </div>
+                    <Button variant="outline" size="sm" disabled={readOnly || isSaving || isUploading} onClick={() => openForm(EMPTY_TEMPLATE_FORM)} className="w-full sm:w-auto">
+                        <Plus className="mr-2 h-4 w-4" />
+                        Nueva
+                    </Button>
+                </div>
+
+                {compact && dirty && <Button variant="outline" className="w-full" onClick={() => setEditorOpen(true)}>Continuar borrador</Button>}
+                <div className="relative">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                        aria-label="Buscar plantillas" placeholder="Buscar plantilla..."
+                        value={search}
+                        onChange={(event) => setSearch(event.target.value)}
+                        className="pl-9"
+                    />
+                </div>
+
+                <div className="space-y-2">
+                    {isLoading ? (
+                        <div className="flex items-center gap-2 rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            Cargando plantillas...
+                        </div>
+                    ) : filteredTemplates.length === 0 ? (
+                        <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
+                            {search ? "No hay resultados para esta búsqueda." : "Aún no hay respuestas guardadas. Crea tu primera plantilla."}
+                        </div>
+                    ) : (
+                        filteredTemplates.map((template) => {
+                            const Icon = getTemplateIcon(template.type);
+                            const isSelected = form.id === template.id;
+                            return (
+                                <div
+                                    key={template.id}
+                                    className={`rounded-xl border p-3 transition ${
+                                        isSelected ? "border-primary bg-primary/5" : "hover:border-primary/35"
+                                    }`}
+                                >
+                                    <button className="w-full text-left" onClick={() => openForm(mapTemplateToForm(template))} aria-label={`Abrir plantilla: ${template.name}`}>
+                                        <div className="flex items-start gap-3">
+                                            <div className="mt-0.5 rounded-xl bg-primary/10 p-2 text-primary">
+                                                <Icon className="h-4 w-4" />
+                                            </div>
+                                            <div className="min-w-0 flex-1">
+                                                <div className="flex items-center gap-2">
+                                                    <p className="break-words font-medium">{template.name}</p>
+                                                    {template.isFavorite ? <Star className="h-3.5 w-3.5 fill-current text-amber-500" /> : null}
+                                                </div>
+                                                <p className="text-xs text-muted-foreground">
+                                                    {humanizeTemplateType(template.type)}
+                                                    {template.category ? ` - ${template.category}` : ""}
+                                                    {template.shortcut ? ` - /${template.shortcut}` : ""}
+                                                </p>
+                                                <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
+                                                    {template.content || template.mediaFileName || "Plantilla multimedia"}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </button>
+
+                                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                                        <Button variant="ghost" size="sm" className="h-8 px-2" disabled={readOnly || isSaving || isUploading} onClick={() => duplicateTemplate(template)}>
+                                            <Copy className="mr-1.5 h-3.5 w-3.5" />
+                                            Duplicar
+                                        </Button>
+                                        <Button variant="ghost" size="sm" className="h-8 px-2 text-destructive hover:text-destructive" disabled={readOnly || isSaving || isUploading} onClick={() => setDeleting(template)}>
+                                            <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+                                            Eliminar
+                                        </Button>
+                                    </div>
+                                </div>
+                            );
+                        })
+                    )}
+                </div>
             </div>
+
+            {!compact && <section className={styles.editor} aria-label="Editor de plantillas">
+                <div className={styles.editorHeader}><div><h2 className="font-semibold">{form.id ? "Editar plantilla" : "Nueva plantilla"}</h2><p className="text-sm text-muted-foreground">Se inserta en el chat para revisar antes de enviar.</p></div>
+                    <Button onClick={saveTemplate} disabled={readOnly || isSaving || isUploading}>{isSaving && <Loader2 className="size-4 animate-spin" />}Guardar plantilla</Button></div>
+                {editorFields}
+            </section>}
+            <Dialog open={compact && editorOpen} onOpenChange={(open) => { if (!isSaving && !isUploading) setEditorOpen(open); }}>
+                <DialogContent className={styles.dialog} showCloseButton={false} onEscapeKeyDown={(event) => { if (isSaving || isUploading) event.preventDefault(); }} onInteractOutside={(event) => { if (isSaving || isUploading) event.preventDefault(); }}>
+                    <Button variant="ghost" size="icon" aria-label="Cerrar editor" className="absolute top-2 right-2" disabled={isSaving || isUploading} onClick={() => setEditorOpen(false)}><X className="size-4" /></Button>
+                    <DialogHeader className={styles.dialogHeader}><DialogTitle>{form.id ? "Editar plantilla" : "Nueva plantilla"}</DialogTitle><DialogDescription>{readOnly ? "Consulta la plantilla. Tu cuenta está en modo de solo lectura." : "Escribe tu respuesta y revisa cómo se verá en el chat."}</DialogDescription></DialogHeader>
+                    <div className={styles.dialogBody}>{editorFields}</div>
+                    <DialogFooter className={styles.dialogFooter}><Button variant="outline" disabled={isSaving || isUploading} onClick={() => setEditorOpen(false)}>Volver</Button><Button disabled={readOnly || isSaving || isUploading} onClick={saveTemplate}>{isSaving && <Loader2 className="size-4 animate-spin" />}Guardar</Button></DialogFooter>
+                </DialogContent>
+            </Dialog>
+            <Dialog open={Boolean(pendingForm)} onOpenChange={(open) => { if (!open) setPendingForm(null); }}><DialogContent><DialogHeader><DialogTitle>¿Descartar el borrador?</DialogTitle><DialogDescription>Hay cambios sin guardar en la plantilla actual.</DialogDescription></DialogHeader><DialogFooter><Button variant="outline" onClick={() => setPendingForm(null)}>Conservar</Button><Button onClick={() => { if (pendingForm) { setForm(pendingForm); setSavedForm(pendingForm); setEditorOpen(true); setPendingForm(null); } }}>Descartar</Button></DialogFooter></DialogContent></Dialog>
+            <Dialog open={Boolean(deleting)} onOpenChange={(open) => { if (!open && !isSaving) setDeleting(null); }}><DialogContent><DialogHeader><DialogTitle>Eliminar plantilla</DialogTitle><DialogDescription>Se eliminará «{deleting?.name}». Los mensajes enviados se conservan.</DialogDescription></DialogHeader><DialogFooter><Button variant="outline" disabled={isSaving} onClick={() => setDeleting(null)}>Cancelar</Button><Button variant="destructive" disabled={readOnly || isSaving} onClick={() => deleting && void deleteTemplate(deleting.id)}>Eliminar</Button></DialogFooter></DialogContent></Dialog>
+
         </div>
     );
 }

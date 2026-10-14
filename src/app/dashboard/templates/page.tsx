@@ -1,5 +1,7 @@
 "use client";
 
+import styles from "@/components/shared/management-workspace.module.css";
+import { useWorkspaceAccess } from "@/components/layout/workspace-access-context";
 import { type ComponentType } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
@@ -16,14 +18,15 @@ const TEMPLATE_TAB_ITEMS: Array<{
     icon: ComponentType<{ className?: string }>;
     permission: PermissionKey;
 }> = [
-    { value: "templates", label: "Respuestas guardadas", icon: LayoutTemplate, permission: "templates.manage" },
-    { value: "meta", label: "Plantillas WhatsApp API", icon: MessageSquare, permission: "templates.manage" },
-    { value: "campaigns", label: "Envios masivos", icon: Megaphone, permission: "campaigns.manage" },
+    { value: "templates", label: "Guardadas", icon: LayoutTemplate, permission: "templates.manage" },
+    { value: "meta", label: "WhatsApp API", icon: MessageSquare, permission: "templates.manage" },
+    { value: "campaigns", label: "Campañas", icon: Megaphone, permission: "campaigns.manage" },
 ];
 
 const TEMPLATE_TABS = new Set(TEMPLATE_TAB_ITEMS.map((tab) => tab.value));
 
 export default function TemplatesPage() {
+    const { readOnly } = useWorkspaceAccess();
     const router = useRouter();
     const pathname = usePathname();
     const searchParams = useSearchParams();
@@ -57,7 +60,7 @@ export default function TemplatesPage() {
     if (!hasTemplateAccess) {
         return (
             <div className="mx-auto max-w-3xl space-y-5">
-                <div className="rounded-xl border bg-card px-5 py-4 shadow-[0_12px_28px_-22px_rgba(15,23,42,0.25)]">
+                <div className={styles.heading}>
                     <h1 className="flex items-center gap-2.5 text-3xl font-bold tracking-tight">
                         <LayoutTemplate className="h-6 w-6 text-primary" />
                         Plantillas
@@ -79,25 +82,26 @@ export default function TemplatesPage() {
     }
 
     return (
-        <div className="mx-auto w-full max-w-none space-y-4">
-            <div className="rounded-xl border bg-card px-5 py-4 shadow-[0_12px_28px_-22px_rgba(15,23,42,0.25)]">
+        <div className={styles.workspace} data-management-workspace="templates">
+            <div className={styles.heading}>
                 <h1 className="flex items-center gap-2.5 text-[1.85rem] font-semibold tracking-tight">
                     <LayoutTemplate className="h-6 w-6 text-primary" />
                     Plantillas
                 </h1>
                 <p className="mt-1.5 max-w-3xl text-sm leading-6 text-muted-foreground">
-                    Administra respuestas guardadas y campañas de envios masivos desde un mismo lugar.
+                    Respuestas listas para tu equipo, plantillas de WhatsApp y campañas.
                 </p>
             </div>
 
+            {readOnly && <p className={styles.readonly}>Solo lectura: puedes consultar las plantillas. Reactiva tu plan para modificarlas o enviar campañas.</p>}
             <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-4">
-                <TabsList className="grid h-auto w-full max-w-[64rem] grid-cols-1 gap-2 rounded-2xl border bg-card p-1.5 shadow-[0_12px_24px_-20px_rgba(15,23,42,0.22)] sm:grid-cols-3">
+                <TabsList className={styles.tabs}>
                     {visibleTabs.map((tab) => {
                         const Icon = tab.icon;
                         return (
                             <TabsTrigger key={tab.value} value={tab.value} className="min-w-0 h-10 gap-1.5 rounded-xl border border-transparent bg-background px-3 text-[13px] font-semibold text-foreground/75 data-[state=active]:border-primary/30 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-[0_14px_28px_-18px_rgba(37,99,235,0.72)] sm:h-11 sm:px-4 sm:text-sm">
                                 <Icon className="hidden h-4 w-4 sm:block" />
-                                <span className="truncate">{tab.label}</span>
+                                <span>{tab.label}</span>
                             </TabsTrigger>
                         );
                     })}

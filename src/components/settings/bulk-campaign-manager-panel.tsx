@@ -1,5 +1,6 @@
 "use client";
 
+import { useWorkspaceAccess } from "@/components/layout/workspace-access-context";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { BarChart3, CalendarClock, CheckCircle2, Clock3, Loader2, Megaphone, Pause, Play, Square, Trash2, Users } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -111,6 +112,7 @@ function mapCampaignToForm(campaign: CampaignRecord, timeZone?: string): Campaig
 }
 
 export function BulkCampaignManagerPanel() {
+    const { readOnly } = useWorkspaceAccess();
     const operationContext = useOperationContext();
     const { toast } = useToast();
     const [campaigns, setCampaigns] = useState<CampaignRecord[]>([]);
@@ -336,6 +338,7 @@ export function BulkCampaignManagerPanel() {
     };
 
     const saveCampaign = async () => {
+        if (readOnly) return;
         setIsSaving(true);
         try {
             const payload = {
@@ -397,6 +400,7 @@ export function BulkCampaignManagerPanel() {
     };
 
     const runAction = async (action: "start" | "pause" | "resume" | "cancel") => {
+        if (readOnly) return;
         if ((action === "start" || action === "resume") && (channelsLoading || !selectedChannel)) {
             toast({ title: "Conecta un canal de WhatsApp", description: channelsError || "No hay un canal activo para esta campaña.", variant: "destructive" });
             return;
@@ -461,6 +465,7 @@ export function BulkCampaignManagerPanel() {
     };
 
     const handleMediaUpload = async (file: File) => {
+        if (readOnly) return;
         setIsUploading(true);
         try {
             const formData = new FormData();
@@ -493,6 +498,7 @@ export function BulkCampaignManagerPanel() {
     };
 
     const handleCsvImport = async (file: File) => {
+        if (readOnly) return;
         setIsImportingCsv(true);
         try {
             const formData = new FormData();
@@ -556,13 +562,13 @@ export function BulkCampaignManagerPanel() {
                     setForm(mapCampaignToForm(campaign, operationContext.timeZone));
                     setActiveVariantIndex(0);
                 }}
-                onCreateCampaign={resetForm}
+                onCreateCampaign={() => { if (!readOnly) resetForm(); }}
                 onRefreshCampaigns={() => { void loadCampaigns(false); }}
                 isLoading={isLoading}
                 form={form}
             />
 
-            <div className="min-w-0 space-y-4">
+            <fieldset disabled={readOnly} className="min-w-0 space-y-4 border-0 p-0 m-0">
                 <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-4">
                     <div className="min-w-0 rounded-xl border bg-card p-3.5 shadow-[0_12px_24px_-20px_rgba(15,23,42,0.24)]">
                         <div className="flex items-center gap-2 text-muted-foreground">
@@ -803,7 +809,7 @@ export function BulkCampaignManagerPanel() {
                         </section>
                     </div>
                 </div>
-            </div>
+            </fieldset>
         </div>
     );
 }

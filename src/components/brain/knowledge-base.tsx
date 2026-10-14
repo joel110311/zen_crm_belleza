@@ -1,6 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import styles from "@/components/shared/management-workspace.module.css";
+import { useWorkspaceAccess } from "@/components/layout/workspace-access-context";
+import { useCompactWorkspace } from "@/components/shared/use-compact-workspace";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import { es } from "date-fns/locale";
 import { formatDistanceToNow } from "date-fns";
 import {
     Bot,
@@ -15,6 +20,7 @@ import {
     Trash2,
     Upload,
     Youtube,
+    X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -71,6 +77,10 @@ function statusBadge(status: string) {
 }
 
 export function KnowledgeBase() {
+    const { readOnly } = useWorkspaceAccess();
+    const compact = useCompactWorkspace();
+    const [adding, setAdding] = useState(false);
+    const [deleting, setDeleting] = useState<KnowledgeSource | null>(null);
     const [sources, setSources] = useState<KnowledgeSource[]>([]);
     const [sourceType, setSourceType] = useState("website");
     const [title, setTitle] = useState("");
@@ -89,15 +99,15 @@ export function KnowledgeBase() {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const { toast } = useToast();
 
-    const loadSources = () => {
+    const loadSources = useCallback(() => {
         startTransition(() => {
-            getKnowledgeSources().then((items) => setSources(items as KnowledgeSource[]));
+            return getKnowledgeSources().then((items) => setSources(items as KnowledgeSource[])).catch((error) => { toast({ title: "No se pudieron cargar las fuentes", description: error instanceof Error ? error.message : "Intenta de nuevo.", variant: "destructive" }); });
         });
-    };
+    }, [toast]);
 
     useEffect(() => {
         loadSources();
-    }, []);
+    }, [loadSources]);
 
     const selectedOption = SOURCE_OPTIONS.find((option) => option.value === sourceType) || SOURCE_OPTIONS[0];
     const SelectedIcon = selectedOption.icon;
@@ -148,6 +158,7 @@ export function KnowledgeBase() {
     };
 
     const handleCreate = () => {
+        if (readOnly || isPending) return;
         startTransition(async () => {
             const result = await createKnowledgeSource({
                 title: title.trim() || undefined,
@@ -163,6 +174,7 @@ export function KnowledgeBase() {
                     description: "La indexacion ya comenzo en segundo plano.",
                 });
                 resetForm();
+                setAdding(false);
                 loadSources();
             } else {
                 toast({
@@ -175,6 +187,7 @@ export function KnowledgeBase() {
     };
 
     const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+        if (readOnly || isPending) return;
         const file = event.target.files?.[0];
         if (!file) return;
 
@@ -189,6 +202,7 @@ export function KnowledgeBase() {
                     description: "El archivo ya se esta convirtiendo en conocimiento util.",
                 });
                 resetForm();
+                setAdding(false);
                 loadSources();
             } else {
                 toast({
@@ -201,6 +215,7 @@ export function KnowledgeBase() {
     };
 
     const handleReindex = (sourceId: string) => {
+        if (readOnly || isPending) return;
         startTransition(async () => {
             const result = await reindexKnowledgeSource(sourceId);
             if (!result.success) {
@@ -215,6 +230,7 @@ export function KnowledgeBase() {
     };
 
     const handleDelete = (sourceId: string) => {
+        if (readOnly || isPending) return;
         startTransition(async () => {
             const result = await deleteKnowledgeSource(sourceId);
             if (!result.success) {
@@ -224,6 +240,7 @@ export function KnowledgeBase() {
                     variant: "destructive",
                 });
             }
+            if (result.success) setDeleting(null);
             loadSources();
         });
     };
@@ -268,19 +285,7 @@ export function KnowledgeBase() {
         }
     };
 
-    return (
-        <div className="grid gap-6 lg:grid-cols-[360px_minmax(0,1fr)]">
-            <Card className="h-fit border-primary/20">
-                <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                        <SelectedIcon className="h-5 w-5 text-primary" />
-                        Nueva fuente
-                    </CardTitle>
-                    <CardDescription>
-                        Inspirado en Dialoqbase, pero enfocado al cerebro del CRM y las respuestas de WhatsApp.
-                    </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
+    const sourceFields = <fieldset disabled={readOnly || isPending} className={styles.editorFields} aria-label="Datos de la fuente">
                     <div className="space-y-2">
                         <Label>Tipo de fuente</Label>
                         <Select value={sourceType} onValueChange={setSourceType}>
@@ -299,9 +304,9 @@ export function KnowledgeBase() {
                     </div>
 
                     <div className="space-y-2">
-                        <Label>Titulo</Label>
+                        <Label htmlFor="knowledge-title">Titulo</Label>
                         <Input
-                            value={title}
+                            id="knowledge-title" value={title}
                             onChange={(event) => setTitle(event.target.value)}
                             placeholder="Nombre corto para ubicar esta fuente"
                         />
@@ -309,9 +314,9 @@ export function KnowledgeBase() {
 
                     {sourceType === "text" ? (
                         <div className="space-y-2">
-                            <Label>Contenido</Label>
+                            <Label htmlFor="knowledge-content">Contenido</Label>
                             <Textarea
-                                value={noteContent}
+                                id="knowledge-content" value={noteContent}
                                 onChange={(event) => setNoteContent(event.target.value)}
                                 placeholder={"Ejemplo:\nPulseras Glow Sync | Pulseras LED personalizadas | https://tu-cdn.com/pulsera-glow-sync.jpg"}
                                 className="min-h-[180px]"
@@ -325,9 +330,12 @@ export function KnowledgeBase() {
                             <Label>Archivo</Label>
                             <div
                                 className="rounded-xl border-2 border-dashed border-border p-6 text-center hover:bg-muted/40 transition-colors cursor-pointer"
-                                onClick={() => fileInputRef.current?.click()}
+                                role="button" tabIndex={readOnly || isPending ? -1 : 0} aria-label="Subir archivo de conocimiento" aria-disabled={readOnly || isPending}
+                                onKeyDown={(event) => { if (!readOnly && !isPending && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); fileInputRef.current?.click(); } }}
+                                onClick={() => { if (!readOnly && !isPending) fileInputRef.current?.click(); }}
                             >
                                 <input
+                                    disabled={readOnly || isPending}
                                     ref={fileInputRef}
                                     type="file"
                                     className="hidden"
@@ -343,9 +351,9 @@ export function KnowledgeBase() {
                         </div>
                     ) : (
                         <div className="space-y-2">
-                            <Label>URL o recurso</Label>
+                            <Label htmlFor="knowledge-url">URL o recurso</Label>
                             <Input
-                                value={sourceUri}
+                                id="knowledge-url" value={sourceUri}
                                 onChange={(event) => setSourceUri(event.target.value)}
                                 placeholder={
                                     sourceType === "github"
@@ -460,32 +468,36 @@ export function KnowledgeBase() {
                         </div>
                     ) : null}
 
-                    {sourceType !== "file" && (
-                        <Button onClick={handleCreate} className="w-full" disabled={isPending}>
+                    {sourceType !== "file" && !compact && (
+                        <Button onClick={handleCreate} className="w-full" disabled={isPending || readOnly}>
                             {isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                            Agregar al cerebro
+                            Agregar fuente
                         </Button>
                     )}
-                </CardContent>
-            </Card>
+    </fieldset>;
 
+    return (
+        <div className={styles.knowledge}>
+            {!compact && <Card className="h-fit border-primary/20"><CardHeader><CardTitle className="flex gap-2"><SelectedIcon className="size-5 text-primary" />Nueva fuente</CardTitle><CardDescription>Añade información para las respuestas del asistente.</CardDescription></CardHeader><CardContent>{sourceFields}</CardContent></Card>}
+            <Dialog open={compact && adding} onOpenChange={(open) => { if (!isPending) setAdding(open); }}><DialogContent className={styles.dialog} showCloseButton={false} onEscapeKeyDown={(event) => { if (isPending) event.preventDefault(); }} onInteractOutside={(event) => { if (isPending) event.preventDefault(); }}><Button variant="ghost" size="icon" aria-label="Cerrar fuente" className="absolute top-2 right-2" disabled={isPending} onClick={() => setAdding(false)}><X className="size-4" /></Button><DialogHeader className={styles.dialogHeader}><DialogTitle>Nueva fuente</DialogTitle><DialogDescription>Elige qué información podrá consultar el asistente.</DialogDescription></DialogHeader><div className={styles.dialogBody}>{sourceFields}</div><DialogFooter className={styles.dialogFooter}><Button variant="outline" disabled={isPending} onClick={() => setAdding(false)}>Volver</Button>{sourceType !== "file" && <Button disabled={readOnly || isPending} onClick={handleCreate}>Agregar fuente</Button>}</DialogFooter></DialogContent></Dialog>
+            <Dialog open={Boolean(deleting)} onOpenChange={(open) => { if (!open && !isPending) setDeleting(null); }}><DialogContent><DialogHeader><DialogTitle>Eliminar fuente</DialogTitle><DialogDescription>El asistente dejará de consultar «{deleting?.title}».</DialogDescription></DialogHeader><DialogFooter><Button variant="outline" disabled={isPending} onClick={() => setDeleting(null)}>Cancelar</Button><Button variant="destructive" disabled={readOnly || isPending} onClick={() => deleting && handleDelete(deleting.id)}>Eliminar</Button></DialogFooter></DialogContent></Dialog>
             <Card>
-                <CardHeader className="flex flex-row items-start justify-between gap-4">
+                <CardHeader className="flex flex-col sm:flex-row items-start justify-between gap-4">
                     <div>
                         <CardTitle>Fuentes indexadas</CardTitle>
                         <CardDescription>
                             Todo lo que el bot puede consultar antes de responder en WhatsApp.
                         </CardDescription>
                     </div>
-                    <Button variant="outline" size="sm" onClick={loadSources} disabled={isPending}>
+                    <div className="flex flex-wrap gap-2">{compact && <Button onClick={() => setAdding(true)} disabled={readOnly || isPending}>Nueva fuente</Button>}<Button variant="outline" size="sm" onClick={loadSources} disabled={isPending}>
                         <RefreshCw className={`mr-2 h-4 w-4 ${isPending ? "animate-spin" : ""}`} />
                         Actualizar
-                    </Button>
+                    </Button></div>
                 </CardHeader>
                 <CardContent>
                     {sources.length === 0 ? (
                         <div className="rounded-xl border border-dashed p-10 text-center text-muted-foreground">
-                            Todavia no hay fuentes. Agrega una URL, archivo o nota para alimentar el cerebro.
+                            Aún no hay fuentes. Añade un sitio, archivo o nota para el asistente.
                         </div>
                     ) : (
                         <div className="space-y-3">
@@ -504,7 +516,7 @@ export function KnowledgeBase() {
                                                 </div>
                                                 <div className="min-w-0">
                                                     <div className="flex flex-wrap items-center gap-2">
-                                                        <p className="font-medium text-foreground truncate">
+                                                        <p className="font-medium text-foreground break-words">
                                                             {source.title}
                                                         </p>
                                                         {statusBadge(source.status)}
@@ -522,13 +534,13 @@ export function KnowledgeBase() {
                                                     ) : null}
                                                     <p className="text-xs text-muted-foreground mt-2">
                                                         {source.syncedAt
-                                                            ? `Ultima indexacion ${formatDistanceToNow(new Date(source.syncedAt), { addSuffix: true })}`
-                                                            : `Actualizado ${formatDistanceToNow(new Date(source.updatedAt), { addSuffix: true })}`}
+                                                            ? `Ultima indexacion ${formatDistanceToNow(new Date(source.syncedAt), { addSuffix: true, locale: es })}`
+                                                            : `Actualizado ${formatDistanceToNow(new Date(source.updatedAt), { addSuffix: true, locale: es })}`}
                                                     </p>
                                                 </div>
                                             </div>
 
-                                            <div className="flex items-center gap-2 shrink-0">
+                                            <div className={styles.sourceActions}>
                                                 {source.type === "text" ? (
                                                     <Button
                                                         variant="outline"
@@ -548,7 +560,7 @@ export function KnowledgeBase() {
                                                     variant="outline"
                                                     size="sm"
                                                     onClick={() => handleReindex(source.id)}
-                                                    disabled={isPending}
+                                                    disabled={isPending || readOnly}
                                                 >
                                                     <RefreshCw className="mr-2 h-4 w-4" />
                                                     Reindexar
@@ -557,8 +569,9 @@ export function KnowledgeBase() {
                                                     variant="ghost"
                                                     size="icon"
                                                     className="text-destructive hover:text-destructive"
-                                                    onClick={() => handleDelete(source.id)}
-                                                    disabled={isPending}
+                                                    aria-label={`Eliminar fuente: ${source.title}`}
+                                                    onClick={() => setDeleting(source)}
+                                                    disabled={isPending || readOnly}
                                                 >
                                                     <Trash2 className="h-4 w-4" />
                                                 </Button>

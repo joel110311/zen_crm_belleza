@@ -1,5 +1,8 @@
 "use client";
 
+import { useCompactWorkspace } from "@/components/shared/use-compact-workspace";
+import styles from "@/components/shared/management-workspace.module.css";
+import { useWorkspaceAccess } from "@/components/layout/workspace-access-context";
 import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -12,6 +15,7 @@ import {
     DialogHeader,
     DialogTitle,
     DialogDescription,
+    DialogFooter,
 } from "@/components/ui/dialog";
 import {
     Select,
@@ -141,6 +145,7 @@ function extractVariables(text: string): string[] {
 
 /* ──────────────────── Main Page ──────────────────── */
 export function MetaTemplateRequestPanel() {
+    const { readOnly } = useWorkspaceAccess();
     const operationContext = useOperationContext();
     const [templates, setTemplates] = useState<Template[]>([]);
     const [search, setSearch] = useState("");
@@ -224,6 +229,7 @@ export function MetaTemplateRequestPanel() {
     }, [sendTemplateHeader, variableValues]);
 
     const handleSend = async () => {
+        if (readOnly || sending) return;
         if (!selectedTemplate || !phoneInput.trim()) return;
         setSending(true); setSendResult(null);
         try {
@@ -260,6 +266,7 @@ export function MetaTemplateRequestPanel() {
 
     /* ──── Delete ──── */
     const handleDelete = async (tpl: Template) => {
+        if (readOnly) return;
         if (!confirm(`¿Eliminar la plantilla "${tpl.name}"? Esta acción no se puede deshacer.`)) return;
         try {
             const res = await fetch(`/api/templates/meta?name=${encodeURIComponent(tpl.name)}`, { method: "DELETE" });
@@ -291,12 +298,12 @@ export function MetaTemplateRequestPanel() {
                         Gestiona, crea, visualiza y envia plantillas directamente con WhatsApp Cloud API
                     </p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                     <Button variant="outline" size="sm" onClick={fetchTemplates} disabled={loading}>
                         <RefreshCw className={`h-4 w-4 mr-1.5 ${loading ? "animate-spin" : ""}`} />
                         Actualizar
                     </Button>
-                    <Button onClick={() => setShowCreatePage(true)}>
+                    <Button disabled={readOnly} onClick={() => setShowCreatePage(true)}>
                         <Plus className="h-4 w-4 mr-1.5" />
                         Nueva plantilla
                     </Button>
@@ -312,8 +319,8 @@ export function MetaTemplateRequestPanel() {
             </div>
 
             {/* ═══ Search & Filters ═══ */}
-            <div className="flex flex-col sm:flex-row gap-3">
-                <div className="relative flex-1 max-w-sm">
+            <div className="flex flex-wrap gap-3">
+                <div className="relative min-w-[180px] flex-1">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input placeholder="Buscar por nombre o contenido..." className="pl-10" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
                 </div>
@@ -343,7 +350,7 @@ export function MetaTemplateRequestPanel() {
             {!loading && !error && (
                 <div className="bg-card border rounded-xl shadow-sm overflow-hidden">
                     <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
+                        <table className={`${styles.metaTable} text-sm`}>
                             <thead>
                                 <tr className="border-b bg-muted/30">
                                     <th className="text-left px-4 py-3 font-semibold text-muted-foreground">Nombre de la Plantilla</th>
@@ -365,17 +372,17 @@ export function MetaTemplateRequestPanel() {
                                 ) : (
                                     paged.map((t) => (
                                         <tr key={`${t.name}-${t.language}`} className="border-b last:border-0 hover:bg-muted/20 transition-colors">
-                                            <td className="px-4 py-3 font-medium text-foreground">{t.name}</td>
-                                            <td className="px-4 py-3 text-muted-foreground">{categoryLabel(t.category)}</td>
-                                            <td className="px-4 py-3 text-muted-foreground">{t.language}</td>
-                                            <td className="px-4 py-3">
+                                            <td data-label="Nombre" className="px-4 py-3 font-medium text-foreground">{t.name}</td>
+                                            <td data-label="Categoría" className="px-4 py-3 text-muted-foreground">{categoryLabel(t.category)}</td>
+                                            <td data-label="Idioma" className="px-4 py-3 text-muted-foreground">{t.language}</td>
+                                            <td data-label="Estado" className="px-4 py-3">
                                                 <Badge variant="outline" className={`text-[11px] font-semibold flex items-center gap-1 w-fit ${statusStyle(t.status)}`}>
                                                     {statusIcon(t.status)}
                                                     {statusLabel(t.status)}
                                                 </Badge>
                                             </td>
-                                            <td className="px-4 py-3 text-muted-foreground text-xs">{formatDate(t.updatedAt || t.createdAt, operationContext.locale, operationContext.timeZone)}</td>
-                                            <td className="px-4 py-3">
+                                            <td data-label="Actualizada" className="px-4 py-3 text-muted-foreground text-xs">{formatDate(t.updatedAt || t.createdAt, operationContext.locale, operationContext.timeZone)}</td>
+                                            <td data-label="Acciones" className="px-4 py-3">
                                                 <DropdownMenu>
                                                     <DropdownMenuTrigger asChild>
                                                         <Button variant="ghost" size="icon" className="h-8 w-8">
@@ -384,14 +391,14 @@ export function MetaTemplateRequestPanel() {
                                                     </DropdownMenuTrigger>
                                                     <DropdownMenuContent align="end">
                                                         {t.status === "APPROVED" && (
-                                                            <DropdownMenuItem onClick={() => { setSelectedTemplate(t); setSendOpen(true); setSendResult(null); setPhoneInput(""); }}>
+                                                            <DropdownMenuItem disabled={readOnly} onClick={() => { setSelectedTemplate(t); setSendOpen(true); setSendResult(null); setPhoneInput(""); }}>
                                                                 <Send className="h-4 w-4 mr-2" /> Enviar
                                                             </DropdownMenuItem>
                                                         )}
                                                         <DropdownMenuItem onClick={() => handleCopy(t)}>
                                                             <Copy className="h-4 w-4 mr-2" /> Copiar
                                                         </DropdownMenuItem>
-                                                        <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => handleDelete(t)}>
+                                                        <DropdownMenuItem disabled={readOnly} className="text-destructive focus:text-destructive" onClick={() => handleDelete(t)}>
                                                             <Trash2 className="h-4 w-4 mr-2" /> Eliminar
                                                         </DropdownMenuItem>
                                                     </DropdownMenuContent>
@@ -406,22 +413,22 @@ export function MetaTemplateRequestPanel() {
 
                     {/* Pagination */}
                     {filtered.length > 0 && (
-                        <div className="flex items-center justify-between px-4 py-3 border-t bg-muted/10 text-sm">
+                        <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-t bg-muted/10 text-sm">
                             <span className="text-muted-foreground">
                                 Total {filtered.length} plantillas
                             </span>
-                            <div className="flex items-center gap-3">
+                            <div className="flex flex-wrap items-center gap-3">
                                 <Badge variant="outline" className="font-mono text-xs">{page}</Badge>
                                 <div className="flex gap-1">
-                                    <Button variant="ghost" size="icon" className="h-7 w-7" disabled={page <= 1} onClick={() => setPage(page - 1)}>
+                                    <Button variant="ghost" size="icon" className="h-11 w-11" disabled={page <= 1} onClick={() => setPage(page - 1)}>
                                         <ChevronLeft className="h-4 w-4" />
                                     </Button>
-                                    <Button variant="ghost" size="icon" className="h-7 w-7" disabled={page >= totalPages} onClick={() => setPage(page + 1)}>
+                                    <Button variant="ghost" size="icon" className="h-11 w-11" disabled={page >= totalPages} onClick={() => setPage(page + 1)}>
                                         <ChevronRight className="h-4 w-4" />
                                     </Button>
                                 </div>
                                 <Select value={String(perPage)} onValueChange={(v) => { setPerPage(Number(v)); setPage(1); }}>
-                                    <SelectTrigger className="h-7 w-[90px] text-xs"><SelectValue /></SelectTrigger>
+                                    <SelectTrigger className="h-11 w-[100px] text-xs"><SelectValue /></SelectTrigger>
                                     <SelectContent>
                                         <SelectItem value="10">10 / pág</SelectItem>
                                         <SelectItem value="20">20 / pág</SelectItem>
@@ -436,7 +443,7 @@ export function MetaTemplateRequestPanel() {
 
             {/* ═══ Send Modal — Full Variable Config ═══ */}
             <Dialog open={sendOpen} onOpenChange={(v) => { setSendOpen(v); if (!v) { setVariableValues({}); setSendResult(null); setPhoneInput(""); } }}>
-                <DialogContent className="sm:max-w-3xl max-h-[85vh] flex flex-col p-0 gap-0 overflow-hidden">
+                <DialogContent className={styles.dialog}>
                     <DialogHeader className="px-6 pt-5 pb-4 border-b shrink-0">
                         <DialogTitle className="flex items-center gap-2"><MessageSquare className="h-5 w-5 text-primary" /> Enviar plantilla</DialogTitle>
                         <DialogDescription>{selectedTemplate?.name} · {selectedTemplate?.language}</DialogDescription>
@@ -506,7 +513,7 @@ export function MetaTemplateRequestPanel() {
                     {/* Bottom actions */}
                     <div className="border-t px-6 py-4 flex justify-end gap-3 shrink-0">
                         <Button variant="outline" onClick={() => setSendOpen(false)}>Cancelar</Button>
-                        <Button onClick={handleSend} disabled={sending || !phoneInput.trim() || (sendAllVars.length > 0 && sendAllVars.some((v) => !variableValues[v]?.trim()))}>
+                        <Button onClick={handleSend} disabled={readOnly || sending || !phoneInput.trim() || (sendAllVars.length > 0 && sendAllVars.some((v) => !variableValues[v]?.trim()))}>
                             {sending ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Enviando...</> : <><Send className="h-4 w-4 mr-2" />Confirmar envío</>}
                         </Button>
                     </div>
@@ -530,6 +537,9 @@ function StatCard({ label, value, color }: { label: string; value: number; color
    CREATE TEMPLATE — Full-page multi-step flow
    ══════════════════════════════════════════════════════════════ */
 function CreateTemplatePage({ onBack, wabaId }: { onBack: () => void; wabaId: string }) {
+    const compact = useCompactWorkspace();
+    const [predefinedPreview, setPredefinedPreview] = useState(false);
+    const { readOnly } = useWorkspaceAccess();
     const operationContext = useOperationContext();
 
     // Step: "method" | "editor"
@@ -589,6 +599,7 @@ function CreateTemplatePage({ onBack, wabaId }: { onBack: () => void; wabaId: st
 
     // Submit
     const handleCreate = async () => {
+        if (readOnly || saving) return;
         if (!name.trim() || !bodyText.trim() || nameError) return;
         if (!wabaId.trim()) { setError("No se detecto el WABA ID. Conecta primero WhatsApp API y actualiza la lista."); return; }
         setSaving(true); setError(null);
@@ -790,17 +801,7 @@ function CreateTemplatePage({ onBack, wabaId }: { onBack: () => void; wabaId: st
         const selBody = sel?.components.find(c => c.type === "BODY")?.text || "";
         const selFooter = sel?.components.find(c => c.type === "FOOTER")?.text || "";
         const selButtons = sel?.components.find(c => c.type === "BUTTONS")?.buttons || [];
-        return (
-            <div className="space-y-4">
-                <div className="flex items-center gap-3">
-                    <Button variant="ghost" size="icon" onClick={onBack}><ArrowLeft className="h-5 w-5" /></Button>
-                    <h1 className="text-xl font-bold text-foreground">Agregar plantilla</h1>
-                </div>
-                <Separator />
-
-                <div className="flex gap-6 min-h-[calc(100vh-220px)]">
-                    {/* ── LEFT: Filters ── */}
-                    <div className="w-[260px] shrink-0 space-y-5 pr-4 border-r overflow-y-auto">
+        const libraryFilters = <div className="min-w-0 space-y-5">
                         <div className="relative">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                             <Input
@@ -861,7 +862,7 @@ function CreateTemplatePage({ onBack, wabaId }: { onBack: () => void; wabaId: st
                             </div>
                         </div>
 
-                        <div className="space-y-2 pt-2">
+                        <div className="hidden xl:block space-y-2 pt-2">
                             <Button className="w-full gap-2" onClick={() => setStep("editor")}>
                                 <Plus className="h-4 w-4" /> Crear Plantilla
                             </Button>
@@ -869,11 +870,53 @@ function CreateTemplatePage({ onBack, wabaId }: { onBack: () => void; wabaId: st
                                 <RefreshCw className="h-4 w-4" /> Sincronizar
                             </Button>
                         </div>
-                    </div>
+                    </div>;
+        const libraryPreview = <div className={styles.metaPreview}>
+                        {sel ? (
+                            <div className="sticky top-0 space-y-4">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <p className="text-sm font-bold text-foreground">{sel.name}</p>
+                                        <Badge variant="outline" className="text-[10px] mt-1">Ejemplo</Badge>
+                                    </div>
+                                    <Badge className="bg-muted text-muted-foreground text-[10px]">{sel.category === "UTILITY" ? "Utilidad" : sel.category === "MARKETING" ? "Marketing" : "Autenticación"}</Badge>
+                                </div>
+                                <PhonePreview
+                                    header={selHeader}
+                                    body={selBody}
+                                    footer={selFooter}
+                                    buttons={selButtons}
+                                    variableSamples={{}}
+                                />
+                                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                                    <span>{categoryLabel(sel.category)}</span>
+                                    <span>ES</span>
+                                </div>
+                                <Button className={`w-full gap-2 ${compact ? "hidden" : ""}`} disabled={readOnly} onClick={() => { setPredefinedPreview(false); if (sel) handleUseTemplate(PREDEFINED_TEMPLATES.findIndex(t => t.name === sel.name)); }}>
+                                    Usar esta plantilla
+                                </Button>
+                            </div>
+                        ) : (
+                            <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground gap-3">
+                                <Eye className="h-10 w-10 opacity-40" />
+                                <p className="text-sm">Selecciona una plantilla para ver la vista previa</p>
+                            </div>
+                        )}
+                    </div>;
+        return (
+            <div className="space-y-4">
+                <div className="flex flex-wrap items-center gap-3">
+                    <Button aria-label="Volver a plantillas" variant="ghost" size="icon" onClick={onBack}><ArrowLeft className="h-5 w-5" /></Button>
+                    <h2 className="text-xl font-bold text-foreground">Agregar plantilla</h2><Button className="ml-auto shrink-0" disabled={readOnly} onClick={() => setStep("editor")}>Crear</Button>
+                </div>
+                <Separator />
 
+                <div className={styles.metaLibrary}>
+                    {/* ── LEFT: Filters ── */}
+                    {compact ? <details className={styles.section}><summary>Buscar y filtrar plantillas</summary><div className="p-4">{libraryFilters}</div></details> : libraryFilters}
                     {/* ── CENTER: Template Grid ── */}
                     <div className="flex-1 min-w-0 overflow-y-auto">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+                        <div className={styles.metaPresets}>
                             {filteredPredefined.map((tpl) => {
                                 const header = tpl.components.find(c => c.type === "HEADER")?.text || "";
                                 const body = tpl.components.find(c => c.type === "BODY")?.text || "";
@@ -882,7 +925,7 @@ function CreateTemplatePage({ onBack, wabaId }: { onBack: () => void; wabaId: st
                                 return (
                                     <button
                                         key={tpl.name}
-                                        onClick={() => setSelectedPredefined(tpl.name)}
+                                        aria-label={`Previsualizar plantilla: ${tpl.name}`} onClick={() => { setSelectedPredefined(tpl.name); if (compact) setPredefinedPreview(true); }}
                                         className={`text-left rounded-xl border-2 transition-all hover:shadow-md overflow-hidden ${selectedPredefined === tpl.name
                                             ? "border-primary shadow-md"
                                             : "border-border hover:border-primary/30"
@@ -925,38 +968,8 @@ function CreateTemplatePage({ onBack, wabaId }: { onBack: () => void; wabaId: st
                     </div>
 
                     {/* ── RIGHT: WhatsApp Preview ── */}
-                    <div className="w-[340px] shrink-0 pl-4 border-l">
-                        {sel ? (
-                            <div className="sticky top-0 space-y-4">
-                                <div className="flex items-center justify-between">
-                                    <div>
-                                        <p className="text-sm font-bold text-foreground">{sel.name}</p>
-                                        <Badge variant="outline" className="text-[10px] mt-1">Ejemplo</Badge>
-                                    </div>
-                                    <Badge className="bg-muted text-muted-foreground text-[10px]">{sel.category === "UTILITY" ? "Utilidad" : sel.category === "MARKETING" ? "Marketing" : "Autenticación"}</Badge>
-                                </div>
-                                <PhonePreview
-                                    header={selHeader}
-                                    body={selBody}
-                                    footer={selFooter}
-                                    buttons={selButtons}
-                                    variableSamples={{}}
-                                />
-                                <div className="flex items-center justify-between text-xs text-muted-foreground">
-                                    <span>{categoryLabel(sel.category)}</span>
-                                    <span>ES</span>
-                                </div>
-                                <Button className="w-full gap-2" onClick={() => { if (sel) handleUseTemplate(PREDEFINED_TEMPLATES.findIndex(t => t.name === sel.name)); }}>
-                                    Usar esta plantilla
-                                </Button>
-                            </div>
-                        ) : (
-                            <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground gap-3">
-                                <Eye className="h-10 w-10 opacity-40" />
-                                <p className="text-sm">Selecciona una plantilla para ver la vista previa</p>
-                            </div>
-                        )}
-                    </div>
+                    {!compact && libraryPreview}
+                    <Dialog open={compact && predefinedPreview} onOpenChange={setPredefinedPreview}><DialogContent className={styles.dialog} showCloseButton={false}><DialogHeader className={styles.dialogHeader}><DialogTitle>Vista previa</DialogTitle><DialogDescription>Revisa el mensaje antes de usarlo como base.</DialogDescription></DialogHeader><div className={styles.dialogBody}>{libraryPreview}</div><DialogFooter className={styles.dialogFooter}><Button variant="outline" onClick={() => setPredefinedPreview(false)}>Volver</Button><Button disabled={readOnly} onClick={() => { if (sel) { handleUseTemplate(PREDEFINED_TEMPLATES.findIndex(t => t.name === sel.name)); setPredefinedPreview(false); } }}>Usar plantilla</Button></DialogFooter></DialogContent></Dialog>
                 </div>
             </div>
         );
@@ -966,20 +979,20 @@ function CreateTemplatePage({ onBack, wabaId }: { onBack: () => void; wabaId: st
     return (
         <div className="space-y-5">
             {/* Top bar */}
-            <div className="flex items-center gap-3">
-                <Button variant="ghost" size="icon" onClick={() => setStep("method")}><ArrowLeft className="h-5 w-5" /></Button>
-                <h1 className="text-xl font-bold text-foreground">Nueva Plantilla de Mensaje</h1>
+            <div className="flex flex-wrap items-center gap-3">
+                <Button aria-label="Volver a la biblioteca" variant="ghost" size="icon" onClick={() => setStep("method")}><ArrowLeft className="h-5 w-5" /></Button>
+                <h2 className="text-xl font-bold text-foreground">Nueva plantilla</h2>
             </div>
             <Separator />
 
-            <div className="flex flex-col lg:flex-row gap-6">
+            <div className="flex flex-col xl:flex-row gap-6">
                 {/* ──── LEFT: Form ──── */}
                 <div className="flex-1 space-y-6 min-w-0">
                     {/* Name + Category */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div className="space-y-1.5">
                             <div className="flex items-center gap-1.5">
-                                <Label>Nombre de la plantilla</Label>
+                                <Label htmlFor="meta-template-name">Nombre de la plantilla</Label>
                                 <span className="relative group">
                                     <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
                                     <span className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 bg-popover border text-popover-foreground text-xs rounded-lg px-3 py-2 w-64 hidden group-hover:block shadow-lg z-50">
@@ -989,7 +1002,7 @@ function CreateTemplatePage({ onBack, wabaId }: { onBack: () => void; wabaId: st
                             </div>
                             <div className="relative">
                                 <Input
-                                    placeholder="recordatorio_cita"
+                                    id="meta-template-name" placeholder="recordatorio_cita"
                                     value={name}
                                     onChange={(e) => setName(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))}
                                     maxLength={512}
@@ -1050,7 +1063,7 @@ function CreateTemplatePage({ onBack, wabaId }: { onBack: () => void; wabaId: st
                         </Select>
                         {headerType === "text" && (
                             <div className="flex items-center gap-2">
-                                <Input placeholder="Ej: Clínica ZenMedix" value={headerText} onChange={(e) => setHeaderText(e.target.value)} className="flex-1" />
+                                <Input aria-label="Texto del encabezado" placeholder="Ej: Mi negocio" value={headerText} onChange={(e) => setHeaderText(e.target.value)} className="flex-1" />
                                 <Button variant="outline" size="sm" onClick={() => setHeaderText(headerText + " {{nombre}}")}>
                                     <Variable className="h-3.5 w-3.5 mr-1" /> Variables
                                 </Button>
@@ -1061,30 +1074,30 @@ function CreateTemplatePage({ onBack, wabaId }: { onBack: () => void; wabaId: st
                     {/* Body */}
                     <div className="space-y-3">
                         <div className="flex items-center gap-1.5">
-                            <Label>Cuerpo (Requerido)</Label>
+                            <Label htmlFor="meta-template-body">Cuerpo (Requerido)</Label>
                             <Info className="h-3.5 w-3.5 text-muted-foreground" />
                         </div>
                         {/* Toolbar */}
-                        <div className="flex items-center gap-1 border rounded-t-lg px-2 py-1.5 bg-muted/20 border-b-0">
-                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { if (bodyRef.current) { const s = bodyRef.current.selectionStart; const e = bodyRef.current.selectionEnd; const sel = bodyText.slice(s, e); setBodyText(bodyText.slice(0, s) + `*${sel}*` + bodyText.slice(e)); } }} title="Negrita">
+                        <div className="flex flex-wrap items-center gap-1 border rounded-t-lg px-2 py-1.5 bg-muted/20 border-b-0">
+                            <Button variant="ghost" size="icon" className="h-11 w-11" onClick={() => { if (bodyRef.current) { const s = bodyRef.current.selectionStart; const e = bodyRef.current.selectionEnd; const sel = bodyText.slice(s, e); setBodyText(bodyText.slice(0, s) + `*${sel}*` + bodyText.slice(e)); } }} title="Negrita">
                                 <Bold className="h-3.5 w-3.5" />
                             </Button>
-                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { if (bodyRef.current) { const s = bodyRef.current.selectionStart; const e = bodyRef.current.selectionEnd; const sel = bodyText.slice(s, e); setBodyText(bodyText.slice(0, s) + `_${sel}_` + bodyText.slice(e)); } }} title="Cursiva">
+                            <Button variant="ghost" size="icon" className="h-11 w-11" onClick={() => { if (bodyRef.current) { const s = bodyRef.current.selectionStart; const e = bodyRef.current.selectionEnd; const sel = bodyText.slice(s, e); setBodyText(bodyText.slice(0, s) + `_${sel}_` + bodyText.slice(e)); } }} title="Cursiva">
                                 <Italic className="h-3.5 w-3.5" />
                             </Button>
-                            <Button variant="ghost" size="icon" className="h-7 w-7" title="Emoji">
+                            <Button variant="ghost" size="icon" className="h-11 w-11" title="Emoji">
                                 <Smile className="h-3.5 w-3.5" />
                             </Button>
-                            <Button variant="ghost" size="icon" className="h-7 w-7" title="Código">
+                            <Button variant="ghost" size="icon" className="h-11 w-11" title="Código">
                                 <Code className="h-3.5 w-3.5" />
                             </Button>
                             <Separator orientation="vertical" className="h-5 mx-1" />
-                            <Button variant="ghost" size="sm" className="h-7 text-xs gap-1" onClick={() => insertVariable()}>
+                            <Button variant="ghost" size="sm" className="min-h-11 text-xs gap-1" onClick={() => insertVariable()}>
                                 <Plus className="h-3 w-3" /> Variables
                             </Button>
                         </div>
                         <Textarea
-                            ref={bodyRef}
+                            id="meta-template-body" ref={bodyRef}
                             placeholder="¡Hola {{nombre}}! 👋&#10;&#10;Recordatorio: Tu cita es el día de hoy en el siguiente horario:&#10;&#10;📅 {{fecha_y_hora}}&#10;📍 Villa de Coss 118, Villas de Santa Julia, Leon, Guanajuato.&#10;&#10;¿Confirmas tu asistencia?"
                             value={bodyText}
                             onChange={(e) => setBodyText(e.target.value)}
@@ -1172,17 +1185,18 @@ function CreateTemplatePage({ onBack, wabaId }: { onBack: () => void; wabaId: st
                     {error && <div className="bg-destructive/10 border border-destructive/20 rounded-xl p-3 text-destructive text-sm">{error}</div>}
                     {success && <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3 text-emerald-600 text-sm">✅ Plantilla creada — enviada a revisión de Meta.</div>}
 
+                    {!wabaId.trim() && <p className="rounded-lg border bg-muted/20 p-3 text-sm text-muted-foreground">Conecta WhatsApp API para enviar esta plantilla a revisión.</p>}
                     {/* Submit */}
-                    <div className="flex gap-3 pt-2">
+                    <div className="flex flex-wrap gap-3 pt-2">
                         <Button variant="outline" onClick={() => setStep("method")}>Cancelar</Button>
-                        <Button onClick={handleCreate} disabled={saving || !name.trim() || !bodyText.trim() || !!nameError}>
+                        <Button className="min-h-11 h-auto whitespace-normal" onClick={handleCreate} disabled={readOnly || saving || !wabaId.trim() || !name.trim() || !bodyText.trim() || !!nameError}>
                             {saving ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Enviando...</> : "Enviar a revisión de Meta"}
                         </Button>
                     </div>
                 </div>
 
                 {/* ──── RIGHT: Phone Preview ──── */}
-                <div className="lg:w-[320px] shrink-0 hidden lg:block">
+                <div className="w-full xl:w-[320px] shrink-0">
                     <div className="sticky top-4">
                         <PhonePreview
                             header={previewHeader}
@@ -1268,7 +1282,7 @@ function PhonePreview({
     };
 
     return (
-        <div className="relative overflow-hidden rounded-[2rem] border-4 border-black bg-black shadow-2xl" style={{ width: 290 }}>
+        <div className="relative overflow-hidden rounded-[2rem] border-4 border-black bg-black shadow-2xl" style={{ width: "100%", maxWidth: 290 }}>
             {/* Status bar */}
             <div className="bg-teal-700 px-4 pt-2 pb-0.5 flex items-center justify-between text-white text-[10px]">
                 <span>9:41</span>

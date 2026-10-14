@@ -1,5 +1,9 @@
 "use client";
 
+import styles from "@/components/shared/management-workspace.module.css";
+import { useWorkspaceAccess } from "@/components/layout/workspace-access-context";
+import { useSession } from "next-auth/react";
+import { hasPermission, type AccessSubject } from "@/lib/permissions";
 import { useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
 import { Bot, Loader2, MessagesSquare, RotateCcw, Save, SearchCheck, SlidersHorizontal } from "lucide-react";
@@ -55,6 +59,10 @@ type BrainFormState = {
 };
 
 export default function BrainConfigPage() {
+    const { readOnly } = useWorkspaceAccess();
+    const { data: session, status } = useSession();
+    const hasAccess = hasPermission(session?.user as AccessSubject | undefined, "ai.manage");
+    const canWrite = hasAccess && !readOnly;
     const pathname = usePathname();
     const isTenantWorkspace = /^\/t\/[^/]+(?:\/|$)/.test(pathname);
     const [isLoading, setIsLoading] = useState(true);
@@ -132,6 +140,7 @@ export default function BrainConfigPage() {
         && JSON.stringify(currentFormState) !== JSON.stringify(savedFormState);
 
     useEffect(() => {
+        if (status === "loading" || !hasAccess) return;
         const loadSettings = async () => {
             try {
                 const settings = await getSystemSettings();
@@ -173,7 +182,7 @@ export default function BrainConfigPage() {
         };
 
         loadSettings();
-    }, []);
+    }, [status, hasAccess]);
 
     useEffect(() => {
         if (!isLoading && savedFormState === null) {
@@ -207,6 +216,7 @@ export default function BrainConfigPage() {
     };
 
     const handleSave = async () => {
+        if (!canWrite || isSaving) return;
         const formStateBeingSaved = currentFormState;
         setIsSaving(true);
         try {
@@ -256,7 +266,7 @@ export default function BrainConfigPage() {
             setSavedFormState(formStateBeingSaved);
 
             toast({
-                title: "Cerebro actualizado",
+                title: "Asistente IA actualizado",
                 description: "El agente ya usara esta configuracion en WhatsApp.",
             });
         } catch (error) {
@@ -298,7 +308,9 @@ export default function BrainConfigPage() {
         setEscalationPhone(savedFormState.escalationPhone);
     };
 
-    if (isLoading) {
+    if (status !== "loading" && !hasAccess) return <div className={styles.workspace}><div className={styles.heading}><h1>Asistente IA</h1></div><p className={styles.readonly}>Tu rol no tiene permiso para gestionar el asistente.</p></div>;
+
+    if (isLoading || status === "loading") {
         return (
             <div className="flex h-full items-center justify-center">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -312,29 +324,22 @@ export default function BrainConfigPage() {
         businessWeeklySchedule,
     });
     return (
-        <div className={`mx-auto flex h-full max-w-[1280px] flex-col gap-4 ${isDirty ? "pb-28" : ""}`}>
-            <div className="flex flex-col gap-4 rounded-xl border bg-card px-5 py-4 shadow-[0_12px_28px_-22px_rgba(15,23,42,0.25)] lg:flex-row lg:items-center lg:justify-between">
-                <div className="space-y-2">
-                    <h1 className="inline-flex items-center gap-3 rounded-lg bg-primary px-4 py-2.5 text-xl font-semibold tracking-tight text-primary-foreground sm:text-2xl">
-                        <Bot className="size-6 shrink-0" aria-hidden="true" />
-                        Asistente IA
-                    </h1>
-                    <p className="text-sm leading-6 text-muted-foreground">
-                        Aquí se concentra la lógica del agente, sus fuentes y el contexto que usará para contestar en WhatsApp.
-                    </p>
-                </div>
-
+        <div className={`${styles.workspace} ${isDirty ? "pb-40" : ""}`} data-management-workspace="brain">
+            <div className={styles.heading}>
+                <div><h1><Bot className="size-6 text-primary" aria-hidden="true" />Asistente IA</h1>
+                <p>Define cómo responde, corrige sus respuestas y prueba antes de activar.</p></div>
+                <div className="rounded-lg border bg-card px-3 py-2"><ChatbotUsageCounter /></div>
             </div>
-
+            {readOnly && <p className={styles.readonly}>Solo lectura: puedes consultar tu configuración, FAQs y fuentes. Reactiva tu plan para modificar el asistente.</p>}
             <Tabs defaultValue="config" className="flex-1">
-                <TabsList className="grid h-auto w-full max-w-[760px] grid-cols-2 gap-2 rounded-xl border bg-card p-1.5 shadow-[0_12px_24px_-20px_rgba(15,23,42,0.22)] sm:grid-cols-4">
-                    <TabsTrigger value="config" className="min-w-0 h-10 rounded-lg border border-transparent bg-background px-2 text-[13px] font-semibold leading-tight text-foreground/75 data-[state=active]:border-primary/30 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-[0_14px_28px_-18px_rgba(37,99,235,0.72)] sm:h-11 sm:px-4 sm:text-sm">Configuracion</TabsTrigger>
-                    <TabsTrigger value="knowledge" className="min-w-0 h-10 rounded-lg border border-transparent bg-background px-2 text-[13px] font-semibold leading-tight text-foreground/75 data-[state=active]:border-primary/30 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-[0_14px_28px_-18px_rgba(37,99,235,0.72)] sm:h-11 sm:px-4 sm:text-sm">Conocimiento</TabsTrigger>
-                    <TabsTrigger value="test" className="min-w-0 h-10 rounded-lg border border-transparent bg-background px-2 text-[13px] font-semibold leading-tight text-foreground/75 data-[state=active]:border-primary/30 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-[0_14px_28px_-18px_rgba(37,99,235,0.72)] sm:h-11 sm:px-4 sm:text-sm">Probar agente</TabsTrigger>
-                    <TabsTrigger value="trained-faqs" className="h-10 rounded-lg bg-background px-2 text-[13px] font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground sm:h-11 sm:text-sm">FAQs entrenadas</TabsTrigger>
+                <TabsList className={styles.tabs}>
+                    <TabsTrigger value="config" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">Ajustes</TabsTrigger>
+                    <TabsTrigger value="knowledge" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">Fuentes</TabsTrigger>
+                    <TabsTrigger value="test" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">Probar</TabsTrigger>
+                    <TabsTrigger value="trained-faqs" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">FAQs</TabsTrigger>
                 </TabsList>
 
-                <TabsContent value="config" className="mt-4 space-y-5 sm:mt-5">
+                <TabsContent value="config" className="mt-0"><fieldset disabled={!canWrite || isSaving} className={styles.config} aria-label="Configuración del asistente">
                     <Card className="border-primary/20 bg-primary/5">
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2">
@@ -342,7 +347,7 @@ export default function BrainConfigPage() {
                                 Autopiloto del agente
                             </CardTitle>
                             <CardDescription>
-                                Activa o pausa las respuestas automaticas. Si esta apagado, el CRM seguira recibiendo mensajes pero no respondera solo.
+                                Activa las respuestas automáticas o deja la atención a tu equipo.
                             </CardDescription>
                         </CardHeader>
                         <CardContent>
@@ -351,11 +356,11 @@ export default function BrainConfigPage() {
                                     <div>
                                         <Label htmlFor="bot-enabled" className="text-base font-medium">Responder automaticamente</Label>
                                         <p className="text-sm text-muted-foreground mt-1">
-                                            Usa el historial del contacto y la base de conocimiento antes de responder por WhatsApp.
+                                            Consulta las FAQs, el historial y tus fuentes antes de responder.
                                         </p>
-                                        <div className="mt-2"><ChatbotUsageCounter /></div>
+
                                     </div>
-                                    <Switch
+                                    <Switch disabled={!canWrite || isSaving}
                                         id="bot-enabled"
                                         checked={isBotEnabled}
                                         onCheckedChange={setIsBotEnabled}
@@ -366,10 +371,10 @@ export default function BrainConfigPage() {
                                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                         <div>
                                             <Label className="text-base font-medium">
-                                                Pacing humano del bot
+                                                Tiempo de respuesta
                                             </Label>
                                             <p className="mt-1 text-sm text-muted-foreground">
-                                                Despues de preparar la respuesta, el agente espera un tiempo aleatorio antes de enviarla para evitar un patron rigido.
+                                                Pausa entre 4 segundos y el máximo elegido antes de enviar.
                                             </p>
                                         </div>
                                         <span className="rounded-full border px-3 py-1 text-sm font-semibold text-foreground">
@@ -396,7 +401,7 @@ export default function BrainConfigPage() {
                                     </div>
 
                                     <p className="mt-4 text-xs text-muted-foreground">
-                                        Recomendado: 4 a 8 segundos para respuestas normales; usa 4 a 16 segundos si quieres una cadencia mas variable.
+                                        Recomendado: de 4 a 8 segundos.
                                     </p>
                                 </div>
 
@@ -408,10 +413,10 @@ export default function BrainConfigPage() {
                                                 Agrupar mensajes consecutivos
                                             </Label>
                                             <p className="mt-1 text-sm text-muted-foreground">
-                                                Reinicia la espera con cada mensaje y envia todo el bloque a la IA para generar una sola respuesta.
+                                                Espera a que el cliente termine de escribir y contesta en una sola respuesta.
                                             </p>
                                         </div>
-                                        <Switch
+                                        <Switch disabled={!canWrite || isSaving}
                                             id="message-batching-enabled"
                                             checked={messageBatchingEnabled}
                                             onCheckedChange={setMessageBatchingEnabled}
@@ -458,13 +463,13 @@ export default function BrainConfigPage() {
                             </CardHeader>
                             <CardContent className="space-y-4">
                                 <div className="space-y-2">
-                                    <Label>Nombre del agente</Label>
-                                    <Input value={agentName} onChange={(event) => setAgentName(event.target.value)} />
+                                    <Label htmlFor="agent-name">Nombre del agente</Label>
+                                    <Input id="agent-name" value={agentName} onChange={(event) => setAgentName(event.target.value)} />
                                 </div>
                                 <div className="space-y-2">
-                                    <Label>Personalidad e instrucciones adicionales</Label>
+                                    <Label htmlFor="agent-prompt">Personalidad e instrucciones adicionales</Label>
                                     <Textarea
-                                        value={agentPrompt}
+                                        id="agent-prompt" value={agentPrompt}
                                         onChange={(event) => setAgentPrompt(event.target.value)}
                                         className="min-h-[180px] text-sm"
                                         placeholder="Opcional: indica el tono, forma de hablar o reglas especiales de atención."
@@ -547,18 +552,18 @@ export default function BrainConfigPage() {
                         </Card> : null}
                     </div>
 
-                    <Card>
+                    <details className={styles.section}><summary>Bienvenida automática</summary><Card className="border-0">
                         <CardHeader>
                             <CardTitle>Bienvenida automatica</CardTitle>
                             <CardDescription>
-                                Este mensaje lo envia la IA automaticamente. No depende de <span className="font-medium text-foreground">Plantillas</span>, que siguen siendo respuestas rapidas manuales para el inbox.
+                                Saludo automático al iniciar una conversación. Las respuestas guardadas de Plantillas se envían manualmente desde Chats.
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
                             <div className="space-y-2">
-                                <Label>Mensaje de bienvenida</Label>
+                                <Label htmlFor="welcome-message">Mensaje de bienvenida</Label>
                                 <Textarea
-                                    value={welcomeMessage}
+                                    id="welcome-message" value={welcomeMessage}
                                     onChange={(event) => setWelcomeMessage(event.target.value)}
                                     className="min-h-[120px]"
                                     placeholder="👋 ¡Hola! Gracias por contactarnos..."
@@ -568,9 +573,9 @@ export default function BrainConfigPage() {
                                 </p>
                             </div>
                             <div className="space-y-2">
-                                <Label>Volver a enviar bienvenida despues de</Label>
+                                <Label htmlFor="welcome-repeat">Volver a enviar bienvenida despues de</Label>
                                 <Input
-                                    value={welcomeRepeatHours}
+                                    id="welcome-repeat" value={welcomeRepeatHours}
                                     onChange={(event) => setWelcomeRepeatHours(event.target.value)}
                                     inputMode="numeric"
                                     placeholder="24"
@@ -580,9 +585,9 @@ export default function BrainConfigPage() {
                                 </p>
                             </div>
                         </CardContent>
-                    </Card>
+                    </Card></details>
 
-                    <Card>
+                    <details className={styles.section}><summary>Atención humana</summary><Card className="border-0">
                         <CardHeader>
                             <CardTitle>Escalacion humana</CardTitle>
                             <CardDescription>
@@ -599,7 +604,7 @@ export default function BrainConfigPage() {
                                         Se activa cuando el bot responde que no tiene informacion fiable o suficiente para contestar con seguridad.
                                     </p>
                                 </div>
-                                <Switch
+                                <Switch disabled={!canWrite || isSaving}
                                     id="escalation-enabled"
                                     checked={escalationEnabled}
                                     onCheckedChange={setEscalationEnabled}
@@ -618,9 +623,9 @@ export default function BrainConfigPage() {
                                 </p>
                             </div>
                         </CardContent>
-                    </Card>
+                    </Card></details>
 
-                    <Card>
+                    <details className={styles.section}><summary>Seguimiento de clientes</summary><Card className="border-0">
                         <CardHeader>
                             <CardTitle>Scoring y captura del lead</CardTitle>
                             <CardDescription>
@@ -638,7 +643,7 @@ export default function BrainConfigPage() {
                                             El bot calcula interés con los mensajes del mismo día. Al cruzar el umbral mueve el lead a <span className="font-medium text-foreground">Calificado</span>.
                                         </p>
                                     </div>
-                                    <Switch
+                                    <Switch disabled={!canWrite || isSaving}
                                         id="lead-scoring-enabled"
                                         checked={leadScoringEnabled}
                                         onCheckedChange={setLeadScoringEnabled}
@@ -655,7 +660,7 @@ export default function BrainConfigPage() {
 
                                     <div className="mt-4 space-y-3">
                                         <label className="flex items-start gap-3 rounded-xl border border-border/60 bg-muted/20 px-3 py-3 transition-colors hover:bg-muted/35">
-                                            <Checkbox
+                                            <Checkbox disabled={!canWrite || isSaving}
                                                 checked={captureLeadName}
                                                 onCheckedChange={(checked) => setCaptureLeadName(Boolean(checked))}
                                                 className="mt-0.5"
@@ -669,7 +674,7 @@ export default function BrainConfigPage() {
                                         </label>
 
                                         <label className="flex items-start gap-3 rounded-xl border border-border/60 bg-muted/20 px-3 py-3 transition-colors hover:bg-muted/35">
-                                            <Checkbox
+                                            <Checkbox disabled={!canWrite || isSaving}
                                                 checked={captureLeadEmail}
                                                 onCheckedChange={(checked) => setCaptureLeadEmail(Boolean(checked))}
                                                 className="mt-0.5"
@@ -714,9 +719,9 @@ export default function BrainConfigPage() {
                                 </div>
                             </div>
                         </CardContent>
-                    </Card>
+                    </Card></details>
 
-                    <Card>
+                    <details className={styles.section}><summary>Horarios y agenda</summary><Card className="border-0">
                         <CardHeader>
                             <CardTitle>Agenda y horario comercial</CardTitle>
                             <CardDescription>
@@ -731,6 +736,7 @@ export default function BrainConfigPage() {
 
                                         return (
                                             <div
+                                                data-business-day
                                                 key={dayKey}
                                                 className="grid gap-3 rounded-xl border bg-background px-4 py-4 sm:grid-cols-[170px_1fr_1fr] sm:items-center"
                                             >
@@ -741,7 +747,7 @@ export default function BrainConfigPage() {
                                                             {daySchedule.enabled ? "Abierto" : "Cerrado"}
                                                         </p>
                                                     </div>
-                                                    <Switch
+                                                    <Switch disabled={!canWrite || isSaving}
                                                         checked={daySchedule.enabled}
                                                         onCheckedChange={(checked) =>
                                                             updateBusinessDay(dayKey, { enabled: checked })
@@ -782,9 +788,9 @@ export default function BrainConfigPage() {
                                 </div>
 
                                 <div className="space-y-2">
-                                    <Label>Zona horaria</Label>
+                                    <Label htmlFor="business-time-zone">Zona horaria</Label>
                                     <Input
-                                        value={businessTimeZone}
+                                        id="business-time-zone" value={businessTimeZone}
                                         onChange={(event) => setBusinessTimeZone(event.target.value)}
                                         placeholder="America/Mexico_City"
                                     />
@@ -808,8 +814,9 @@ export default function BrainConfigPage() {
                                 </div>
                             </div>
                         </CardContent>
-                    </Card>
+                    </Card></details>
 
+                    </fieldset>
                 </TabsContent>
 
                 <TabsContent value="knowledge" className="mt-4 sm:mt-6">
@@ -822,11 +829,11 @@ export default function BrainConfigPage() {
                 <TabsContent value="trained-faqs" className="mt-4 sm:mt-6"><TrainedFaqsPanel /></TabsContent>
             </Tabs>
 
-            {isDirty && (
+            {isDirty && canWrite && (
                 <div
                     role="region"
                     aria-label="Cambios pendientes"
-                    className="fixed inset-x-4 bottom-4 z-50 mx-auto flex max-w-xl animate-in items-center justify-between gap-3 rounded-2xl border border-primary/25 bg-card/95 p-3 shadow-[0_24px_70px_-24px_rgba(15,23,42,0.65)] backdrop-blur-xl fade-in slide-in-from-bottom-4 sm:p-4"
+                    className={styles.saveBar}
                 >
                     <div className="hidden min-w-0 sm:block">
                         <p className="font-semibold text-foreground">Tienes cambios sin guardar</p>
@@ -837,7 +844,7 @@ export default function BrainConfigPage() {
                             type="button"
                             variant="outline"
                             onClick={handleCancelChanges}
-                            disabled={isSaving}
+                            disabled={isSaving || !canWrite}
                             className="flex-1 sm:flex-none"
                         >
                             <RotateCcw className="h-4 w-4" />
@@ -846,7 +853,7 @@ export default function BrainConfigPage() {
                         <Button
                             type="button"
                             onClick={handleSave}
-                            disabled={isSaving}
+                            disabled={isSaving || !canWrite}
                             className="flex-1 sm:flex-none"
                         >
                             {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}

@@ -2,6 +2,7 @@
 
 import { Loader2, Plus, RefreshCcw, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { useWorkspaceAccess } from "@/components/layout/workspace-access-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -34,6 +35,7 @@ export function BulkCampaignCampaignList({
     isLoading,
     form,
 }: BulkCampaignCampaignListProps) {
+    const { readOnly } = useWorkspaceAccess();
     return (
         <div className="space-y-4 rounded-xl border bg-card p-4 shadow-[0_12px_28px_-22px_rgba(15,23,42,0.25)]">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -43,7 +45,7 @@ export function BulkCampaignCampaignList({
                         Campanas con audiencia visible, goteo y programacion.
                     </p>
                 </div>
-                <Button variant="outline" size="sm" onClick={onCreateCampaign} className="h-9 w-full shrink-0 rounded-xl px-3.5 sm:w-auto">
+                <Button variant="outline" size="sm" disabled={readOnly} onClick={onCreateCampaign} className="h-9 w-full shrink-0 rounded-xl px-3.5 sm:w-auto">
                     <Plus className="mr-2 h-4 w-4" />
                     Nueva
                 </Button>

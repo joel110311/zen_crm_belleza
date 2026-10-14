@@ -50,7 +50,8 @@ export function DashboardShell({
   const isCalendar = workspacePath === "/dashboard/calendar";
   const isClients = workspacePath.startsWith("/dashboard/contacts");
   const isServices = workspacePath.startsWith("/dashboard/services");
-  const hidesGlobalHeader = isInbox || isCalendar || isClients || isServices;
+  const isManagement = workspacePath === "/dashboard/templates" || workspacePath === "/dashboard/brain";
+  const hidesGlobalHeader = isInbox || isCalendar || isClients || isServices || isManagement;
 
   return (
     <WorkspaceAccessContext.Provider value={{ readOnly }}>

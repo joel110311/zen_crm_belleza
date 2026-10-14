@@ -1,6 +1,8 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import styles from "@/components/shared/management-workspace.module.css";
+import { useWorkspaceAccess } from "@/components/layout/workspace-access-context";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Bot, Database, FlaskConical, Loader2, RotateCcw, Send, ShieldCheck, UserRound } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -30,20 +32,27 @@ const SAMPLE_MESSAGES = [
 ];
 
 export function AssistantPlayground() {
+    const { readOnly } = useWorkspaceAccess();
+    const messageList = useRef<HTMLDivElement>(null);
+    const [previewError, setPreviewError] = useState("");
     const [messages, setMessages] = useState<PlaygroundMessage[]>([]);
     const [draft, setDraft] = useState("");
     const [isSending, setIsSending] = useState(false);
     const [trace, setTrace] = useState<PreviewTrace | null>(null);
     const { toast } = useToast();
 
+    useEffect(() => { if (messageList.current) messageList.current.scrollTop = messageList.current.scrollHeight; }, [messages, isSending]);
+
     const runPreview = async (rawMessage: string) => {
         const message = rawMessage.trim();
-        if (!message || isSending) return;
+        if (!message || isSending || readOnly) return;
 
+        const previousTranscript = messages;
         const previousMessages = messages.slice(-12);
         setMessages((current) => [...current, { role: "user", content: message }]);
         setDraft("");
         setIsSending(true);
+        setPreviewError("");
 
         try {
             const response = await fetch("/api/assistant-preview", {
@@ -59,6 +68,9 @@ export function AssistantPlayground() {
             setMessages((current) => [...current, { role: "assistant", content: data.reply }]);
             setTrace(data.trace);
         } catch (error) {
+            setMessages(previousTranscript);
+            setDraft(message);
+            setPreviewError(error instanceof Error ? error.message : "No se pudo generar la prueba.");
             toast({
                 title: "No se pudo probar el asistente",
                 description: error instanceof Error ? error.message : "Ocurrió un error inesperado.",
@@ -78,10 +90,11 @@ export function AssistantPlayground() {
         setMessages([]);
         setTrace(null);
         setDraft("");
+        setPreviewError("");
     };
 
     return (
-        <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
+        <div className={styles.playground}>
             <Card className="min-w-0 overflow-hidden">
                 <CardHeader className="border-b bg-primary/5">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -109,9 +122,9 @@ export function AssistantPlayground() {
                 </CardHeader>
 
                 <CardContent className="p-0">
-                    <div className="min-h-[360px] space-y-4 bg-muted/15 p-4 sm:p-5">
+                    <div ref={messageList} className={`${styles.messages} bg-muted/15`} role="log" aria-label="Conversación de prueba" aria-live="polite">
                         {messages.length === 0 ? (
-                            <div className="flex min-h-[320px] flex-col items-center justify-center text-center">
+                            <div className="flex min-h-[240px] flex-col items-center justify-center text-center">
                                 <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
                                     <Bot className="h-7 w-7" />
                                 </span>
@@ -124,6 +137,7 @@ export function AssistantPlayground() {
                                         <button
                                             key={sample}
                                             type="button"
+                                            disabled={readOnly || isSending}
                                             onClick={() => void runPreview(sample)}
                                             className="rounded-full border bg-background px-3 py-2 text-left text-xs font-medium transition hover:border-primary/40 hover:bg-primary/5"
                                         >
@@ -144,7 +158,7 @@ export function AssistantPlayground() {
                                         </span>
                                     ) : null}
                                     <div
-                                        className={`max-w-[88%] whitespace-pre-wrap rounded-2xl px-4 py-3 text-sm leading-6 shadow-sm ${
+                                        data-preview-message className={`max-w-[88%] whitespace-pre-wrap rounded-2xl px-4 py-3 text-sm leading-6 shadow-sm ${
                                             message.role === "user"
                                                 ? "rounded-br-md bg-primary text-primary-foreground"
                                                 : "rounded-bl-md border bg-background text-foreground"
@@ -174,10 +188,11 @@ export function AssistantPlayground() {
                         ) : null}
                     </div>
 
+                    {previewError && <p role="alert" className="px-4 py-3 text-sm text-destructive">{previewError} Puedes volver a intentar con el mensaje conservado.</p>}
                     <form onSubmit={handleSubmit} className="border-t bg-background p-4">
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
                             <Textarea
-                                value={draft}
+                                aria-label="Mensaje del cliente para probar" value={draft}
                                 onChange={(event) => setDraft(event.target.value.slice(0, 2000))}
                                 onKeyDown={(event) => {
                                     if (event.key === "Enter" && !event.shiftKey) {
@@ -189,9 +204,9 @@ export function AssistantPlayground() {
                                 maxLength={2000}
                                 placeholder="Escribe el mensaje del cliente..."
                                 className="min-h-20 flex-1 resize-none"
-                                disabled={isSending}
+                                disabled={isSending || readOnly}
                             />
-                            <Button type="submit" disabled={!draft.trim() || isSending} className="h-11 rounded-xl px-5">
+                            <Button type="submit" disabled={!draft.trim() || isSending || readOnly} className="h-11 rounded-xl px-5">
                                 {isSending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
                                 Probar respuesta
                             </Button>
