@@ -19,15 +19,18 @@ import {
 import { ExpiredWorkspaceNotice } from "@/components/billing/expired-workspace-notice";
 import type { ExpiredWorkspaceNotice as ExpiryNotice } from "@/lib/billing/workspace-access";
 import styles from "./workspace.module.css";
+import { WorkspaceAccessContext } from "./workspace-access-context";
 
 export function DashboardShell({
   children,
   trialNotice,
   expiryNotice,
+  readOnly = Boolean(expiryNotice),
 }: {
   children: React.ReactNode;
   trialNotice?: TrialNotice | null;
   expiryNotice?: ExpiryNotice | null;
+  readOnly?: boolean;
 }) {
   const pathname = usePathname();
   const workspacePath = pathname.replace(/^\/t\/[^/]+/, "/dashboard");
@@ -36,7 +39,7 @@ export function DashboardShell({
   const tenantSlug = tenantSlugFromPath(pathname);
   const { data: session } = useSession();
   const canCreate =
-    !expiryNotice &&
+    !readOnly &&
     Boolean(session?.user) &&
     hasPermission(
       session?.user as AccessSubject | undefined,
@@ -50,51 +53,55 @@ export function DashboardShell({
   const hidesGlobalHeader = isInbox || isCalendar || isClients || isServices;
 
   return (
-    <div
-      className={cn(
-        styles.body,
-        "flex min-w-0 flex-1 flex-col overflow-hidden bg-background",
-      )}
-    >
-      {!hidesGlobalHeader && <Header />}
-      {trialNotice ? <TrialExpiryBanner notice={trialNotice} /> : null}
-      {expiryNotice ? (
-        <ExpiredWorkspaceNotice
-          key={`${expiryNotice.expiredAt}:${expiryNotice.phase}`}
-          notice={expiryNotice}
-        />
-      ) : null}
-      <main
+    <WorkspaceAccessContext.Provider value={{ readOnly }}>
+      <div
         className={cn(
-          styles.main,
-          (isCalendar || isClients || isServices) && styles.fixedMain,
-          isHome ? styles.homeContent : "",
-          !isHome &&
-            (isInbox
-              ? "p-0"
-              : isCalendar || isClients || isServices
-                ? "overflow-hidden px-3 pb-3 pt-3 md:px-5 md:pb-4 md:pt-4 lg:px-6"
-                : "px-3.5 pb-5 pt-3 md:px-5 md:pb-6 md:pt-3.5 lg:px-6 xl:px-7"),
+          styles.body,
+          "flex min-w-0 flex-1 flex-col overflow-hidden bg-background",
         )}
       >
-        {children}
-      </main>
-      {isHome && (canCreate || expiryNotice?.canManage) ? (
-        <div className={styles.homeAction} data-home-action>
-          <Button asChild className="min-h-11 w-full rounded-xl">
-            <Link
-              href={
-                expiryNotice
-                  ? `/billing/${encodeURIComponent(expiryNotice.tenantSlug)}`
-                  : newAppointmentHref
-              }
-            >
-              {!expiryNotice && <Plus className="size-4" aria-hidden="true" />}
-              {expiryNotice ? "Seleccionar un plan" : "Nueva cita"}
-            </Link>
-          </Button>
-        </div>
-      ) : null}
-    </div>
+        {!hidesGlobalHeader && <Header />}
+        {trialNotice ? <TrialExpiryBanner notice={trialNotice} /> : null}
+        {expiryNotice ? (
+          <ExpiredWorkspaceNotice
+            key={`${expiryNotice.expiredAt}:${expiryNotice.phase}`}
+            notice={expiryNotice}
+          />
+        ) : null}
+        <main
+          className={cn(
+            styles.main,
+            (isCalendar || isClients || isServices) && styles.fixedMain,
+            isHome ? styles.homeContent : "",
+            !isHome &&
+              (isInbox
+                ? "p-0"
+                : isCalendar || isClients || isServices
+                  ? "overflow-hidden px-3 pb-3 pt-3 md:px-5 md:pb-4 md:pt-4 lg:px-6"
+                  : "px-3.5 pb-5 pt-3 md:px-5 md:pb-6 md:pt-3.5 lg:px-6 xl:px-7"),
+          )}
+        >
+          {children}
+        </main>
+        {isHome && (canCreate || expiryNotice?.canManage) ? (
+          <div className={styles.homeAction} data-home-action>
+            <Button asChild className="min-h-11 w-full rounded-xl">
+              <Link
+                href={
+                  expiryNotice
+                    ? `/billing/${encodeURIComponent(expiryNotice.tenantSlug)}`
+                    : newAppointmentHref
+                }
+              >
+                {!expiryNotice && (
+                  <Plus className="size-4" aria-hidden="true" />
+                )}
+                {expiryNotice ? "Seleccionar un plan" : "Nueva cita"}
+              </Link>
+            </Button>
+          </div>
+        ) : null}
+      </div>
+    </WorkspaceAccessContext.Provider>
   );
 }

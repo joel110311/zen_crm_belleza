@@ -47,6 +47,8 @@ type CalendarEvent = SelectedAppointmentEvent;
 interface BigCalendarProps {
     initialEvents: CalendarEvent[];
     initialDate?: Date;
+    onDateChange?: (date: Date) => void;
+    readOnly?: boolean;
     businessHours: BusinessHoursConfig;
     onSelectSlot: (slot: { start: Date; end: Date }) => void;
     onSelectEvent: (event: CalendarEvent) => void;
@@ -65,6 +67,8 @@ function normalizeEvents(initialEvents: CalendarEvent[], timeZone: string) {
 export function BigCalendar({
     initialEvents,
     initialDate,
+    onDateChange,
+    readOnly = false,
     businessHours,
     onSelectSlot,
     onSelectEvent,
@@ -110,6 +114,7 @@ export function BigCalendar({
 
     const handleEventTimeChange = useCallback(
         async (event: CalendarEvent, start: Date, end: Date, successMessage: string) => {
+            if (readOnly) return;
             const originalEvent = {
                 ...event,
                 start: new Date(event.start),
@@ -165,7 +170,7 @@ export function BigCalendar({
                 });
             }
         },
-        [businessHours.timeZone, onAppointmentTimeChange, onMutationSettled, replaceEvent, toast],
+        [businessHours.timeZone, onAppointmentTimeChange, onMutationSettled, readOnly, replaceEvent, toast],
     );
 
     const onEventResize = useCallback(
@@ -291,12 +296,14 @@ export function BigCalendar({
                 view={view}
                 onView={setView}
                 date={date}
-                onNavigate={setDate}
-                selectable
-                resizable
+                onNavigate={(next) => { setDate(next); onDateChange?.(next); }}
+                selectable={!readOnly}
+                resizable={!readOnly}
+                draggableAccessor={() => !readOnly}
                 onEventDrop={onEventDrop}
                 onEventResize={onEventResize}
                 onSelectSlot={(slot: SlotInfo) => {
+                    if (readOnly) return;
                     const slotDateKey = getLocalCalendarDateKey(slot.start);
                     const todayKey = getOperationTodayKey(businessHours.timeZone);
                     const startUtc = localWallDateToOperationUtc(slot.start, businessHours.timeZone);

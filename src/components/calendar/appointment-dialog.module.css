@@ -1,0 +1,111 @@
+.dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 0;
+  width: min(620px, calc(100vw - 32px));
+  max-width: none;
+  max-height: calc(100dvh - 40px);
+  overflow: hidden;
+}
+.dialog [data-slot="button"] {
+  border-radius: 10px;
+}
+.header {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-shrink: 0;
+  padding: 18px 24px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}
+.body {
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 24px;
+}
+.body input,
+.body textarea,
+.body [role="combobox"] {
+  font-size: 16px;
+}
+.body [role="combobox"] > span {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.footer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+  padding: 16px 24px max(16px, env(safe-area-inset-bottom));
+  border-top: 1px solid var(--border);
+  background: var(--card);
+}
+.timeFields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.review {
+  margin-top: 24px;
+}
+.review > div {
+  display: grid;
+  grid-template-columns: minmax(90px, 0.7fr) minmax(0, 1fr);
+  gap: 16px;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+}
+.review dt {
+  color: var(--muted-foreground);
+}
+.review dd {
+  font-weight: 500;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 639px) {
+  .dialog {
+    --tw-translate-x: 0%;
+    --tw-translate-y: 0%;
+    inset: 0;
+    top: 0;
+    left: 0;
+    transform: none;
+    translate: 0 0 !important;
+    animation: none;
+    width: 100%;
+    max-width: none;
+    height: 100dvh;
+    max-height: 100dvh;
+    border: 0;
+    border-radius: 0;
+  }
+  .header {
+    padding: 16px 20px;
+  }
+  .body {
+    padding: 24px 20px;
+  }
+  .footer {
+    padding-inline: 20px;
+  }
+}
+@media (max-width: 359px) {
+  .body,
+  .header,
+  .footer {
+    padding-inline: 16px;
+  }
+  .timeFields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

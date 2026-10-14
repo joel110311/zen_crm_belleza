@@ -1,0 +1,135 @@
+.agenda {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+  flex-direction: column;
+  gap: 16px;
+}
+.agenda [data-slot="button"] {
+  border-radius: 10px;
+}
+.heading {
+  display: flex;
+  flex-shrink: 0;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 0;
+}
+.heading > button {
+  white-space: normal;
+  flex-shrink: 0;
+}
+.controls {
+  display: grid;
+  flex-shrink: 0;
+  gap: 16px;
+}
+.filters {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.viewBar {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+.dayStrip {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+  margin-bottom: 20px;
+}
+.dayList {
+  min-height: 0;
+  min-width: 0;
+  flex: 1;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding-bottom: 16px;
+}
+.calendarCanvas {
+  display: none;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px;
+  background: var(--card);
+}
+.calendarCanvas > div {
+  min-width: 660px;
+  width: 100%;
+  flex: 1;
+}
+.appointment {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr) 44px;
+  align-items: start;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 18px 12px;
+  background: var(--card);
+}
+.appointmentTime {
+  padding-top: 2px;
+  font-size: 14px;
+}
+.agenda[data-view="calendar"] .calendarCanvas {
+  display: flex;
+}
+.agenda[data-view="calendar"] .dayList {
+  display: none;
+}
+@media (max-width: 359px) {
+  .heading {
+    flex-direction: column;
+    gap: 12px;
+  }
+  .heading > button {
+    width: 100%;
+  }
+  .appointment {
+    gap: 8px;
+    padding-inline: 10px;
+  }
+}
+@media (max-height: 600px) and (max-width: 767px) {
+  .agenda {
+    overflow: auto;
+  }
+  .dayList {
+    min-height: 220px;
+    overflow: visible;
+    flex: none;
+  }
+  .calendarCanvas {
+    min-height: 400px;
+    flex: none;
+  }
+}
+@media (min-width: 1024px) {
+  .controls {
+    grid-template-columns: minmax(280px, 0.8fr) minmax(340px, 1fr);
+    align-items: end;
+  }
+  .agenda[data-view="auto"] .calendarCanvas {
+    display: flex;
+  }
+  .agenda[data-view="auto"] .dayList {
+    display: none;
+  }
+  .appointment {
+    grid-template-columns: 70px minmax(0, 1fr) 44px;
+    padding: 20px;
+  }
+}

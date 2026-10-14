@@ -540,6 +540,7 @@ export function ContactsTable({ contacts }: ContactsPageProps) {
             </div>
 
             <AppointmentDialog
+                defaultContact={appointmentClient}
                 open={appointmentDialogOpen}
                 onOpenChange={(open) => {
                     setAppointmentDialogOpen(open);

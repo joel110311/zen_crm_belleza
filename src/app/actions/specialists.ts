@@ -70,6 +70,7 @@ export async function getSpecialists(includeInactive = false) {
             user: {
                 select: {
                     id: true,
+                    controlUserId: true,
                     name: true,
                     email: true,
                     role: true,

@@ -1,902 +1,1172 @@
 "use client";
 
-import { useCallback, useEffect, useState, useTransition } from "react";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
-import { Calendar } from "@/components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
-import { cn } from "@/lib/utils";
-import { Bell, CalendarIcon, Check, ChevronsUpDown, Clock, Loader2, User } from "lucide-react";
-import { createAppointment, deleteAppointment, updateAppointment } from "@/app/actions/calendar";
+import { useEffect, useRef, useState, useTransition } from "react";
+import { useWorkspaceAccess } from "@/components/layout/workspace-access-context";
+import {
+  createAppointment,
+  updateAppointment,
+  deleteAppointment,
+  getAppointmentClientOptions,
+} from "@/app/actions/calendar";
 import { getPatientsForPicker, savePatient } from "@/app/actions/patients";
 import { getSpecialists } from "@/app/actions/specialists";
 import { getActiveServicesForBooking } from "@/app/actions/services";
-import { useToast } from "@/components/ui/use-toast";
-import { PhonePrefixInput } from "@/components/shared/phone-prefix-input";
-import type { GoogleCalendarSourceSummary } from "@/lib/google-calendar";
+import { getSystemSettings } from "@/app/actions/settings";
+import { buildOperationContext } from "@/lib/operation-context";
 import {
-    formatTimeLabel,
-    getBusinessDayScheduleForDate,
-    getNextOpenDate,
-    isBusinessDayOpen,
-    timeToMinutes,
-    type BusinessHoursConfig,
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import { PhonePrefixInput } from "@/components/shared/phone-prefix-input";
+import { useToast } from "@/components/ui/use-toast";
+import {
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsUpDown,
+  Loader2,
+  X,
+} from "lucide-react";
+import {
+  getBusinessDayScheduleForDate,
+  getNextOpenDate,
+  formatTimeLabel,
+  timeToMinutes,
+  type BusinessHoursConfig,
 } from "@/lib/calendar/business-hours";
 import {
-    dateKeyToLocalNoonDate,
-    formatOperationDayLabel,
-    getLocalCalendarDateKey,
-    getOperationDateKey,
-    getOperationTodayKey,
-    operationDateReference,
-    operationDateTimeToUtc,
-    timeToOperationInputValue,
+  getOperationDateKey,
+  getOperationTodayKey,
+  operationDateReference,
+  timeToOperationInputValue,
+  formatOperationDayLabel,
+  getLocalCalendarDateKey,
 } from "@/lib/operation-dates";
+import { resolveDraftTimes, validCalendarDateKey } from "@/lib/calendar/draft";
+import type { GoogleCalendarSourceSummary } from "@/lib/google-calendar";
+import styles from "./appointment-dialog.module.css";
 
-type GoogleCalendarStatusPayload = {
-    sources: GoogleCalendarSourceSummary[];
+type Patient = Awaited<ReturnType<typeof getPatientsForPicker>>[number];
+type ClientOption = {
+  id: string;
+  patientId: string | null;
+  contactId: string | null;
+  name: string;
+  phone: string | null;
 };
-
-type PatientPickerItem = Awaited<ReturnType<typeof getPatientsForPicker>>[number];
-type SpecialistPickerItem = Awaited<ReturnType<typeof getSpecialists>>[number];
-type BookingService = Awaited<ReturnType<typeof getActiveServicesForBooking>>[number];
-
+type Specialist = Awaited<ReturnType<typeof getSpecialists>>[number];
+type Service = Awaited<ReturnType<typeof getActiveServicesForBooking>>[number];
 export type SelectedAppointmentEvent = {
-    id: string;
-    title: string;
-    start: Date;
-    end: Date;
-    notes?: string | null;
-    resource?: {
-        patient?: { id?: string | null } | null;
-        specialist?: { id?: string | null } | null;
-        specialistId?: string | null;
-        serviceId?: string | null;
-        appointmentType?: string | null;
-        isFirstVisit?: boolean | null;
-        isOverbook?: boolean | null;
-        visitMode?: string | null;
-        meetStatus?: string | null;
-        meetLink?: string | null;
-        remindersOptOut?: boolean | null;
-        googleCalendarId?: string | null;
-        googleCalendarColor?: string | null;
-        googleCalendarName?: string | null;
-        specialistName?: string | null;
-        status?: string | null;
-        confirmationStatus?: string | null;
-    };
+  id: string;
+  title: string;
+  start: Date;
+  end: Date;
+  notes?: string | null;
+  resource?: {
+    patient?: {
+      id?: string | null;
+      firstName?: string | null;
+      lastName?: string | null;
+      phone?: string | null;
+    } | null;
+    contact?: {
+      id?: string | null;
+      name?: string | null;
+      lastName?: string | null;
+      phone?: string | null;
+    } | null;
+    specialist?: {
+      id?: string | null;
+      name?: string | null;
+      displayName?: string | null;
+    } | null;
+    specialistId?: string | null;
+    serviceId?: string | null;
+    appointmentType?: string | null;
+    isFirstVisit?: boolean | null;
+    isOverbook?: boolean | null;
+    visitMode?: string | null;
+    meetStatus?: string | null;
+    meetLink?: string | null;
+    remindersOptOut?: boolean | null;
+    googleCalendarId?: string | null;
+    googleCalendarColor?: string | null;
+    googleCalendarName?: string | null;
+    specialistName?: string | null;
+    status?: string | null;
+    confirmationStatus?: string | null;
+  };
 };
-
-interface AppointmentDialogProps {
-    open: boolean;
-    onOpenChange: (open: boolean) => void;
-    selectedEvent?: SelectedAppointmentEvent | null;
-    selectedSlot?: { start: Date; end: Date } | null;
-    defaultPatient?: PatientPickerItem | null;
-    defaultPatientId?: string | null;
-    defaultSpecialistId?: string | null;
-    onSuccess: () => void;
-    businessHours: BusinessHoursConfig;
+interface Props {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  selectedEvent?: SelectedAppointmentEvent | null;
+  selectedSlot?: { start: Date; end: Date } | null;
+  defaultPatient?: Patient | null;
+  defaultContact?: {
+    id: string;
+    name?: string | null;
+    lastName?: string | null;
+    phone?: string | null;
+  } | null;
+  defaultPatientId?: string | null;
+  defaultSpecialistId?: string | null;
+  lockedSpecialistId?: string | null;
+  onSuccess: () => Promise<void> | void;
+  businessHours: BusinessHoursConfig;
+  readOnly?: boolean;
 }
-
-function patientName(patient?: PatientPickerItem | null) {
-    return [patient?.firstName, patient?.lastName].filter(Boolean).join(" ") || "Cliente";
-}
-
-function localTimeInputValue(date: Date) {
-    return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
-}
-
-function maxTimeInput(left: string, right: string) {
-    return left > right ? left : right;
-}
-
-function nextOperationMinute(timeZone: string) {
-    return timeToOperationInputValue(new Date(Date.now() + 60_000), timeZone);
-}
-
-const APPOINTMENT_STEP_MINUTES = 15;
-
-function minutesToTimeValue(totalMinutes: number) {
-    const bounded = Math.max(0, Math.min(24 * 60 - 1, totalMinutes));
-    return `${String(Math.floor(bounded / 60)).padStart(2, "0")}:${String(bounded % 60).padStart(2, "0")}`;
-}
-
-function alignTimeToStep(value: string) {
-    return minutesToTimeValue(Math.ceil(timeToMinutes(value) / APPOINTMENT_STEP_MINUTES) * APPOINTMENT_STEP_MINUTES);
-}
-
-function buildQuarterHourOptions(start: string, end: string) {
-    const first = Math.ceil(timeToMinutes(start) / APPOINTMENT_STEP_MINUTES) * APPOINTMENT_STEP_MINUTES;
-    const last = timeToMinutes(end);
-    const options: string[] = [];
-    for (let minute = first; minute < last; minute += APPOINTMENT_STEP_MINUTES) {
-        options.push(minutesToTimeValue(minute));
-    }
-    return options;
-}
-
+const durationOptions = [15, 30, 45, 60, 90, 120, 180, 240];
 export function AppointmentDialog({
+  open,
+  onOpenChange,
+  selectedEvent,
+  selectedSlot,
+  defaultPatient,
+  defaultContact,
+  defaultPatientId,
+  defaultSpecialistId,
+  lockedSpecialistId,
+  onSuccess,
+  businessHours,
+  readOnly: readOnlyOverride,
+}: Props) {
+  const access = useWorkspaceAccess();
+  const readOnly = readOnlyOverride ?? access.readOnly;
+  const { toast } = useToast();
+  const [pending, startTransition] = useTransition();
+  const initialized = useRef("");
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const [step, setStep] = useState(0);
+  const [client, setClient] = useState<ClientOption | null>(null);
+  const [clients, setClients] = useState<ClientOption[]>([]);
+  const [clientSearch, setClientSearch] = useState("");
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [services, setServices] = useState<Service[]>([]);
+  const [specialists, setSpecialists] = useState<Specialist[]>([]);
+  const [serviceId, setServiceId] = useState("none");
+  const [specialistId, setSpecialistId] = useState("none");
+  const [dateKey, setDateKey] = useState("");
+  const [time, setTime] = useState("09:00");
+  const [duration, setDuration] = useState("30");
+  const [notes, setNotes] = useState("");
+  const [overbook, setOverbook] = useState(false);
+  const [sendReminders, setSendReminders] = useState(false);
+  const [remindersEnabled, setRemindersEnabled] = useState(false);
+  const [sources, setSources] = useState<GoogleCalendarSourceSummary[]>([]);
+  const [context, setContext] = useState({
+    locale: "es-MX",
+    phoneDefaultCountry: "MX",
+  });
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [searchError, setSearchError] = useState("");
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [retry, setRetry] = useState(0);
+  const [newClient, setNewClient] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newPhone, setNewPhone] = useState("");
+  const [creatingClient, setCreatingClient] = useState(false);
+  const [saveError, setSaveError] = useState("");
+
+  useEffect(() => {
+    if (!open) {
+      initialized.current = "";
+      return;
+    }
+    const key =
+      selectedEvent?.id ||
+      `new:${selectedSlot?.start.toISOString() || ""}:${defaultPatientId || defaultPatient?.id || defaultContact?.id || ""}`;
+    if (initialized.current === key) return;
+    initialized.current = key;
+    const patient = selectedEvent?.resource?.patient || defaultPatient;
+    const contact = selectedEvent?.resource?.contact || defaultContact;
+    const patientId = patient?.id || defaultPatientId;
+    setClient(
+      patientId
+        ? {
+            id: `patient:${patientId}`,
+            patientId,
+            contactId: null,
+            name:
+              [
+                patient && "firstName" in patient ? patient.firstName : "",
+                patient && "lastName" in patient ? patient.lastName : "",
+              ]
+                .filter(Boolean)
+                .join(" ") || "Cliente seleccionado",
+            phone: patient?.phone || null,
+          }
+        : contact?.id
+          ? {
+              id: `contact:${contact.id}`,
+              patientId: null,
+              contactId: contact.id,
+              name:
+                [contact.name, contact.lastName].filter(Boolean).join(" ") ||
+                contact.phone ||
+                "Cliente",
+              phone: contact.phone || null,
+            }
+          : null,
+    );
+    const keyDate = selectedEvent
+      ? getOperationDateKey(selectedEvent.start, businessHours.timeZone)
+      : selectedSlot
+        ? getLocalCalendarDateKey(selectedSlot.start)
+        : getOperationDateKey(
+            getNextOpenDate(new Date(), businessHours),
+            businessHours.timeZone,
+          );
+    const schedule = getBusinessDayScheduleForDate(
+      operationDateReference(keyDate, businessHours.timeZone),
+      businessHours,
+    ).schedule;
+    const rawTime = selectedEvent
+      ? timeToOperationInputValue(selectedEvent.start, businessHours.timeZone)
+      : selectedSlot
+        ? `${String(selectedSlot.start.getHours()).padStart(2, "0")}:${String(selectedSlot.start.getMinutes()).padStart(2, "0")}`
+        : schedule.start;
+    const currentTime = timeToOperationInputValue(
+      new Date(Date.now() + 60000),
+      businessHours.timeZone,
+    );
+    const earliest =
+      keyDate === getOperationTodayKey(businessHours.timeZone) &&
+      currentTime > schedule.start
+        ? currentTime
+        : schedule.start;
+    const newMinutes =
+      Math.ceil(timeToMinutes(rawTime > earliest ? rawTime : earliest) / 15) *
+      15;
+    setDateKey(keyDate);
+    setTime(
+      selectedEvent
+        ? rawTime
+        : `${String(Math.floor(Math.min(newMinutes, 1439) / 60)).padStart(2, "0")}:${String(Math.min(newMinutes, 1439) % 60).padStart(2, "0")}`,
+    );
+    setDuration(
+      selectedEvent
+        ? String(
+            (selectedEvent.end.getTime() - selectedEvent.start.getTime()) /
+              60000,
+          )
+        : "30",
+    );
+    setServiceId(selectedEvent?.resource?.serviceId || "none");
+    setSpecialistId(
+      selectedEvent?.resource?.specialistId ||
+        selectedEvent?.resource?.specialist?.id ||
+        lockedSpecialistId ||
+        defaultSpecialistId ||
+        "none",
+    );
+    setNotes(selectedEvent?.notes || "");
+    setOverbook(Boolean(selectedEvent?.resource?.isOverbook));
+    setStep(readOnly ? 2 : 0);
+    setErrors({});
+    setSaveError("");
+    setClientSearch("");
+    setPickerOpen(false);
+    setNewClient(false);
+    setNewName("");
+    setNewPhone("");
+  }, [
     open,
-    onOpenChange,
     selectedEvent,
     selectedSlot,
     defaultPatient,
+    defaultContact,
     defaultPatientId,
     defaultSpecialistId,
-    onSuccess,
+    lockedSpecialistId,
     businessHours,
-}: AppointmentDialogProps) {
-    const [isPending, startTransition] = useTransition();
-    const { toast } = useToast();
+    readOnly,
+  ]);
 
-    const [title, setTitle] = useState("");
-    const [patientId, setPatientId] = useState("");
-    const [date, setDate] = useState<Date | undefined>(new Date());
-    const [time, setTime] = useState("09:00");
-    const [duration, setDuration] = useState("30");
-    const [notes, setNotes] = useState("");
-    const [calendarSources, setCalendarSources] = useState<GoogleCalendarSourceSummary[]>([]);
-    const [selectedCalendarId, setSelectedCalendarId] = useState<string>("general");
-    const [specialists, setSpecialists] = useState<SpecialistPickerItem[]>([]);
-    const [services, setServices] = useState<BookingService[]>([]);
-    const [selectedServiceId, setSelectedServiceId] = useState("none");
-    const [selectedSpecialistId, setSelectedSpecialistId] = useState<string>("none");
-    const [appointmentType, setAppointmentType] = useState("Servicio");
-    const [isFirstVisit, setIsFirstVisit] = useState(false);
-    const [isOverbook, setIsOverbook] = useState(false);
-    const [visitMode, setVisitMode] = useState("presencial");
-    const [meetLink, setMeetLink] = useState("");
-    const [requestGoogleMeet, setRequestGoogleMeet] = useState(false);
-    const [remindersGloballyEnabled, setRemindersGloballyEnabled] = useState(false);
-    const [sendReminders, setSendReminders] = useState(true);
-    const [operationContext, setOperationContext] = useState({
-        phoneDefaultCountry: "MX",
-        locale: "es-MX",
-        timeZone: "America/Mexico_City",
-    });
-
-    const [patients, setPatients] = useState<PatientPickerItem[]>([]);
-    const [openCombobox, setOpenCombobox] = useState(false);
-    const [query, setQuery] = useState("");
-    const initialPatientId = defaultPatient?.id || defaultPatientId || "";
-
-    const [isCreatingPatient, setIsCreatingPatient] = useState(false);
-    const [newPatientName, setNewPatientName] = useState("");
-    const [newPatientPhone, setNewPatientPhone] = useState("");
-    const [isSubmittingPatient, setIsSubmittingPatient] = useState(false);
-
-    useEffect(() => {
-        let active = true;
-        fetch("/api/operation-context", { cache: "no-store" })
-            .then(async (response) => (response.ok ? response.json() : null))
-            .then((context) => {
-                if (!active || !context) return;
-                setOperationContext({
-                    phoneDefaultCountry: context.phoneDefaultCountry || "MX",
-                    locale: context.locale || "es-MX",
-                    timeZone: context.timeZone || "America/Mexico_City",
-                });
-            })
-            .catch(() => undefined);
-
-        return () => {
-            active = false;
-        };
-    }, []);
-
-    useEffect(() => {
-        if (!open) return;
-        let active = true;
-        fetch("/api/settings", { cache: "no-store" })
-            .then(async (response) => (response.ok ? response.json() : null))
-            .then((settings) => {
-                if (!active || !settings) return;
-                const enabled = Boolean(settings.appointmentRemindersEnabled && settings.reminderWhatsAppEnabled);
-                setRemindersGloballyEnabled(enabled);
-                setSendReminders(enabled && !selectedEvent?.resource?.remindersOptOut);
-            })
-            .catch(() => undefined);
-
-        return () => {
-            active = false;
-        };
-    }, [open, selectedEvent]);
-
-    const clampTimeToSchedule = useCallback((value: string, targetDate: Date) => {
-        const targetDateKey = getLocalCalendarDateKey(targetDate);
-        const referenceDate = operationDateReference(targetDateKey, businessHours.timeZone);
-        const { schedule } = getBusinessDayScheduleForDate(referenceDate, businessHours);
-        if (!schedule.enabled) {
-            return businessHours.start;
-        }
-
-        const minutes = timeToMinutes(alignTimeToStep(value));
-        const minimumTime = alignTimeToStep(targetDateKey === getOperationTodayKey(businessHours.timeZone)
-            ? maxTimeInput(schedule.start, nextOperationMinute(businessHours.timeZone))
-            : schedule.start);
-        if (minutes < timeToMinutes(minimumTime) || minutes >= timeToMinutes(schedule.end)) {
-            return minimumTime;
-        }
-
-        return minutesToTimeValue(minutes);
-    }, [businessHours]);
-
-    useEffect(() => {
-        if (!open) return;
-
-        if (selectedEvent) {
-            const selectedDateKey = getOperationDateKey(selectedEvent.start, businessHours.timeZone);
-            const selectedLocalDate = dateKeyToLocalNoonDate(selectedDateKey);
-            setTitle(selectedEvent.title);
-            setPatientId(selectedEvent.resource?.patient?.id || "");
-            setDate(selectedLocalDate);
-            setTime(clampTimeToSchedule(timeToOperationInputValue(selectedEvent.start, businessHours.timeZone), selectedLocalDate));
-            const diffMins = (selectedEvent.end.getTime() - selectedEvent.start.getTime()) / 60000;
-            setDuration(diffMins.toString());
-            setNotes(selectedEvent.notes || "");
-            setSelectedSpecialistId(selectedEvent.resource?.specialistId || selectedEvent.resource?.specialist?.id || "none");
-            setSelectedServiceId(selectedEvent.resource?.serviceId || "none");
-            setAppointmentType(selectedEvent.resource?.appointmentType || "Servicio");
-            setIsFirstVisit(Boolean(selectedEvent.resource?.isFirstVisit));
-            setIsOverbook(Boolean(selectedEvent.resource?.isOverbook));
-            setVisitMode(selectedEvent.resource?.visitMode || "presencial");
-            setMeetLink(selectedEvent.resource?.meetLink || "");
-            setRequestGoogleMeet(selectedEvent.resource?.meetStatus === "requested");
-            setSendReminders(remindersGloballyEnabled && !selectedEvent.resource?.remindersOptOut);
-            return;
-        }
-
-        if (selectedSlot) {
-            const selectedDateKey = getLocalCalendarDateKey(selectedSlot.start);
-            const selectedLocalDate = dateKeyToLocalNoonDate(selectedDateKey);
-            const referenceDate = operationDateReference(selectedDateKey, businessHours.timeZone);
-            const nextDate = isBusinessDayOpen(referenceDate, businessHours)
-                ? selectedLocalDate
-                : dateKeyToLocalNoonDate(getOperationDateKey(getNextOpenDate(referenceDate, businessHours), businessHours.timeZone));
-            setTitle(defaultPatient ? `Servicio para ${patientName(defaultPatient)}` : "");
-            setPatientId(initialPatientId);
-            setDate(nextDate);
-            setTime(clampTimeToSchedule(localTimeInputValue(selectedSlot.start), nextDate));
-            setDuration("30");
-            setNotes("");
-            setSelectedSpecialistId(defaultSpecialistId || "none");
-            setSelectedServiceId("none");
-            setAppointmentType("Servicio");
-            setIsFirstVisit(false);
-            setIsOverbook(false);
-            setVisitMode("presencial");
-            setMeetLink("");
-            setRequestGoogleMeet(false);
-            setSendReminders(remindersGloballyEnabled);
-            return;
-        }
-
-        const nextOpenDate = dateKeyToLocalNoonDate(getOperationDateKey(getNextOpenDate(new Date(), businessHours), businessHours.timeZone));
-        setTitle(defaultPatient ? `Servicio para ${patientName(defaultPatient)}` : "");
-        setPatientId(initialPatientId);
-        setDate(nextOpenDate);
-        setTime(clampTimeToSchedule(businessHours.start, nextOpenDate));
-        setDuration("30");
-        setNotes("");
-        setSelectedSpecialistId(defaultSpecialistId || "none");
-        setSelectedServiceId("none");
-        setAppointmentType("Servicio");
-        setIsFirstVisit(false);
-        setIsOverbook(false);
-        setVisitMode("presencial");
-        setMeetLink("");
-        setRequestGoogleMeet(false);
-        setSendReminders(remindersGloballyEnabled);
-    }, [businessHours, clampTimeToSchedule, defaultPatient, defaultSpecialistId, initialPatientId, open, remindersGloballyEnabled, selectedEvent, selectedSlot]);
-
-    useEffect(() => {
-        if (!open) return;
-
-        void getActiveServicesForBooking()
-            .then(setServices)
-            .catch((error) => console.error("Failed to load services:", error));
-    }, [open]);
-
-    useEffect(() => {
-        if (!open) return;
-
-        const loadGoogleCalendars = async () => {
-            try {
-                const response = await fetch("/api/google-calendar/status", { cache: "no-store" });
-                if (!response.ok) return;
-                const payload = (await response.json()) as GoogleCalendarStatusPayload;
-                const sources = (payload.sources || []).filter((source) => source.isSelected);
-                setCalendarSources(sources);
-
-                const selectedFromEvent = selectedEvent?.resource?.googleCalendarId as string | undefined;
-                const specialistCalendars = sources.filter((source) => source.isSpecialist && source.writable);
-                const defaultWriteTarget = sources.find((source) => source.isWriteTarget && source.writable);
-
-                if (selectedFromEvent && sources.some((source) => source.calendarId === selectedFromEvent)) {
-                    setSelectedCalendarId(selectedFromEvent);
-                    return;
-                }
-
-                if (specialistCalendars.length === 1) {
-                    setSelectedCalendarId(specialistCalendars[0].calendarId);
-                    return;
-                }
-
-                if (defaultWriteTarget) {
-                    setSelectedCalendarId(defaultWriteTarget.calendarId);
-                    return;
-                }
-
-                setSelectedCalendarId("general");
-            } catch (error) {
-                console.error("Failed to load Google calendars for dialog:", error);
-            }
-        };
-
-        void loadGoogleCalendars();
-    }, [open, selectedEvent]);
-
-    useEffect(() => {
-        if (!open) return;
-
-        const loadSpecialists = async () => {
-            try {
-                const rows = await getSpecialists();
-                setSpecialists(rows);
-                const eventSpecialistId = selectedEvent?.resource?.specialistId || selectedEvent?.resource?.specialist?.id;
-                if (eventSpecialistId && rows.some((row) => row.id === eventSpecialistId)) {
-                    setSelectedSpecialistId(eventSpecialistId);
-                    return;
-                }
-                if (!eventSpecialistId) {
-                    const defaultRow = defaultSpecialistId
-                        ? rows.find((row) => row.id === defaultSpecialistId)
-                        : null;
-                    if (defaultRow) {
-                        setSelectedSpecialistId(defaultRow.id);
-                        return;
-                    }
-                    if (rows.length > 0) {
-                        setSelectedSpecialistId(rows[0].id);
-                    }
-                }
-            } catch (error) {
-                console.error("Failed to load specialists:", error);
-            }
-        };
-
-        void loadSpecialists();
-    }, [defaultSpecialistId, open, selectedEvent]);
-
-    useEffect(() => {
-        if (!open) return;
-
-        const fetchPatients = async () => {
-            const results = await getPatientsForPicker(query);
-            if (defaultPatient && !results.some((patient) => patient.id === defaultPatient.id)) {
-                setPatients([defaultPatient, ...results]);
-                return;
-            }
-            setPatients(results);
-        };
-
-        void fetchPatients();
-    }, [defaultPatient, open, query]);
-
-    useEffect(() => {
-        if (!date) return;
-        const clamped = clampTimeToSchedule(time, date);
-        if (clamped !== time) {
-            setTime(clamped);
-        }
-    }, [businessHours, clampTimeToSchedule, date, time]);
-
-    const selectedDaySchedule = date
-        ? getBusinessDayScheduleForDate(operationDateReference(getLocalCalendarDateKey(date), businessHours.timeZone), businessHours).schedule
-        : null;
-    const selectedDayStart = selectedDaySchedule?.enabled ? selectedDaySchedule.start : businessHours.start;
-    const selectedDayEnd = selectedDaySchedule?.enabled ? selectedDaySchedule.end : businessHours.end;
-    const selectedDateKey = date ? getLocalCalendarDateKey(date) : "";
-    const todayKey = getOperationTodayKey(businessHours.timeZone);
-    const currentOperationTime = nextOperationMinute(businessHours.timeZone);
-    const selectedDayMinimumTime = selectedDateKey === todayKey
-        ? maxTimeInput(selectedDayStart, currentOperationTime)
-        : selectedDayStart;
-    const timeOptions = selectedDaySchedule?.enabled
-        ? buildQuarterHourOptions(selectedDayMinimumTime, selectedDayEnd)
-        : [];
-    const writableSources = calendarSources.filter((source) => source.writable);
-    const selectedCalendar =
-        writableSources.find((source) => source.calendarId === selectedCalendarId) ||
-        writableSources.find((source) => source.isWriteTarget) ||
-        null;
-    const selectedPatient = patients.find((patient) => patient.id === patientId) || (defaultPatient?.id === patientId ? defaultPatient : undefined);
-    const selectedSpecialist = specialists.find((specialist) => specialist.id === selectedSpecialistId);
-    const selectedService = services.find((service) => service.id === selectedServiceId);
-    const eligibleSpecialistIds = selectedService?.specialists.map((entry) => entry.specialistId) || [];
-    const availableSpecialists = eligibleSpecialistIds.length > 0
-        ? specialists.filter((specialist) => eligibleSpecialistIds.includes(specialist.id))
-        : specialists;
-    const specialistCalendar = selectedSpecialist?.googleCalendarSource || null;
-
-    const handleSubmit = () => {
-        if (!patientId) {
-            toast({
-                title: "Cliente requerido",
-                description: "Selecciona o registra un cliente antes de apartar el horario.",
-                variant: "destructive",
-            });
-            return;
-        }
-
-        if (!selectedEvent && selectedServiceId === "none") {
-            toast({ title: "Servicio requerido", description: "Selecciona el servicio de la cita.", variant: "destructive" });
-            return;
-        }
-
-        if (selectedSpecialistId === "none") {
-            toast({ title: "Profesional requerido", description: "Selecciona quién atenderá la cita.", variant: "destructive" });
-            return;
-        }
-
-        if (!date || !time) {
-            toast({ title: "Faltan datos", description: "Completa la fecha y la hora.", variant: "destructive" });
-            return;
-        }
-
-        const dateKey = getLocalCalendarDateKey(date);
-        const referenceDate = operationDateReference(dateKey, businessHours.timeZone);
-        const { schedule } = getBusinessDayScheduleForDate(referenceDate, businessHours);
-        if (!schedule.enabled) {
-            toast({
-                title: "Dia cerrado",
-                description: "Ese dia no tiene horario comercial configurado. Elige otra fecha.",
-                variant: "destructive",
-            });
-            return;
-        }
-
-        const startTime = operationDateTimeToUtc(dateKey, time, businessHours.timeZone);
-        const endTime = new Date(startTime.getTime() + parseInt(duration) * 60000);
-        if (startTime <= new Date()) {
-            toast({
-                title: "Horario no disponible",
-                description: "Solo puedes agendar citas desde este momento en adelante.",
-                variant: "destructive",
-            });
-            return;
-        }
-        const targetCalendarId = specialistCalendar?.calendarId || selectedCalendar?.calendarId;
-        const blockingCalendarIds = targetCalendarId ? [targetCalendarId] : undefined;
-        const normalizedMeetLink = meetLink.trim();
-        const wantsGoogleMeet = ["virtual", "hibrida"].includes(visitMode) && requestGoogleMeet && !normalizedMeetLink;
-        const specialistName = selectedSpecialist
-            ? (selectedSpecialist.displayName || selectedSpecialist.name)
-            : selectedCalendar?.isSpecialist
-                ? (selectedCalendar.specialistName || selectedCalendar.summary)
-                : undefined;
-        const resolvedTitle = selectedService?.name || title.trim() || `Servicio para ${patientName(selectedPatient)}`;
-        const resolvedAppointmentType = selectedService?.name || appointmentType || "Servicio";
-
-        startTransition(async () => {
-            try {
-                const payload = {
-                    title: resolvedTitle,
-                    startTime,
-                    endTime,
-                    notes,
-                    patientId,
-                    specialistId: selectedSpecialistId !== "none" ? selectedSpecialistId : undefined,
-                    serviceId: selectedServiceId !== "none" ? selectedServiceId : undefined,
-                    appointmentType: resolvedAppointmentType,
-                    isFirstVisit,
-                    isOverbook,
-                    visitMode,
-                    meetStatus: wantsGoogleMeet ? "requested" : normalizedMeetLink ? "generated" : "none",
-                    meetLink: normalizedMeetLink || undefined,
-                    remindersOptOut: !sendReminders,
-                    googleCalendarId: targetCalendarId,
-                    googleCalendarName: specialistCalendar?.summary || selectedCalendar?.summary,
-                    googleCalendarColor: specialistCalendar?.backgroundColor || selectedCalendar?.backgroundColor || undefined,
-                    specialistName,
-                    blockingCalendarIds,
-                };
-
-                const result = selectedEvent
-                    ? await updateAppointment(selectedEvent.id, payload)
-                    : await createAppointment(payload);
-
-                if (!result.success) {
-                    throw new Error(result.error || "No se pudo guardar la cita.");
-                }
-
-                toast({
-                    title: selectedEvent ? "Cita actualizada" : "Horario apartado",
-                    description: selectedEvent ? undefined : "La reserva bloqueará el horario hasta que sea confirmada.",
-                });
-                onSuccess();
-                onOpenChange(false);
-            } catch (error) {
-                console.error(error);
-                toast({
-                    title: "Error",
-                    description: error instanceof Error ? error.message : "No se pudo guardar la cita.",
-                    variant: "destructive",
-                });
-            }
+  useEffect(() => {
+    if (!open) return;
+    let active = true;
+    setLoading(true);
+    setLoadError("");
+    Promise.all([
+      getActiveServicesForBooking(),
+      getSpecialists(),
+      getSystemSettings(),
+    ])
+      .then(([serviceRows, specialistRows, settings]) => {
+        if (!active) return;
+        setServices(serviceRows);
+        setSpecialists(specialistRows);
+        const operation = buildOperationContext(settings);
+        setContext({
+          locale: operation.locale,
+          phoneDefaultCountry: operation.phoneDefaultCountry,
         });
+        const enabled = Boolean(
+          settings?.appointmentRemindersEnabled &&
+            settings?.reminderWhatsAppEnabled,
+        );
+        setRemindersEnabled(enabled);
+        setSendReminders(enabled && !selectedEvent?.resource?.remindersOptOut);
+        setSpecialistId((current) =>
+          current !== "none"
+            ? current
+            : lockedSpecialistId ||
+              defaultSpecialistId ||
+              specialistRows[0]?.id ||
+              "none",
+        );
+      })
+      .catch(() => {
+        if (active)
+          setLoadError(
+            "No pudimos cargar servicios y profesionales. Vuelve a intentarlo.",
+          );
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
     };
+  }, [open, retry, selectedEvent, lockedSpecialistId, defaultSpecialistId]);
 
-    const handleDelete = async () => {
-        if (!selectedEvent) return;
-        if (!confirm("Eliminar cita?")) return;
-
-        startTransition(async () => {
-            const result = await deleteAppointment(selectedEvent.id);
-            if (!result.success) {
-                toast({
-                    title: "No se pudo eliminar la cita",
-                    description: result.error,
-                    variant: "destructive",
-                });
-                return;
-            }
-            toast({ title: "Cita eliminada" });
-            await onSuccess();
-            onOpenChange(false);
-        });
-    };
-
-    const handleCreatePatient = async () => {
-        if (!newPatientName.trim() || !newPatientPhone.trim()) {
-            toast({ title: "Error", description: "El nombre y el teléfono son obligatorios.", variant: "destructive" });
-            return;
-        }
-
-        setIsSubmittingPatient(true);
-        try {
-            const result = await savePatient({
-                firstName: newPatientName,
-                lastName: "",
-                phone: newPatientPhone,
-            });
-
-            if (result.success && result.patient) {
-                const pickerPatient = {
-                    id: result.patient.id,
-                    patientNumber: result.patient.patientNumber,
-                    firstName: result.patient.firstName,
-                    lastName: result.patient.lastName,
-                    phone: result.patient.phone,
-                    email: result.patient.email,
-                    dob: result.patient.dob,
-                };
-                setPatients((prev) => [pickerPatient, ...prev]);
-                setPatientId(result.patient.id);
-                if (!title) setTitle(`Servicio para ${patientName(pickerPatient)}`);
-                setIsCreatingPatient(false);
-                setNewPatientName("");
-                setNewPatientPhone("");
-                setOpenCombobox(false);
-                toast({ title: "Cliente creado" });
-                return;
-            }
-
-            toast({ title: "Error", description: result.error || "No se pudo crear.", variant: "destructive" });
-        } catch {
-            toast({ title: "Error", description: "Error al crear el cliente.", variant: "destructive" });
-        } finally {
-            setIsSubmittingPatient(false);
-        }
-    };
-
-    return (
-        <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="max-h-[92vh] overflow-y-auto bg-card sm:max-w-[820px]">
-                <DialogHeader className="border-b pb-4">
-                    <DialogTitle className="text-xl font-semibold text-foreground">
-                        {selectedEvent ? "Editar Cita" : "Nueva Cita"}
-                    </DialogTitle>
-                    <DialogDescription>
-                        Selecciona cliente, servicio, profesional, fecha y horario.
-                    </DialogDescription>
-                </DialogHeader>
-
-                <div className="grid gap-4 py-3">
-                    <div className="space-y-2">
-                        <Label>Cliente *</Label>
-                        <Popover open={openCombobox} onOpenChange={setOpenCombobox}>
-                            <PopoverTrigger asChild>
-                                <Button
-                                    variant="outline"
-                                    role="combobox"
-                                    aria-expanded={openCombobox}
-                                    className="h-11 w-full justify-between bg-background"
-                                >
-                                    {patientId && selectedPatient
-                                        ? patientName(selectedPatient)
-                                        : "Buscar cliente..."}
-                                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                                </Button>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-[400px] p-0">
-                                <Command shouldFilter={false}>
-                                    <CommandInput placeholder="Buscar cliente..." onValueChange={setQuery} />
-                                    <CommandList>
-                                        <CommandEmpty>No se encontraron clientes.</CommandEmpty>
-                                        <CommandGroup>
-                                            {patients.map((patient) => (
-                                                <CommandItem
-                                                    key={patient.id}
-                                                    value={patient.id}
-                                                    onSelect={(currentValue) => {
-                                                        setPatientId(currentValue);
-                                                        setOpenCombobox(false);
-                                                        if (!title) setTitle(`Servicio para ${patientName(patient)}`);
-                                                    }}
-                                                >
-                                                    <Check
-                                                        className={cn(
-                                                            "mr-2 h-4 w-4",
-                                                            patientId === patient.id ? "opacity-100" : "opacity-0",
-                                                        )}
-                                                    />
-                                                    <div className="flex flex-col">
-                                                        <span className="font-medium">{patientName(patient)}</span>
-                                                        <span className="text-xs text-secondary-foreground">
-                                                            {patient.phone || "Sin teléfono"}
-                                                        </span>
-                                                    </div>
-                                                </CommandItem>
-                                            ))}
-                                        </CommandGroup>
-                                    </CommandList>
-                                    <div className="mt-1 border-t p-2">
-                                        <Button
-                                            variant="ghost"
-                                            className="w-full justify-start font-medium text-primary"
-                                            onClick={(event) => {
-                                                event.preventDefault();
-                                                setIsCreatingPatient(true);
-                                                setOpenCombobox(false);
-                                            }}
-                                        >
-                                            + Registrar nuevo cliente
-                                        </Button>
-                                    </div>
-                                </Command>
-                            </PopoverContent>
-                        </Popover>
-                    </div>
-
-                    {isCreatingPatient ? (
-                        <div className="-mt-2 space-y-4 rounded-lg border bg-muted/30 p-4">
-                            <div className="flex items-center justify-between border-b pb-2">
-                                <h4 className="flex items-center text-sm font-medium text-foreground">
-                                    <User className="mr-2 h-4 w-4 text-primary" />
-                                    Registrar cliente
-                                </h4>
-                                <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => setIsCreatingPatient(false)}>
-                                    Cancelar
-                                </Button>
-                            </div>
-                            <div className="grid gap-3 sm:grid-cols-2">
-                                <div className="space-y-1">
-                                    <Label className="text-xs">Nombre *</Label>
-                                    <Input value={newPatientName} onChange={(event) => setNewPatientName(event.target.value)} className="h-8 text-sm" />
-                                </div>
-                                <div className="space-y-1">
-                                    <Label className="text-xs">Teléfono *</Label>
-                                    <PhonePrefixInput
-                                        value={newPatientPhone}
-                                        onChange={setNewPatientPhone}
-                                        defaultCountry={operationContext.phoneDefaultCountry}
-                                        className="grid-cols-[116px_minmax(0,1fr)]"
-                                        inputClassName="h-8 text-sm"
-                                    />
-                                </div>
-                            </div>
-                            <Button
-                                type="button"
-                                size="sm"
-                                className="h-8 w-full"
-                                onClick={handleCreatePatient}
-                                disabled={isSubmittingPatient || !newPatientName || !newPatientPhone}
-                            >
-                                {isSubmittingPatient ? <Loader2 className="mr-2 h-3 w-3 animate-spin" /> : null}
-                                Guardar y Seleccionar
-                            </Button>
-                        </div>
-                    ) : null}
-
-                    <div className="grid gap-3 md:grid-cols-[minmax(0,1.45fr)_minmax(190px,0.9fr)_minmax(180px,0.8fr)] md:items-end">
-                        <div className="space-y-2">
-                        <Label>Servicio *</Label>
-                        <Select value={selectedServiceId} onValueChange={(value) => {
-                            setSelectedServiceId(value);
-                            const service = services.find((entry) => entry.id === value);
-                            if (!service) return;
-                            setTitle(service.name);
-                            setAppointmentType(service.name);
-                            setDuration(String(service.durationMinutes));
-                            const assignedIds = service.specialists.map((entry) => entry.specialistId);
-                            if (assignedIds.length > 0 && !assignedIds.includes(selectedSpecialistId)) {
-                                setSelectedSpecialistId(assignedIds[0]);
-                                const row = specialists.find((entry) => entry.id === assignedIds[0]);
-                                if (row?.googleCalendarSource?.calendarId) setSelectedCalendarId(row.googleCalendarSource.calendarId);
-                            }
-                        }}>
-                            <SelectTrigger className="h-11 bg-background"><SelectValue placeholder="Selecciona un servicio" /></SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="none">{selectedEvent ? "Servicio personalizado" : "Selecciona un servicio"}</SelectItem>
-                                {services.map((service) => (
-                                    <SelectItem key={service.id} value={service.id}>
-                                        {service.name} · {service.durationMinutes} min · {new Intl.NumberFormat("es-MX", { style: "currency", currency: service.currency, maximumFractionDigits: 0 }).format(service.price)}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                        </div>
-
-                        <label
-                            className={cn(
-                                "flex h-11 items-center gap-2.5 rounded-lg border px-3",
-                                remindersGloballyEnabled ? "cursor-pointer bg-muted/20" : "bg-muted/30 text-muted-foreground",
-                            )}
-                        >
-                            <Checkbox
-                                checked={sendReminders}
-                                onCheckedChange={(checked) => setSendReminders(Boolean(checked))}
-                                disabled={!remindersGloballyEnabled}
-                            />
-                            <Bell className="h-4 w-4 shrink-0 text-primary" />
-                            <span className="text-sm font-medium leading-tight">Enviar recordatorio</span>
-                        </label>
-
-                        <div className="flex h-11 items-center justify-between gap-3 rounded-lg border bg-muted/20 px-3">
-                            <div className="min-w-0">
-                                <p className="text-sm font-medium">Sobreturno</p>
-                                <p className="truncate text-[11px] text-muted-foreground">Permite solapar.</p>
-                            </div>
-                            <Switch checked={isOverbook} onCheckedChange={setIsOverbook} />
-                        </div>
-                    </div>
-
-                    {selectedService && eligibleSpecialistIds.length > 0 ? <p className="-mt-2 text-xs text-muted-foreground">Solo se muestran los profesionales asignados a este servicio.</p> : null}
-
-                    <div className="grid gap-3">
-                        <div className="space-y-2">
-                            <Label>Profesional *</Label>
-                            <Select value={selectedSpecialistId} onValueChange={(value) => {
-                                setSelectedSpecialistId(value);
-                                const row = specialists.find((entry) => entry.id === value);
-                                if (row?.googleCalendarSource?.calendarId) {
-                                    setSelectedCalendarId(row.googleCalendarSource.calendarId);
-                                }
-                                if (!selectedService && row?.defaultDurationMinutes) {
-                                    setDuration(String(row.defaultDurationMinutes));
-                                }
-                            }}>
-                                <SelectTrigger className="h-11 w-full bg-background">
-                                    <SelectValue placeholder="Selecciona especialista" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {availableSpecialists.map((specialist) => (
-                                        <SelectItem key={specialist.id} value={specialist.id}>
-                                            {specialist.displayName || specialist.name}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-
-                    </div>
-
-                    <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_170px]">
-                        <div className="space-y-2">
-                            <Label>Fecha *</Label>
-                            <Popover>
-                                <PopoverTrigger asChild>
-                                    <Button
-                                        variant="outline"
-                                        className={cn(
-                                            "h-11 w-full justify-start bg-background text-left font-normal",
-                                            !date && "text-muted-foreground",
-                                        )}
-                                    >
-                                        <CalendarIcon className="mr-2 h-4 w-4" />
-                                        {date ? formatOperationDayLabel(getLocalCalendarDateKey(date), operationContext.locale, businessHours.timeZone, {
-                                            day: "numeric",
-                                            month: "long",
-                                            year: "numeric",
-                                        }) : <span>Seleccionar fecha</span>}
-                                    </Button>
-                                </PopoverTrigger>
-                                <PopoverContent className="w-auto p-0">
-                                    <Calendar
-                                        mode="single"
-                                        selected={date}
-                                        onSelect={setDate}
-                                        disabled={(calendarDate) => {
-                                            const calendarDateKey = getLocalCalendarDateKey(calendarDate);
-                                            return calendarDateKey < todayKey || !isBusinessDayOpen(operationDateReference(calendarDateKey, businessHours.timeZone), businessHours);
-                                        }}
-                                        initialFocus
-                                    />
-                                </PopoverContent>
-                            </Popover>
-                        </div>
-                        <div className="space-y-2">
-                            <Label>Hora *</Label>
-                            <Select value={time} onValueChange={setTime} disabled={!selectedDaySchedule?.enabled || timeOptions.length === 0}>
-                                <SelectTrigger className="h-11 bg-background">
-                                    <Clock className="mr-2 h-4 w-4 text-muted-foreground" />
-                                    <SelectValue placeholder="Selecciona la hora" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {timeOptions.map((option) => (
-                                        <SelectItem key={option} value={option}>
-                                            {formatTimeLabel(option)}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                            {selectedDaySchedule?.enabled ? (
-                                <p className="text-xs text-muted-foreground">
-                                    Disponible entre {formatTimeLabel(selectedDayStart)} y {formatTimeLabel(selectedDayEnd)}.
-                                </p>
-                            ) : (
-                                <p className="text-xs text-amber-600">
-                                    Este dia esta cerrado en el horario comercial.
-                                </p>
-                            )}
-                        </div>
-
-                        <div className="space-y-2">
-                            <Label>Duracion</Label>
-                            <Select value={duration} onValueChange={setDuration}>
-                                <SelectTrigger className="h-11 bg-background">
-                                    <SelectValue placeholder="Duracion" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="15">15 min</SelectItem>
-                                    <SelectItem value="30">30 min</SelectItem>
-                                    <SelectItem value="45">45 min</SelectItem>
-                                    <SelectItem value="60">1 hora</SelectItem>
-                                    <SelectItem value="90">1.5 horas</SelectItem>
-                                    <SelectItem value="120">2 horas</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-                    </div>
-
-                </div>
-
-                <DialogFooter className="-mx-6 -mb-6 mt-4 flex items-center justify-between border-t bg-card p-4 sm:justify-between">
-                    {selectedEvent ? (
-                        <Button variant="ghost" className="text-red-500 hover:bg-red-50 hover:text-red-600" onClick={handleDelete} type="button">
-                            Eliminar
-                        </Button>
-                    ) : (
-                        <div />
-                    )}
-                    <div className="flex gap-2">
-                        <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
-                        <Button onClick={handleSubmit} disabled={isPending} className="bg-blue-600 hover:bg-blue-700">
-                            {isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                            {selectedEvent ? "Actualizar Cita" : "Agendar Cita"}
-                        </Button>
-                    </div>
-                </DialogFooter>
-            </DialogContent>
-        </Dialog>
+  useEffect(() => {
+    if (!open) return;
+    let active = true;
+    setSearchError("");
+    const timer = window.setTimeout(
+      () => {
+        getAppointmentClientOptions(
+          clientSearch,
+          selectedEvent?.resource?.patient?.id ||
+            defaultPatientId ||
+            defaultPatient?.id ||
+            undefined,
+        )
+          .then((rows) => {
+            if (!active) return;
+            setClients(rows);
+            setClient((current) =>
+              current && rows.some((row) => row.id === current.id)
+                ? rows.find((row) => row.id === current.id)!
+                : current,
+            );
+          })
+          .catch(() => {
+            if (active)
+              setSearchError(
+                "No pudimos buscar clientes. Reintenta la búsqueda.",
+              );
+          });
+      },
+      clientSearch ? 250 : 0,
     );
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [
+    open,
+    clientSearch,
+    retry,
+    selectedEvent,
+    defaultPatientId,
+    defaultPatient?.id,
+  ]);
+
+  useEffect(() => {
+    if (!open) return;
+    const controller = new AbortController();
+    fetch("/api/google-calendar/status", {
+      cache: "no-store",
+      signal: controller.signal,
+    })
+      .then(async (response) => (response.ok ? response.json() : null))
+      .then((data) => {
+        if (!controller.signal.aborted)
+          setSources(
+            data?.sources?.filter(
+              (source: GoogleCalendarSourceSummary) => source.isSelected,
+            ) || [],
+          );
+      })
+      .catch(() => {});
+    return () => controller.abort();
+  }, [open]);
+
+  const service = services.find((row) => row.id === serviceId);
+  const eligible = service?.specialists.map((row) => row.specialistId) || [];
+  const available = specialists.filter(
+    (row) =>
+      (!lockedSpecialistId || row.id === lockedSpecialistId) &&
+      (!eligible.length || eligible.includes(row.id)),
+  );
+  const specialist = specialists.find((row) => row.id === specialistId);
+  const serviceName =
+    service?.name ||
+    selectedEvent?.resource?.appointmentType ||
+    selectedEvent?.title ||
+    "Servicio personalizado";
+  const specialistName =
+    specialist?.displayName ||
+    specialist?.name ||
+    selectedEvent?.resource?.specialist?.displayName ||
+    selectedEvent?.resource?.specialist?.name ||
+    selectedEvent?.resource?.specialistName ||
+    "Sin profesional";
+  const schedule = validCalendarDateKey(dateKey)
+    ? getBusinessDayScheduleForDate(
+        operationDateReference(dateKey, businessHours.timeZone),
+        businessHours,
+      ).schedule
+    : null;
+  const changeStep = (value: number) => {
+    setStep(value);
+    setErrors({});
+    setSaveError("");
+    bodyRef.current?.scrollTo({ top: 0 });
+  };
+  const validate = (part: number) => {
+    const next: Record<string, string> = {};
+    if (part === 0) {
+      if (!client) next.client = "Selecciona o registra un cliente.";
+      if (!selectedEvent && serviceId === "none")
+        next.service = "Selecciona el servicio de la cita.";
+      if (specialistId === "none")
+        next.specialist = "Selecciona un profesional.";
+      if (eligible.length && !eligible.includes(specialistId))
+        next.specialist =
+          "Este profesional no atiende el servicio seleccionado.";
+    } else {
+      try {
+        const times = resolveDraftTimes({
+          dateKey,
+          time,
+          duration: Number(duration),
+          timeZone: businessHours.timeZone,
+          original: selectedEvent,
+        });
+        if (!times.unchanged && times.start <= new Date())
+          next.time = "Selecciona un horario futuro.";
+        if (!times.unchanged && !schedule?.enabled)
+          next.date = "El negocio está cerrado ese día.";
+      } catch (error) {
+        next.time =
+          error instanceof Error ? error.message : "Revisa el horario.";
+      }
+    }
+    setErrors(next);
+    return !Object.keys(next).length;
+  };
+  const save = () => {
+    if (readOnly || loading || pending) return;
+    if (!validate(0)) {
+      setStep(0);
+      return;
+    }
+    if (!validate(1)) {
+      setStep(1);
+      return;
+    }
+    startTransition(async () => {
+      setSaveError("");
+      try {
+        const times = resolveDraftTimes({
+          dateKey,
+          time,
+          duration: Number(duration),
+          timeZone: businessHours.timeZone,
+          original: selectedEvent,
+        });
+        const originalSpecialist =
+          selectedEvent?.resource?.specialistId ||
+          selectedEvent?.resource?.specialist?.id ||
+          "none";
+        const scheduleChanged =
+          !selectedEvent ||
+          !times.unchanged ||
+          specialistId !== originalSpecialist ||
+          overbook !== Boolean(selectedEvent.resource?.isOverbook);
+        const source =
+          specialist?.googleCalendarSource ||
+          sources.find(
+            (row) =>
+              row.calendarId === selectedEvent?.resource?.googleCalendarId,
+          ) ||
+          sources.find((row) => row.isWriteTarget && row.writable);
+        const details = {
+          title: serviceName,
+          notes,
+          ...(client?.patientId
+            ? { patientId: client.patientId }
+            : { contactId: client!.contactId! }),
+          serviceId: serviceId !== "none" ? serviceId : undefined,
+          appointmentType: serviceName,
+          remindersOptOut: !sendReminders,
+        };
+        const timing = {
+          startTime: times.start,
+          endTime: times.end,
+          specialistId: specialistId !== "none" ? specialistId : undefined,
+          specialistName,
+          isOverbook: overbook,
+          googleCalendarId: source?.calendarId,
+          googleCalendarName: source?.summary,
+          googleCalendarColor: source?.backgroundColor || undefined,
+          blockingCalendarIds: source?.calendarId
+            ? [source.calendarId]
+            : undefined,
+        };
+        const result = selectedEvent
+          ? await updateAppointment(selectedEvent.id, {
+              ...details,
+              ...(scheduleChanged ? timing : {}),
+            })
+          : await createAppointment({ ...details, ...timing });
+        if (!result.success) {
+          setSaveError(
+            result.error ||
+              "No se pudo guardar. Tus datos siguen en el formulario.",
+          );
+          return;
+        }
+        toast({ title: selectedEvent ? "Cita actualizada" : "Cita creada" });
+        onOpenChange(false);
+        await onSuccess();
+      } catch (error) {
+        setSaveError(
+          error instanceof Error
+            ? error.message
+            : "No se pudo guardar. Inténtalo nuevamente.",
+        );
+      }
+    });
+  };
+  const remove = () => {
+    if (
+      !selectedEvent ||
+      readOnly ||
+      pending ||
+      !confirm("¿Eliminar esta cita?")
+    )
+      return;
+    startTransition(async () => {
+      try {
+        const result = await deleteAppointment(selectedEvent.id);
+        if (!result.success) {
+          setSaveError(result.error || "No se pudo eliminar la cita.");
+          return;
+        }
+        onOpenChange(false);
+        await onSuccess();
+        toast({ title: "Cita eliminada" });
+      } catch {
+        setSaveError("No se pudo eliminar la cita.");
+      }
+    });
+  };
+  const registerClient = async () => {
+    if (!newName.trim() || !newPhone.trim() || readOnly) return;
+    setCreatingClient(true);
+    setSaveError("");
+    try {
+      const result = await savePatient({
+        firstName: newName.trim(),
+        lastName: "",
+        phone: newPhone,
+      });
+      if (!result.success || !result.patient) {
+        setSaveError(result.error || "No se pudo registrar el cliente.");
+        return;
+      }
+      setClient({
+        id: `patient:${result.patient.id}`,
+        patientId: result.patient.id,
+        contactId: null,
+        name: [result.patient.firstName, result.patient.lastName]
+          .filter(Boolean)
+          .join(" "),
+        phone: result.patient.phone,
+      });
+      setNewClient(false);
+      setNewName("");
+      setNewPhone("");
+    } catch {
+      setSaveError(
+        "No se pudo registrar el cliente. Conservamos los datos para reintentar.",
+      );
+    } finally {
+      setCreatingClient(false);
+    }
+  };
+  const fieldError = (key: string) =>
+    errors[key] ? (
+      <p
+        id={`appointment-${key}-error`}
+        className="mt-2 text-sm text-destructive"
+        role="alert"
+      >
+        {errors[key]}
+      </p>
+    ) : null;
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(value) => {
+        if (!pending && !creatingClient) onOpenChange(value);
+      }}
+    >
+      <DialogContent
+        showCloseButton={false}
+        className={styles.dialog}
+        onEscapeKeyDown={(event) => {
+          if (pending || creatingClient) event.preventDefault();
+        }}
+      >
+        <DialogHeader className={styles.header}>
+          <div className="min-w-0">
+            <DialogTitle className="text-xl font-semibold">
+              {readOnly
+                ? "Detalle de cita"
+                : step === 2
+                  ? "Revisa tu cita"
+                  : selectedEvent
+                    ? "Editar cita"
+                    : "Nueva cita"}
+            </DialogTitle>
+            <DialogDescription className="mt-1 text-xs">
+              {readOnly
+                ? "Consulta disponible · Solo lectura"
+                : `Paso ${step + 1} de 3 · ${["Cliente y servicio", "Fecha y horario", "Confirma los datos"][step]}`}
+            </DialogDescription>
+          </div>
+          <DialogClose asChild>
+            <button
+              type="button"
+              disabled={pending || creatingClient}
+              aria-label="Cerrar cita"
+              className="flex size-11 shrink-0 items-center justify-center rounded-xl text-muted-foreground"
+            >
+              <X className="size-5" />
+            </button>
+          </DialogClose>
+        </DialogHeader>
+        <div ref={bodyRef} className={styles.body}>
+          {loadError ? (
+            <div
+              role="alert"
+              className="mb-5 rounded-xl border border-destructive/25 p-4 text-sm"
+            >
+              <p>{loadError}</p>
+              <Button
+                variant="outline"
+                className="mt-3 min-h-11"
+                onClick={() => setRetry((value) => value + 1)}
+              >
+                Reintentar
+              </Button>
+            </div>
+          ) : null}
+          {loading && (
+            <p role="status" className="mb-5 text-sm text-muted-foreground">
+              Cargando opciones…
+            </p>
+          )}
+          {step === 0 && (
+            <div className="space-y-6">
+              <section>
+                <h3 className="mb-4 text-sm font-semibold">
+                  ¿Quién se atiende?
+                </h3>
+                <Label htmlFor="appointment-client">Cliente</Label>
+                <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      id="appointment-client"
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={pickerOpen}
+                      aria-label="Cliente"
+                      aria-invalid={Boolean(errors.client)}
+                      aria-describedby={
+                        errors.client ? "appointment-client-error" : undefined
+                      }
+                      className="mt-2 min-h-12 h-auto w-full min-w-0 justify-between whitespace-normal text-left"
+                    >
+                      <span className="min-w-0 break-words">
+                        {client?.name || "Seleccionar cliente"}
+                      </span>
+                      <ChevronsUpDown className="size-4 shrink-0" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[var(--radix-popover-trigger-width)] max-w-[calc(100vw-2rem)] p-0">
+                    <Command shouldFilter={false}>
+                      <CommandInput
+                        placeholder="Buscar nombre o teléfono"
+                        value={clientSearch}
+                        onValueChange={setClientSearch}
+                      />
+                      <CommandList>
+                        <CommandEmpty>
+                          {searchError || "No se encontraron clientes."}
+                        </CommandEmpty>
+                        <CommandGroup>
+                          {clients.map((row) => (
+                            <CommandItem
+                              key={row.id}
+                              value={row.id}
+                              onSelect={() => {
+                                setClient(row);
+                                setPickerOpen(false);
+                                setErrors({});
+                              }}
+                              className="min-h-12"
+                            >
+                              <Check
+                                className={
+                                  client?.id === row.id
+                                    ? "size-4"
+                                    : "size-4 opacity-0"
+                                }
+                              />
+                              <div className="min-w-0">
+                                <p className="break-words">{row.name}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {row.phone || "Sin teléfono"}
+                                </p>
+                              </div>
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                      <Button
+                        variant="ghost"
+                        className="min-h-11 w-full justify-start"
+                        onClick={() => {
+                          setNewClient(true);
+                          setPickerOpen(false);
+                        }}
+                      >
+                        Registrar nuevo cliente
+                      </Button>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+                {fieldError("client")}
+                {newClient && (
+                  <div className="mt-4 space-y-4 rounded-xl border border-border p-4">
+                    <Label htmlFor="appointment-new-name">Nombre</Label>
+                    <Input
+                      id="appointment-new-name"
+                      value={newName}
+                      onChange={(event) => setNewName(event.target.value)}
+                      className="min-h-12"
+                    />
+                    <Label>Teléfono</Label>
+                    <PhonePrefixInput
+                      value={newPhone}
+                      onChange={setNewPhone}
+                      defaultCountry={context.phoneDefaultCountry}
+                      inputClassName="min-h-12"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Guardar registra al cliente ahora, aunque luego canceles
+                      la cita.
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        className="min-h-11"
+                        onClick={() => void registerClient()}
+                        disabled={
+                          creatingClient || !newName.trim() || !newPhone.trim()
+                        }
+                      >
+                        {creatingClient ? "Guardando…" : "Guardar cliente"}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        className="min-h-11"
+                        onClick={() => setNewClient(false)}
+                      >
+                        Cancelar registro
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </section>
+              <section className="space-y-4">
+                <h3 className="text-sm font-semibold">
+                  Servicio y profesional
+                </h3>
+                <div>
+                  <Label htmlFor="appointment-service">Servicio</Label>
+                  <Select
+                    value={serviceId}
+                    onValueChange={(value) => {
+                      setServiceId(value);
+                      const next = services.find((row) => row.id === value);
+                      if (next) {
+                        setDuration(String(next.durationMinutes));
+                        const ids = next.specialists.map(
+                          (row) => row.specialistId,
+                        );
+                        if (ids.length && !ids.includes(specialistId))
+                          setSpecialistId(lockedSpecialistId || ids[0]);
+                      }
+                      setErrors({});
+                    }}
+                    disabled={loading}
+                  >
+                    <SelectTrigger
+                      id="appointment-service"
+                      aria-label="Servicio"
+                      aria-invalid={Boolean(errors.service)}
+                      className="mt-2 min-h-12 h-auto w-full whitespace-normal text-left"
+                    >
+                      <SelectValue placeholder="Seleccionar servicio" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">
+                        {selectedEvent
+                          ? "Servicio personalizado"
+                          : "Seleccionar servicio"}
+                      </SelectItem>
+                      {serviceId !== "none" && !service && (
+                        <SelectItem value={serviceId}>
+                          {serviceName} · Servicio original
+                        </SelectItem>
+                      )}
+                      {services.map((row) => (
+                        <SelectItem key={row.id} value={row.id}>
+                          {row.name} · {row.durationMinutes} min
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {fieldError("service")}
+                  {!loading && !services.length && !selectedEvent && (
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      Primero configura al menos un servicio activo en
+                      Servicios.
+                    </p>
+                  )}
+                </div>
+                <div>
+                  <Label htmlFor="appointment-specialist">Profesional</Label>
+                  <Select
+                    value={specialistId}
+                    onValueChange={setSpecialistId}
+                    disabled={loading || Boolean(lockedSpecialistId)}
+                  >
+                    <SelectTrigger
+                      id="appointment-specialist"
+                      aria-label="Profesional"
+                      aria-invalid={Boolean(errors.specialist)}
+                      className="mt-2 min-h-12 h-auto w-full whitespace-normal text-left"
+                    >
+                      <SelectValue placeholder="Seleccionar profesional" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">
+                        Seleccionar profesional
+                      </SelectItem>
+                      {specialistId !== "none" &&
+                        !available.some((row) => row.id === specialistId) && (
+                          <SelectItem value={specialistId}>
+                            {specialistName}
+                          </SelectItem>
+                        )}
+                      {available.map((row) => (
+                        <SelectItem key={row.id} value={row.id}>
+                          {row.displayName || row.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {fieldError("specialist")}
+                  {!loading && !available.length && (
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      No hay profesionales disponibles para este servicio.
+                    </p>
+                  )}
+                </div>
+                {service && (
+                  <p className="text-sm text-muted-foreground">
+                    Precio de catálogo:{" "}
+                    {new Intl.NumberFormat(context.locale, {
+                      style: "currency",
+                      currency: service.currency,
+                    }).format(service.price)}
+                    . El cobro se registra por separado.
+                  </p>
+                )}
+              </section>
+            </div>
+          )}
+          {step === 1 && (
+            <div className="space-y-6">
+              <section>
+                <h3 className="mb-4 text-sm font-semibold">¿Cuándo?</h3>
+                <div className={styles.timeFields}>
+                  <div>
+                    <Label htmlFor="appointment-date">Fecha</Label>
+                    <Input
+                      id="appointment-date"
+                      type="date"
+                      value={dateKey}
+                      onChange={(event) => setDateKey(event.target.value)}
+                      aria-invalid={Boolean(errors.date)}
+                      className="mt-2 min-h-12"
+                    />
+                    {fieldError("date")}
+                  </div>
+                  <div>
+                    <Label htmlFor="appointment-time">Hora</Label>
+                    <Input
+                      id="appointment-time"
+                      type="time"
+                      step="60"
+                      value={time}
+                      onChange={(event) => setTime(event.target.value)}
+                      aria-invalid={Boolean(errors.time)}
+                      className="mt-2 min-h-12"
+                    />
+                  </div>
+                </div>
+                {fieldError("time")}
+                <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+                  {schedule?.enabled
+                    ? `Horario del negocio: ${formatTimeLabel(schedule.start, context.locale)} a ${formatTimeLabel(schedule.end, context.locale)}.`
+                    : "El negocio está cerrado en esta fecha."}{" "}
+                  Zona horaria: {businessHours.timeZone}.
+                </p>
+                <div className="mt-5">
+                  <Label htmlFor="appointment-duration">Duración</Label>
+                  <Select value={duration} onValueChange={setDuration}>
+                    <SelectTrigger
+                      id="appointment-duration"
+                      aria-label="Duración"
+                      className="mt-2 min-h-12 w-full"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {!durationOptions.includes(Number(duration)) && (
+                        <SelectItem value={duration}>
+                          {duration} min · Duración original
+                        </SelectItem>
+                      )}
+                      {durationOptions.map((value) => (
+                        <SelectItem key={value} value={String(value)}>
+                          {value} minutos
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </section>
+              <section className="space-y-4">
+                <label className="flex min-h-12 items-center gap-3 rounded-xl border border-border px-4 py-3">
+                  <Checkbox
+                    checked={sendReminders}
+                    onCheckedChange={(value) =>
+                      setSendReminders(Boolean(value))
+                    }
+                    disabled={!remindersEnabled}
+                  />
+                  <span className="text-sm">
+                    Enviar recordatorio
+                    {!remindersEnabled && (
+                      <span className="mt-1 block text-xs text-muted-foreground">
+                        Desactivado en la configuración del negocio.
+                      </span>
+                    )}
+                  </span>
+                </label>
+                <details className="rounded-xl border border-border p-4">
+                  <summary className="cursor-pointer text-sm font-medium">
+                    Opciones adicionales
+                  </summary>
+                  <div className="mt-4 space-y-4">
+                    <label className="flex min-h-11 items-center gap-3">
+                      <Checkbox
+                        checked={overbook}
+                        onCheckedChange={(value) => setOverbook(Boolean(value))}
+                      />
+                      <span className="text-sm">Permitir sobreturno</span>
+                    </label>
+                    <p className="text-xs text-muted-foreground">
+                      Permite solapar horarios sólo si las políticas del negocio
+                      lo autorizan.
+                    </p>
+                    <Label htmlFor="appointment-notes">Notas internas</Label>
+                    <textarea
+                      id="appointment-notes"
+                      value={notes}
+                      onChange={(event) => setNotes(event.target.value)}
+                      className="min-h-28 w-full rounded-xl border border-border bg-card p-3 text-base"
+                    />
+                  </div>
+                </details>
+              </section>
+            </div>
+          )}
+          {step === 2 && (
+            <section>
+              <h3 className="break-words text-xl font-semibold">
+                {client?.name || "Sin cliente asignado"}
+              </h3>
+              <p className="mt-2 break-words text-sm text-muted-foreground">
+                {serviceName}
+              </p>
+              <dl className={styles.review}>
+                {[
+                  ["Profesional", specialistName],
+                  [
+                    "Fecha",
+                    validCalendarDateKey(dateKey)
+                      ? formatOperationDayLabel(
+                          dateKey,
+                          context.locale,
+                          businessHours.timeZone,
+                          {
+                            weekday: "long",
+                            day: "numeric",
+                            month: "long",
+                            year: "numeric",
+                          },
+                        )
+                      : "Sin fecha",
+                  ],
+                  ["Hora", formatTimeLabel(time, context.locale)],
+                  ["Duración", `${duration} minutos`],
+                  ["Recordatorio", sendReminders ? "Activado" : "Desactivado"],
+                  ...(overbook ? [["Sobreturno", "Sí"]] : []),
+                ].map(([label, value]) => (
+                  <div key={label}>
+                    <dt>{label}</dt>
+                    <dd>{value}</dd>
+                  </div>
+                ))}
+              </dl>
+              {notes && (
+                <p className="mt-4 whitespace-pre-wrap break-words text-sm text-muted-foreground">
+                  {notes}
+                </p>
+              )}
+              <p className="mt-5 rounded-xl bg-primary/5 p-4 text-xs leading-relaxed text-muted-foreground">
+                {readOnly
+                  ? "Esta cuenta permite consultar los datos. Reactiva un plan para realizar cambios."
+                  : "Al confirmar comprobamos el horario y los posibles conflictos en el servidor. Si no se puede guardar, conservarás estos datos para corregirlos."}
+              </p>
+            </section>
+          )}
+          {saveError && (
+            <div
+              role="alert"
+              className="mt-5 rounded-xl border border-destructive/25 p-4 text-sm text-destructive"
+            >
+              {saveError}
+            </div>
+          )}
+        </div>
+        <footer className={styles.footer}>
+          {readOnly ? (
+            <Button
+              className="min-h-11 w-full"
+              onClick={() => onOpenChange(false)}
+            >
+              Cerrar
+            </Button>
+          ) : (
+            <>
+              <div className="flex min-w-0 flex-wrap gap-2">
+                {step > 0 ? (
+                  <Button
+                    variant="outline"
+                    className="min-h-11"
+                    onClick={() => changeStep(step - 1)}
+                    disabled={pending}
+                  >
+                    <ChevronLeft />
+                    Atrás
+                  </Button>
+                ) : (
+                  <Button
+                    variant="outline"
+                    className="min-h-11"
+                    onClick={() => onOpenChange(false)}
+                    disabled={pending || creatingClient}
+                  >
+                    Cancelar
+                  </Button>
+                )}
+                {selectedEvent && step === 0 && (
+                  <Button
+                    variant="ghost"
+                    className="min-h-11 text-destructive"
+                    onClick={remove}
+                    disabled={pending}
+                  >
+                    Eliminar
+                  </Button>
+                )}
+              </div>
+              <Button
+                className="min-h-11 min-w-0 flex-1 whitespace-normal"
+                disabled={
+                  loading || Boolean(loadError) || pending || creatingClient
+                }
+                onClick={() => {
+                  if (step < 2) {
+                    if (validate(step)) changeStep(step + 1);
+                  } else save();
+                }}
+              >
+                {pending ? <Loader2 className="size-4 animate-spin" /> : null}
+                {step === 2
+                  ? selectedEvent
+                    ? "Guardar cambios"
+                    : "Confirmar cita"
+                  : step === 1
+                    ? "Revisar cita"
+                    : "Continuar"}
+                {step < 2 && <ChevronRight className="size-4" />}
+              </Button>
+            </>
+          )}
+        </footer>
+      </DialogContent>
+    </Dialog>
+  );
 }

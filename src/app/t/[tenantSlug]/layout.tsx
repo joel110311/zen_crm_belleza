@@ -101,7 +101,7 @@ export default async function TenantLayout({
                 <TenantNavigationBridge tenantSlug={tenant.slug} />
                 {tenant.accessMode === "FULL" ? <><InboxNotifier /><WaitingRoomNotifier /><UnreadTabBadge /></> : null}
                 <Sidebar key={tenant.tenantId} initialBranding={branding} canManageBilling={tenant.role === "OWNER"} />
-                <DashboardShell trialNotice={tenant.expiryNotice ? null : trialNotice} expiryNotice={tenant.expiryNotice}>
+                <DashboardShell readOnly={tenant.accessMode !== "FULL"} trialNotice={tenant.expiryNotice ? null : trialNotice} expiryNotice={tenant.expiryNotice}>
                     {children}
                 </DashboardShell>
             </div>
