@@ -2,6 +2,11 @@
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import Image from "next/image";
+import Link from "next/link";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { useWorkspaceAccess } from "@/components/layout/workspace-access-context";
+import { switchConversationDraft, forwardMessagePayload, isActiveConversationResult, recoverFailedConversationDraft, matchesConversationSearch } from "@/lib/inbox-workspace";
+import styles from "@/components/inbox/inbox.module.css";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import {
@@ -40,13 +45,12 @@ import { useOperationContext } from "@/components/shared/use-operation-context";
 import { buildOperationContext, formatPhoneForDisplay } from "@/lib/operation-context";
 import {
     formatDateInOperationZone,
-    formatRelativeOperationDate,
     formatTimeInOperationZone,
     getOperationDateKey,
     getOperationTodayKey,
 } from "@/lib/operation-dates";
 import { INBOX_DRAFT_STORAGE_KEY, type InboxDraftPayload } from "@/lib/inbox-drafts";
-import { tenantSlugFromPath } from "@/lib/tenant-request-routing";
+import { tenantDashboardPath, tenantSlugFromPath } from "@/lib/tenant-request-routing";
 import { NewContactDialog } from "@/components/contacts/new-contact-dialog";
 import { AiTrainingDialog } from "@/components/brain/ai-training-dialog";
 import { canTrainAiMessage } from "@/lib/ai/trained-faq-policy";
@@ -525,7 +529,12 @@ function formatConversationListTimestamp(
     const date = value instanceof Date ? value : new Date(value);
     if (Number.isNaN(date.getTime())) return "";
 
-    return formatRelativeOperationDate(date, locale, timeZone);
+    const key=getOperationDateKey(date,timeZone);
+    const today=getOperationTodayKey(timeZone);
+    if (key===today) return formatTimeInOperationZone(date,locale,timeZone);
+    if (key===shiftDateKey(today,-1)) return "Ayer";
+    if (key>=shiftDateKey(today,-6) && key<today) return new Intl.DateTimeFormat(locale,{timeZone,weekday:"short"}).format(date);
+    return formatDateInOperationZone(date,locale,timeZone,{day:"numeric",month:"short",year:key.slice(0,4)===today.slice(0,4) ? undefined : "2-digit"});
 }
 
 // Deterministic color for avatar based on name
@@ -775,7 +784,7 @@ function AudioPlayer({ src, isOutbound }: { src: string; isOutbound: boolean }) 
     });
 
     return (
-        <div className="flex min-w-[200px] max-w-[290px] items-center gap-2">
+        <div className={`${styles.audio} flex items-center gap-2`}>
             <audio ref={audioRef} src={src} preload="auto" />
             <button
                 onClick={togglePlay}
@@ -933,18 +942,23 @@ function ContactInfoPanel({ conversation, onClose, showClose = true }: { convers
         (phone: string | null | undefined) => formatPhone(phone, operationContext.phoneDefaultCountry),
         [operationContext.phoneDefaultCountry],
     );
+    const pathname=usePathname();
+    const slug=tenantSlugFromPath(pathname);
+    const {data:session}=useSession();
+    const subject=session?.user as {role?:string;permissions?:unknown}|undefined;
+    const canOpenProfile=hasPermission(subject,"contacts.manage") || hasPermission(subject,"patients.manage");
     const contact = conversation.contact;
     const intelligence = conversation.leadIntelligence ?? null;
     const leadStatusLabel = intelligence ? (LEAD_STATUS_LABELS[intelligence.interestStatus] || intelligence.interestStatus) : null;
     const leadStepLabel = intelligence ? (LEAD_STEP_LABELS[intelligence.currentStep] || intelligence.currentStep) : null;
     return (
-        <div className="flex h-full w-[19rem] flex-col border-l border-border bg-card animate-in slide-in-from-right duration-200 2xl:w-[21rem]">
+        <div className={styles.quickProfile}>
             <div className="flex h-[4.5rem] shrink-0 items-center justify-between border-b border-border px-4">
                 <div>
                     <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-gold">Ficha rápida</p>
                     <h3 className="mt-0.5 text-sm font-semibold tracking-tight">Detalles del cliente</h3>
                 </div>
-                {showClose && <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg" onClick={onClose}>
+                {showClose && <Button variant="ghost" size="icon" aria-label="Volver a la conversación" className="h-10 w-10 rounded-lg" onClick={onClose}>
                     <X className="h-4 w-4" />
                 </Button>}
             </div>
@@ -974,6 +988,7 @@ function ContactInfoPanel({ conversation, onClose, showClose = true }: { convers
                     </div>
                     </div>
 
+                    {contact?.id && canOpenProfile && <Button asChild variant="outline" className="min-h-11"><Link href={slug ? tenantDashboardPath(slug,`/dashboard/contacts/${encodeURIComponent(contact.id)}`) : `/dashboard/contacts/${encodeURIComponent(contact.id)}`}>Abrir ficha completa</Link></Button>}
                     {/* Details */}
                     <div className="w-full space-y-1 rounded-2xl border border-border bg-background/45 p-2">
                         <div className="flex items-center gap-3 rounded-xl px-2.5 py-2.5 hover:bg-card">
@@ -994,7 +1009,7 @@ function ContactInfoPanel({ conversation, onClose, showClose = true }: { convers
                             <Tag className="h-4 w-4 text-muted-foreground shrink-0" />
                             <div>
                                 <p className="text-xs text-muted-foreground">Estado</p>
-                                <p className="text-sm font-medium capitalize">{contact?.status || "—"}</p>
+                                <p className="text-sm font-medium">{contact?.status ? ({lead:"Prospecto",qualified:"Calificado",customer:"Cliente"}[contact.status] || contact.status) : "—"}</p>
                             </div>
                         </div>
                         <div className="flex items-center gap-3 rounded-xl px-2.5 py-2.5 hover:bg-card">
@@ -1112,20 +1127,10 @@ function ConfirmModal({ title, description, onConfirm, onCancel, variant = "defa
     onCancel: () => void;
     variant?: "default" | "destructive";
 }) {
-    return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-            <div className="bg-card border rounded-2xl shadow-2xl p-6 max-w-sm mx-4 animate-in zoom-in-95 duration-200">
-                <h3 className="text-lg font-semibold mb-2">{title}</h3>
-                <p className="text-sm text-muted-foreground mb-6">{description}</p>
-                <div className="flex gap-3 justify-end">
-                    <Button variant="outline" onClick={onCancel}>Cancelar</Button>
-                    <Button variant={variant === "destructive" ? "destructive" : "default"} onClick={onConfirm}>
-                        Confirmar
-                    </Button>
-                </div>
-            </div>
-        </div>
-    );
+    return <Dialog open onOpenChange={open=>{if (!open) onCancel();}}><DialogContent className={styles.dialog}>
+        <DialogHeader><DialogTitle>{title}</DialogTitle><DialogDescription>{description}</DialogDescription></DialogHeader>
+        <DialogFooter><Button variant="outline" onClick={onCancel}>Cancelar</Button><Button variant={variant === "destructive" ? "destructive" : "default"} onClick={onConfirm}>Confirmar</Button></DialogFooter>
+    </DialogContent></Dialog>;
 }
 
 // ──────────── Window Timer Component ────────────
@@ -1194,7 +1199,12 @@ export default function InboxPage() {
     const sessionUser = session?.user as { id?: string; email?: string | null; role?: string; permissions?: unknown } | undefined;
     const currentUserId = sessionUser?.id || null;
     const canAssignAnyUser = hasPermission(sessionUser, "users.manage");
-    const canTrainAi = hasPermission(sessionUser, "ai.manage");
+    const {readOnly} = useWorkspaceAccess();
+    const canWrite = !readOnly && hasPermission(sessionUser, "chats.manage");
+    const canTrainAi = !readOnly && hasPermission(sessionUser, "ai.manage");
+    const [actionError, setActionError] = useState("");
+    const [assignmentOpen, setAssignmentOpen] = useState(false);
+    const [assignmentDraft, setAssignmentDraft] = useState("__unassigned__");
     const [trainingMessageId, setTrainingMessageId] = useState<string | null>(null);
     const currentUserName = session?.user?.name || "";
     const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -1234,6 +1244,18 @@ export default function InboxPage() {
     );
     const outboundSourceType = selectedChat?.sourceType || "wuzapi";
     const selectedChatId = selectedChat?.id ?? null;
+    type ConversationDraft = { text: string; file: typeof pendingFile; reply: Message | null };
+    const draftCacheRef = useRef(new Map<string, ConversationDraft>());
+    const previousDraftChatRef = useRef<string | null>(null);
+    const currentDraftRef = useRef<ConversationDraft>({text:inputText,file:pendingFile,reply:replyingTo});
+    useEffect(() => { currentDraftRef.current={text:inputText,file:pendingFile,reply:replyingTo}; },[inputText,pendingFile,replyingTo]);
+    useEffect(() => {
+        const next=switchConversationDraft(draftCacheRef.current,previousDraftChatRef.current,selectedChatId,currentDraftRef.current,{text:"",file:null,reply:null});
+        previousDraftChatRef.current=selectedChatId;
+        setInputText(next.text);setPendingFile(next.file);setReplyingTo(next.reply);
+        setActionError("");setEmojiPickerMsgId(null);
+    },[selectedChatId]);
+    const listScrollPositionRef = useRef(0);
     const formatDisplayPhone = useCallback(
         (phone: string | null | undefined) => formatPhone(phone, operationContext.phoneDefaultCountry),
         [operationContext.phoneDefaultCountry],
@@ -1325,6 +1347,7 @@ export default function InboxPage() {
     }, []);
 
     const handleSelectConversation = useCallback((chat: Conversation) => {
+        listScrollPositionRef.current=conversationsViewportRef.current?.scrollTop || 0;
         ignoreDeepLinkSelectionRef.current = true;
         clearInboxDeepLinkParams();
         setSelectedChat(chat);
@@ -1340,6 +1363,8 @@ export default function InboxPage() {
         ignoreDeepLinkSelectionRef.current = true;
         clearInboxDeepLinkParams();
         setSelectedChat(null);
+        setShowContactInfo(false);
+        requestAnimationFrame(() => { if (conversationsViewportRef.current) conversationsViewportRef.current.scrollTop=listScrollPositionRef.current; });
     }, [clearInboxDeepLinkParams]);
 
     const handleWindowChange = useCallback((open: boolean) => {
@@ -1364,6 +1389,7 @@ export default function InboxPage() {
     }, [slashQuery, templates]);
 
     const setReaction = async (msgId: string, emoji: string | null) => {
+        if (!canWrite) return;
         // Optimistic update
         setMessages(prev => prev.map(m => m.id === msgId ? { ...m, reaction: emoji } : m));
         try {
@@ -1959,6 +1985,7 @@ export default function InboxPage() {
 
                 const response = await fetch(url.toString());
                 const rawMessages = await response.json();
+                if (!isActiveConversationResult(selectedChatIdRef.current, activeSelectedChatId)) return;
                 const newMessages = Array.isArray(rawMessages)
                     ? rawMessages.map(normalizeMessageRecord)
                     : [];
@@ -2052,6 +2079,7 @@ export default function InboxPage() {
 
             const response = await fetch(url.toString(), { cache: "no-store" });
             const rawMessages = await response.json();
+            if (!isActiveConversationResult(selectedChatIdRef.current, selectedChat.id)) return;
             const olderMessages = Array.isArray(rawMessages)
                 ? rawMessages.map(normalizeMessageRecord)
                 : [];
@@ -2173,9 +2201,9 @@ export default function InboxPage() {
         } : null);
         setReplyingTo(null);
         window.sessionStorage.removeItem(INBOX_DRAFT_STORAGE_KEY);
-        window.history.replaceState(null, "", `/dashboard/inbox?conversationId=${encodeURIComponent(selectedChat.id)}`);
+        window.history.replaceState(null, "", `${tenantSlug ? tenantDashboardPath(tenantSlug, "/dashboard/inbox") : "/dashboard/inbox"}?conversationId=${encodeURIComponent(selectedChat.id)}`);
         setTimeout(() => scrollToBottom("instant"), 150);
-    }, [scrollToBottom, searchParams, selectedChat?.id]);
+    }, [scrollToBottom, searchParams, selectedChat?.id, tenantSlug]);
 
     // Cleanup
     useEffect(() => {
@@ -2198,7 +2226,8 @@ export default function InboxPage() {
     }, []);
 
     const performAction = async (action: string, extra: Record<string, unknown> = {}) => {
-        if (!selectedChat) return;
+        if (!selectedChat || !canWrite) return false;
+        setActionError("");
         try {
             const res = await fetch("/api/conversation", {
                 method: "POST",
@@ -2206,13 +2235,13 @@ export default function InboxPage() {
                 body: JSON.stringify({ conversationId: selectedChat.id, action, ...extra }),
             });
             const result = await res.json();
-            console.log("[Action]", action, result);
+            if (!res.ok || !result.success) throw new Error(result.error || "No se pudo actualizar la conversación.");
 
-            if (action === "delete") {
+            if (action === "delete" && selectedChatIdRef.current === selectedChat.id) {
                 setSelectedChat(null);
                 setMessages([]);
             }
-            if (action === "clear") {
+            if (action === "clear" && selectedChatIdRef.current === selectedChat.id) {
                 setMessages([]);
             }
 
@@ -2224,11 +2253,13 @@ export default function InboxPage() {
                 setConversations((prev) => mergeConversationSnapshots(prev, transformed));
                 if (selectedChat && action !== "delete") {
                     const updated = transformed.find(c => c.id === selectedChat.id);
-                    if (updated) setSelectedChat(updated);
+                    if (updated) setSelectedChat(current=>current?.id === updated.id ? updated : current);
                 }
             }
+            return true;
         } catch (error) {
-            console.error("[Action] error:", error);
+            setActionError(error instanceof Error ? error.message : "No se pudo actualizar el chat.");
+            return false;
         }
     };
 
@@ -2237,8 +2268,8 @@ export default function InboxPage() {
         const nextBotActive = !checked;
         if (selectedChat.botActive === nextBotActive) return;
 
-        setConversationBotState(selectedChat.id, nextBotActive);
-        await performAction("toggleBot", { botActive: nextBotActive });
+        if (!canWrite) return;
+        if (await performAction("toggleBot", { botActive: nextBotActive })) setConversationBotState(selectedChat.id, nextBotActive);
     };
 
     const updateConversationAssignment = useCallback((conversationId: string, assignedUser: TeamUser | null) => {
@@ -2268,12 +2299,14 @@ export default function InboxPage() {
     const handleAssignConversation = async (nextAssignedUserId: string) => {
         if (!selectedChat) return;
         const assignee = teamUsers.find((user) => user.id === nextAssignedUserId) || null;
-        updateConversationAssignment(selectedChat.id, assignee);
-        await performAction("assign", { assignedUserId: nextAssignedUserId });
+        if (!canWrite) return;
+        const saved=await performAction("assign", { assignedUserId: nextAssignedUserId });
+        if (saved) updateConversationAssignment(selectedChat.id, assignee);
+        return saved;
     };
 
     const handleConfirmAction = () => {
-        if (confirmAction) {
+        if (confirmAction && canWrite) {
             if (confirmAction.kind === "message" && confirmAction.messageId) {
                 deleteMessageLocally(confirmAction.messageId).catch((error) => {
                     console.error("deleteMessage error:", error);
@@ -2296,11 +2329,7 @@ export default function InboxPage() {
         if (viewFilter === "mine" && conv.assignedUserId !== effectiveCurrentUserId && conv.assignedUserId !== currentUserId) return false;
         if (viewFilter === "unassigned" && conv.assignedUserId) return false;
         if (!searchQuery.trim()) return true;
-        const q = searchQuery.toLowerCase();
-        const name = (conv.contact?.name || "").toLowerCase();
-        const phone = (conv.contact?.phone || "").toLowerCase();
-        const lastMsg = (conv.messages[0]?.content || "").toLowerCase();
-        return name.includes(q) || phone.includes(q) || lastMsg.includes(q);
+        return matchesConversationSearch(conv.contact || {}, conv.messages[0]?.content || "", searchQuery);
     });
 
     // ──── Voice Recording ────
@@ -2309,6 +2338,7 @@ export default function InboxPage() {
         : teamUsers.filter((user) => user.id === effectiveCurrentUserId || user.id === currentUserId || user.id === selectedChat?.assignedUserId);
 
     const requestMicPermission = async () => {
+        if (!canWrite) return;
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             stream.getTracks().forEach(track => track.stop());
@@ -2321,7 +2351,7 @@ export default function InboxPage() {
     };
 
     const handleMicClick = () => {
-        if (!isWhatsAppTransportReady) return;
+        if (!canWrite || !isWhatsAppTransportReady) return;
         if (isRecording) { stopRecording(); return; }
         if (!micPermissionGranted) {
             navigator.permissions?.query({ name: "microphone" as PermissionName })
@@ -2336,7 +2366,8 @@ export default function InboxPage() {
     };
 
     const startRecording = async () => {
-        if (!isWhatsAppTransportReady) return;
+        if (!canWrite) return;
+        if (!canWrite || !isWhatsAppTransportReady) return;
         try {
             const stream = await navigator.mediaDevices.getUserMedia({
                 audio: { echoCancellation: true, noiseSuppression: true }
@@ -2424,7 +2455,7 @@ export default function InboxPage() {
     };
 
     const uploadAndSendAudio = async (audioBlob: Blob, ext: string, mimeType: string) => {
-        if (!selectedChat || !isWhatsAppTransportReady) return;
+        if (!canWrite || !selectedChat || !isWhatsAppTransportReady) return;
         setIsUploading(true);
         try {
             const formData = new FormData();
@@ -2436,7 +2467,8 @@ export default function InboxPage() {
                 throw new Error(uploadResult.error || "No se pudo subir el audio.");
             }
             if (uploadResult.success) {
-                await sendMediaMessage(uploadResult.url, "audio", uploadResult.fileName, uploadResult.mimeType || mimeType);
+                if (isActiveConversationResult(selectedChatIdRef.current,selectedChat.id)) await sendMediaMessage(uploadResult.url, "audio", uploadResult.fileName, uploadResult.mimeType || mimeType);
+                else {const draft=draftCacheRef.current.get(selectedChat.id) || {text:inputText,file:null,reply:replyingTo};draftCacheRef.current.set(selectedChat.id,{...draft,file:{url:uploadResult.url,fileName:uploadResult.fileName || "Nota de voz",mimeType:uploadResult.mimeType || mimeType,mediaCategory:"audio"}});}
             }
         } catch (error) {
             console.error("Upload audio error:", error);
@@ -2451,7 +2483,7 @@ export default function InboxPage() {
 
     // ──── File Upload ────
     const uploadSelectedFile = async (file: File) => {
-        if (!isWhatsAppTransportReady) return;
+        if (!canWrite || !selectedChat || !isWhatsAppTransportReady) return;
         setIsUploading(true);
         try {
             const formData = new FormData();
@@ -2466,7 +2498,9 @@ export default function InboxPage() {
                 const previewUrl = ["image", "video"].includes(result.mediaCategory)
                     ? result.mimeType !== file.type ? getSafeMediaUrl(result.url) : URL.createObjectURL(file)
                     : undefined;
-                setPendingFile({ ...result, previewUrl });
+                const uploaded={...result,previewUrl};
+                if (isActiveConversationResult(selectedChatIdRef.current,selectedChat.id)) setPendingFile(uploaded);
+                else {const draft=draftCacheRef.current.get(selectedChat.id) || {text:inputText,file:null,reply:replyingTo};draftCacheRef.current.set(selectedChat.id,{...draft,file:uploaded});}
             }
         } catch (error) {
             console.error("Upload error:", error);
@@ -2489,7 +2523,7 @@ export default function InboxPage() {
     };
 
     const handleComposerPaste = async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
-        if (!selectedChat || !isWhatsAppTransportReady || isUploading) return;
+        if (!canWrite || !selectedChat || !isWhatsAppTransportReady || isUploading) return;
 
         const imageItem = Array.from(e.clipboardData.items).find(
             (item) => item.kind === "file" && item.type.startsWith("image/")
@@ -2536,6 +2570,7 @@ export default function InboxPage() {
     };
 
     const applyTemplate = async (template: TemplateRecord) => {
+        if (!canWrite) return;
         if (!selectedChat) return;
 
         const renderedContent = renderTemplateContent(template.content || "", {
@@ -2594,7 +2629,7 @@ export default function InboxPage() {
 
     // ──── Send Media ────
     const sendMediaMessage = async (mediaUrl: string, mediaCategory: string, fileName?: string, mimeType?: string, caption?: string) => {
-        if (!selectedChat || !isWhatsAppTransportReady) return;
+        if (!canWrite || !selectedChat || !isWhatsAppTransportReady || !isActiveConversationResult(selectedChatIdRef.current,selectedChat.id)) return false;
 
         const fullMediaUrl = mediaUrl.startsWith("http") ? mediaUrl : `${window.location.origin}${mediaUrl}`;
 
@@ -2634,8 +2669,10 @@ export default function InboxPage() {
             if (!res.ok || !result.success || !result.message) {
                 throw new Error(result.error || "WhatsApp no confirmó el envío del archivo.");
             }
+            if (!isActiveConversationResult(selectedChatIdRef.current, selectedChat.id)) return;
             if (result?.message) {
-                const persistedMessage = normalizeMessageRecord(result.message);
+                if (!isActiveConversationResult(selectedChatIdRef.current,selectedChat.id)) return true;
+            const persistedMessage = normalizeMessageRecord(result.message);
                 if (result.conversationId && result.conversationId !== selectedChat.id) {
                     setMessages((prev) => prev.filter((message) => message.id !== optimisticId));
                     await refreshConversationsAndSelect(result.conversationId);
@@ -2651,16 +2688,25 @@ export default function InboxPage() {
 
             // Remove optimistic message on failure
             setMessages(prev => prev.filter(m => m.id !== optimisticId));
+            recoverSendDraft(selectedChat.id,{text:caption || "",file:{url:mediaUrl,fileName:fileName || "Archivo",mimeType:mimeType || "application/octet-stream",mediaCategory,previewUrl:getSafeMediaUrl(mediaUrl)},reply:replyingTo});
+            return false;
         }
+    };
+
+    const recoverSendDraft = (conversationId: string, attempted: ConversationDraft) => {
+        if (isActiveConversationResult(selectedChatIdRef.current,conversationId)) {
+            const restored=recoverFailedConversationDraft(currentDraftRef.current,attempted);
+            setInputText(restored.text);setPendingFile(restored.file);setReplyingTo(restored.reply);
+        } else {draftCacheRef.current.set(conversationId,recoverFailedConversationDraft(draftCacheRef.current.get(conversationId),attempted));}
     };
 
     // ──── Send Text ────
     const handleSendMessage = async () => {
-        if (!isWhatsAppTransportReady) return;
+        if (!canWrite || !isWhatsAppTransportReady) return;
         if (pendingFile) {
-            await sendMediaMessage(pendingFile.url, pendingFile.mediaCategory, pendingFile.fileName, pendingFile.mimeType, inputText.trim() || undefined);
-            setInputText("");
-            setReplyingTo(null);
+            const origin=selectedChat?.id;
+            const sent=await sendMediaMessage(pendingFile.url, pendingFile.mediaCategory, pendingFile.fileName, pendingFile.mimeType, inputText.trim() || undefined);
+            if (sent && selectedChatIdRef.current===origin) {setInputText("");setReplyingTo(null);}
             return;
         }
         if (!inputText.trim() || !selectedChat) return;
@@ -2705,6 +2751,7 @@ export default function InboxPage() {
                 throw new Error(errData.error || "No se pudo enviar el mensaje.");
             }
             const result = await res.json();
+            if (!isActiveConversationResult(selectedChatIdRef.current, selectedChat.id)) return;
             if (result?.message) {
                 const persistedMessage = normalizeMessageRecord(result.message);
                 if (result.conversationId && result.conversationId !== selectedChat.id) {
@@ -2719,27 +2766,20 @@ export default function InboxPage() {
             const message = error instanceof Error ? error.message : "Error inesperado";
             alert(`Error al enviar mensaje: ${message}`);
             setMessages((prev) => prev.filter((message) => message.id !== optimistic.id));
+            recoverSendDraft(selectedChat.id,{text:inputText,file:null,reply:replyingTo});
         }
     };
 
     // ──── Forward Message ────
     const handleForward = async (targetConvId: string) => {
-        if (!forwardMsg || !isWhatsAppTransportReady) return;
+        const target=conversations.find(entry=>entry.id===targetConvId);
+        if (!canWrite || !forwardMsg || !target || !isConversationTransportReady(target)) return;
+        setActionError("");
         try {
-            await fetch("/api/send-message", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    conversationId: targetConvId,
-                    content: forwardMsg.content,
-                    direction: "outbound",
-                    sourceType: outboundSourceType,
-                }),
-            });
-        } catch (error) {
-            console.error("Forward error:", error);
-        }
-        setForwardMsg(null);
+            const res=await fetch("/api/send-message",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(forwardMessagePayload(target,forwardMsg.content))});
+            if (!res.ok) {const error=await res.json().catch(()=>({}));throw new Error(error.error || "No se pudo reenviar el mensaje.");}
+            setForwardMsg(null);
+        } catch(error) {setActionError(error instanceof Error ? error.message : "No se pudo reenviar el mensaje.");}
     };
 
     return (
@@ -2754,72 +2794,24 @@ export default function InboxPage() {
                     onCancel={() => setConfirmAction(null)}
                 />
             )}
-            {reactionTargetMessage && (
-                <div
-                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 backdrop-blur-sm"
-                    onClick={() => setEmojiPickerMsgId(null)}
-                >
-                    <div
-                        className="w-full max-w-md rounded-[2rem] border border-border/60 bg-card/95 p-5 shadow-[0_28px_80px_-32px_rgba(15,23,42,0.6)] backdrop-blur-xl"
-                        onClick={(event) => event.stopPropagation()}
-                    >
-                        <div className="mb-4 flex items-start justify-between gap-3">
-                            <div>
-                                <h3 className="text-base font-semibold tracking-tight">Reaccionar al mensaje</h3>
-                                <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
-                                    {reactionTargetMessage.content || `[${reactionTargetMessage.type}]`}
-                                </p>
-                            </div>
-                            <button
-                                className="rounded-full border border-border/60 p-2 text-muted-foreground transition hover:bg-muted hover:text-foreground"
-                                onClick={() => setEmojiPickerMsgId(null)}
-                            >
-                                <X className="h-4 w-4" />
-                            </button>
-                        </div>
-
-                        <div className="grid grid-cols-4 gap-2 sm:grid-cols-6">
-                            {REACTION_EMOJIS.map((emoji) => (
-                                <button
-                                    key={emoji}
-                                    className="flex h-12 items-center justify-center rounded-2xl border border-border/50 bg-muted/35 text-2xl transition hover:scale-[1.04] hover:bg-muted"
-                                    onClick={() => {
-                                        setReaction(reactionTargetMessage.id, emoji);
-                                        setEmojiPickerMsgId(null);
-                                    }}
-                                >
-                                    {emoji}
-                                </button>
-                            ))}
-                        </div>
-
-                        {reactionTargetMessage.reaction && (
-                            <button
-                                className="mt-4 w-full rounded-2xl border border-border/60 px-4 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground"
-                                onClick={() => {
-                                    setReaction(reactionTargetMessage.id, null);
-                                    setEmojiPickerMsgId(null);
-                                }}
-                            >
-                                Quitar reaccion actual
-                            </button>
-                        )}
-                    </div>
-                </div>
-            )}
+            {reactionTargetMessage && <Dialog open onOpenChange={open=>{if (!open) setEmojiPickerMsgId(null);}}><DialogContent className={styles.reactionDialog}>
+                <DialogHeader><DialogTitle>Reaccionar al mensaje</DialogTitle><DialogDescription className="line-clamp-2 break-words">{reactionTargetMessage.content || `[${reactionTargetMessage.type}]`}</DialogDescription></DialogHeader>
+                <div className="grid grid-cols-4 gap-2 sm:grid-cols-6">{REACTION_EMOJIS.map(emoji=><button key={emoji} aria-label={`Reaccionar con ${emoji}`} disabled={!canWrite} className="h-12 rounded-xl bg-muted text-2xl hover:bg-accent" onClick={()=>{void setReaction(reactionTargetMessage.id,emoji);setEmojiPickerMsgId(null);}}>{emoji}</button>)}</div>
+                {reactionTargetMessage.reaction && <Button variant="outline" disabled={!canWrite} onClick={()=>{void setReaction(reactionTargetMessage.id,null);setEmojiPickerMsgId(null);}}>Quitar reacción actual</Button>}
+            </DialogContent></Dialog>}
 
             <div
-                className="fixed inset-x-2 bottom-2 top-16 z-10 flex overflow-hidden overscroll-none rounded-2xl border border-border bg-card shadow-soft md:relative md:inset-auto md:z-auto md:h-full md:min-h-0 md:rounded-none md:border-0 md:shadow-none"
+                className={styles.workspace} data-active-chat={Boolean(selectedChat)}
             >
                 {/* ──── Sidebar ──── */}
-                <div className={cn("min-h-0 w-full border-r border-border bg-card md:w-[20.5rem] 2xl:w-[22rem] flex flex-col", selectedChat ? "hidden md:flex" : "flex")}>
-                    <div className="space-y-3 border-b border-border bg-card p-4">
+                <div className={styles.list} data-selected={Boolean(selectedChat)}>
+                    <div className={styles.listHeader}>
                         <div className="flex items-start justify-between gap-3">
                             <div>
                                 <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-gold">
                                     {isWuzapiTransportReady || isMetaTransportReady ? "WhatsApp conectado" : "Centro de mensajes"}
                                 </p>
-                                <h2 className="mt-1 text-xl font-semibold tracking-tight">Bandeja</h2>
+                                <h2 className="mt-1 text-xl font-semibold tracking-tight">Chats</h2>
                             </div>
                             <span className="mt-1 rounded-full bg-secondary px-2.5 py-1 text-[10px] font-semibold text-muted-foreground">
                                 {filteredConversations.length} chats
@@ -2828,12 +2820,13 @@ export default function InboxPage() {
                         <div className="relative">
                             <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                             <Input
+                                aria-label="Buscar chats"
                                 placeholder="Buscar chats..."
-                                className="h-12 rounded-xl border-border bg-background/70 pl-10 pr-28 shadow-none placeholder:text-muted-foreground/75 focus-visible:border-primary/35"
+                                className="h-11 rounded-xl border-border bg-background pl-10 pr-28 shadow-none"
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                             />
-                            <NewContactDialog
+                            {canWrite && <NewContactDialog
                                 triggerLabel="Nuevo"
                                 triggerClassName="absolute right-1 top-1/2 h-10 -translate-y-1/2 rounded-xl px-3 shadow-sm hover:-translate-y-1/2 hover:shadow-md"
                                 title="Nuevo chat"
@@ -2842,20 +2835,21 @@ export default function InboxPage() {
                                 onCreated={async ({ conversationId }) => {
                                     await refreshConversationsAndSelect(conversationId);
                                 }}
-                            />
+                            />}
                         </div>
                         <div className="inline-flex w-full flex-wrap gap-1 rounded-xl bg-secondary/60 p-1">
                             {[
                                 { id: "all", label: "Todos" },
-                                { id: "mine", label: "Mios" },
+                                { id: "mine", label: "Míos" },
                                 { id: "unassigned", label: "Sin asignar" },
                             ].map((filter) => (
                                 <button
                                     key={filter.id}
                                     type="button"
+                                    aria-pressed={viewFilter === filter.id}
                                     onClick={() => setViewFilter(filter.id as "all" | "mine" | "unassigned")}
                                     className={cn(
-                                        "flex-1 rounded-lg border px-2.5 py-1.5 text-[11px] font-medium transition-all",
+                                        styles.filter, "flex-1 rounded-lg border px-2.5 font-medium transition-all",
                                         viewFilter === filter.id
                                             ? "border-border bg-card text-foreground shadow-sm"
                                             : "border-transparent bg-transparent text-muted-foreground hover:bg-card/70 hover:text-foreground",
@@ -2888,7 +2882,7 @@ export default function InboxPage() {
                             )}
                             {!conversationLoadError && filteredConversations.length === 0 && (
                                 <div className="rounded-[1.6rem] border border-dashed border-border/60 bg-background/50 p-10 text-center text-sm text-muted-foreground">
-                                    {searchQuery ? "No se encontraron chats" : "Sin conversaciones"}
+                                    {searchQuery ? "No se encontraron chats" : hasMoreConversations ? "Cargando conversaciones…" : "Sin conversaciones"}
                                 </div>
                             )}
                             {filteredConversations.map((chat) => {
@@ -2897,11 +2891,13 @@ export default function InboxPage() {
                                 return (
                                 <button
                                     key={chat.id}
+                                    aria-label={`Abrir chat de ${chat.contact?.name || "Desconocido"}`}
+                                    aria-pressed={selectedChat?.id === chat.id}
                                     onClick={() => {
                                         handleSelectConversation(chat);
                                     }}
                                     className={cn(
-                                        "relative grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-2.5 rounded-xl border px-2.5 py-2.5 text-left transition-all",
+                                        styles.row, "relative grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-start border text-left transition-all",
                                         selectedChat?.id === chat.id
                                             ? "border-primary/15 bg-accent/65 shadow-none before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-full before:bg-primary"
                                             : "border-transparent bg-transparent hover:border-border hover:bg-background/70",
@@ -2928,7 +2924,7 @@ export default function InboxPage() {
                                     </div>
                                     <div className="min-w-0 overflow-hidden">
                                         <div className="flex min-w-0 items-start gap-1.5">
-                                            <span className="flex min-w-0 items-center gap-1 truncate text-[13px] font-semibold tracking-tight leading-tight">
+                                            <span className={styles.rowName}>
                                                 {chat.contact?.name || "Desconocido"}
                                                 {chat.isMuted && <BellOff className="h-3 w-3 text-muted-foreground" />}
                                             </span>
@@ -2936,12 +2932,12 @@ export default function InboxPage() {
                                         {chat.contact?.phone && (
                                             <p className="mt-0.5 text-[10px] text-muted-foreground/85 truncate leading-tight">{formatDisplayPhone(chat.contact.phone)}</p>
                                         )}
-                                        <p className="text-[10px] text-muted-foreground/80 truncate leading-tight">
+                                        <p className={`${styles.rowAssignment} text-muted-foreground truncate`}>
                                             {chat.assignedUser
                                                 ? `Asignado a ${chat.assignedUser.name || chat.assignedUser.email}`
                                                 : "Sin asignar"}
                                         </p>
-                                        <p className="mt-0.5 text-[11px] leading-tight text-muted-foreground truncate">
+                                        <p className={`${styles.rowPreview} text-muted-foreground line-clamp-2`}>
                                             {getLastMessagePreview(chat)}
                                         </p>
                                     </div>
@@ -2986,17 +2982,18 @@ export default function InboxPage() {
                 </div>
 
                 {/* ──── Main Chat ──── */}
-                <div className={cn("flex min-h-0 min-w-0 flex-1 flex-col bg-background", selectedChat ? "flex" : "hidden md:flex")}>
+                <div className={styles.conversation} data-selected={Boolean(selectedChat)}>
                     {selectedChat ? (
                         <>
+                            {actionError && <p role="alert" className={styles.actionError}>{actionError}</p>}
                             {/* Header */}
-                            <div className="flex min-h-[4.5rem] shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border bg-card px-3 py-2.5 md:px-4">
-                                <div className="flex items-center gap-1 overflow-hidden">
+                            <div className={styles.header}>
+                                <div className={styles.identity}>
                                     {/* Back button on mobile */}
-                                    <button className="md:hidden flex-shrink-0 rounded-full border border-border/60 bg-background/90 p-2 shadow-sm hover:bg-muted" onClick={handleCloseConversation}>
+                                    <button aria-label="Volver a la lista de chats" className={styles.back} onClick={handleCloseConversation}>
                                         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6" /></svg>
                                     </button>
-                                    <button className="ml-1 flex items-center gap-3 overflow-hidden text-left transition hover:opacity-80 md:ml-0" onClick={() => setShowContactInfo(true)}>
+                                    <button aria-label="Ver ficha del cliente" className="ml-1 flex items-center gap-3 overflow-hidden text-left transition hover:opacity-80 md:ml-0" onClick={() => setShowContactInfo(true)}>
                                         <div className="relative shrink-0">
                                         <Avatar className="h-10 w-10 flex-shrink-0 ring-1 ring-black/5 dark:ring-white/10">
                                                 <AvatarImage
@@ -3012,13 +3009,14 @@ export default function InboxPage() {
                                         </div>
                                         <div className="overflow-hidden">
                                             <div className="flex items-center gap-1.5 truncate text-sm font-semibold tracking-tight">
-                                                <span className="truncate">{selectedChat.contact?.name || "Desconocido"}</span>
+                                                <span className={styles.identityName}>{selectedChat.contact?.name || "Desconocido"}</span>
                                                 {selectedChat.status === "closed" && (
                                                     <Badge variant="secondary" className="shrink-0 rounded-full border border-border/50 bg-background/80 px-2 py-0.5 text-[10px]">Cerrada</Badge>
                                                 )}
                                             </div>
                                             <div className="text-xs text-muted-foreground truncate">{formatDisplayPhone(selectedChat.contact?.phone)}</div>
                                             <div className="text-[11px] text-muted-foreground truncate">
+                                                <span className={styles.headerMode}>{readOnly ? "Solo lectura" : selectedChat.botActive ? "IA activa" : "Modo humano"} · </span>
                                                 {selectedChat.assignedUser
                                                     ? `Asignado a ${selectedChat.assignedUser.name || selectedChat.assignedUser.email}`
                                                     : "Sin responsable asignado"}
@@ -3026,9 +3024,10 @@ export default function InboxPage() {
                                         </div>
                                     </button>
                                 </div>
-                                <div className="ml-auto flex items-center gap-2 flex-wrap justify-end">
-                                    <div className="hidden min-w-[150px] lg:block">
+                                <div className={styles.headerActions}>
+                                    <div className={styles.assignment}>
                                         <Select
+                                            disabled={!canWrite}
                                             value={selectedChat.assignedUserId || "__unassigned__"}
                                             onValueChange={(value) => handleAssignConversation(value === "__unassigned__" ? "" : value)}
                                         >
@@ -3045,7 +3044,7 @@ export default function InboxPage() {
                                             </SelectContent>
                                         </Select>
                                     </div>
-                                    <div className="flex h-9 items-center gap-2 rounded-xl border border-primary/15 bg-primary/5 px-2.5 shadow-none">
+                                    <div className={styles.botToggle}>
                                         {selectedChat.botActive ? (
                                             <Bot className="h-3.5 w-3.5 text-emerald-600" />
                                         ) : (
@@ -3053,13 +3052,14 @@ export default function InboxPage() {
                                         )}
                                         <div className="hidden sm:block">
                                             <p className="text-[11px] font-medium leading-none">
-                                                {selectedChat.botActive ? "Bot activo" : "Modo humano"}
+                                                {selectedChat.botActive ? "IA activa" : "Modo humano"}
                                             </p>
                                             <p className="mt-0.5 text-[10px] leading-none text-muted-foreground">
                                                 {selectedChat.botActive ? "Responde automatico" : "Bot pausado"}
                                             </p>
                                         </div>
                                         <Switch
+                                            disabled={!canWrite}
                                             checked={!selectedChat.botActive}
                                             onCheckedChange={handleHumanModeToggle}
                                             aria-label="Cambiar entre bot activo y modo humano"
@@ -3072,7 +3072,7 @@ export default function InboxPage() {
                                     {/* Dropdown Menu */}
                                     <DropdownMenu>
                                         <DropdownMenuTrigger asChild>
-                                            <Button variant="ghost" size="icon" className="h-9 w-9 rounded-xl border border-border bg-background shadow-none">
+                                            <Button variant="ghost" size="icon" aria-label="Opciones de la conversación" className="h-10 w-10 rounded-xl">
                                                 <MoreVertical className="h-4 w-4" />
                                             </Button>
                                         </DropdownMenuTrigger>
@@ -3080,30 +3080,34 @@ export default function InboxPage() {
                                             <DropdownMenuItem onClick={() => setShowContactInfo(true)}>
                                                 <Info className="h-4 w-4 mr-2" /> Info. del contacto
                                             </DropdownMenuItem>
+                                            <DropdownMenuItem disabled={!canWrite} onClick={()=>void handleHumanModeToggle(selectedChat.botActive)}><Bot className="mr-2 size-4" />{selectedChat.botActive ? "Pausar Asistente IA" : "Activar Asistente IA"}</DropdownMenuItem>
+                                            <DropdownMenuItem disabled={!canWrite} onClick={() => {setAssignmentDraft(selectedChat.assignedUserId || "__unassigned__");setAssignmentOpen(true);}}>Asignar responsable</DropdownMenuItem>
                                             <DropdownMenuSeparator />
-                                            <DropdownMenuItem onClick={() => performAction("mute")}>
+                                            <DropdownMenuItem disabled={!canWrite} onClick={() => performAction("mute")}>
                                                 {selectedChat.isMuted
                                                     ? <><Bell className="h-4 w-4 mr-2" /> Activar notificaciones</>
                                                     : <><BellOff className="h-4 w-4 mr-2" /> Silenciar notificaciones</>
                                                 }
                                             </DropdownMenuItem>
-                                            <DropdownMenuItem onClick={() => performAction("favorite")}>
+                                            <DropdownMenuItem disabled={!canWrite} onClick={() => performAction("favorite")}>
                                                 <Star className={cn("h-4 w-4 mr-2", selectedChat.isFavorite && "fill-yellow-500 text-yellow-500")} />
                                                 {selectedChat.isFavorite ? "Quitar de favoritos" : "Añadir a favoritos"}
                                             </DropdownMenuItem>
                                             <DropdownMenuSeparator />
-                                            <DropdownMenuItem onClick={() => performAction(selectedChat.status === "active" ? "close" : "reopen")}>
+                                            <DropdownMenuItem disabled={!canWrite} onClick={() => performAction(selectedChat.status === "active" ? "close" : "reopen")}>
                                                 <Archive className="h-4 w-4 mr-2" />
                                                 {selectedChat.status === "active" ? "Cerrar chat" : "Reabrir chat"}
                                             </DropdownMenuItem>
                                             <DropdownMenuSeparator />
                                             <DropdownMenuItem
+                                                disabled={!canWrite}
                                                 className="text-destructive focus:text-destructive"
                                                 onClick={() => setConfirmAction({ type: "clear", title: "Vaciar chat", desc: "¿Estás seguro de que quieres eliminar todos los mensajes de esta conversación? Esta acción no se puede deshacer." })}
                                             >
                                                 <Eraser className="h-4 w-4 mr-2" /> Vaciar chat
                                             </DropdownMenuItem>
                                             <DropdownMenuItem
+                                                disabled={!canWrite}
                                                 className="text-destructive focus:text-destructive"
                                                 onClick={() => setConfirmAction({ type: "delete", title: "Eliminar chat", desc: "¿Estás seguro de que quieres eliminar esta conversación por completo? Esta acción no se puede deshacer." })}
                                             >
@@ -3115,11 +3119,11 @@ export default function InboxPage() {
                             </div>
 
                             {/* Messages */}
-                            <div className="relative flex-1 min-h-0 overflow-hidden">
+                            <div className={styles.messages}>
                                 <div
                                     ref={messagesContainerRef}
                                     onScroll={handleMessagesScroll}
-                                    className="h-full overflow-y-auto bg-[linear-gradient(180deg,hsl(42_31%_96%),hsl(45_35%_98%))] p-4 dark:bg-background sm:px-6"
+                                    className={styles.messageScroll}
                                     style={{ scrollBehavior: "auto" }}
                                 >
                                     {/* Padding at bottom for scroll space */}
@@ -3255,16 +3259,16 @@ export default function InboxPage() {
                                                     )}
                                                     <div
                                                         className={cn(
-                                                            "group/msg flex max-w-[88%] gap-0.5 sm:max-w-[82%] 2xl:max-w-[76%]",
+                                                            styles.messageRow, "group/msg",
                                                             msg.direction === "outbound" ? "self-end flex-row-reverse" : "self-start flex-row"
                                                         )}
                                                     >
                                                         {/* Bubble */}
-                                                        <div className={cn("flex flex-col", msg.direction === "outbound" ? "items-end" : "items-start")}>
+                                                        <div className={cn(styles.messageContent, msg.direction === "outbound" ? "items-end" : "items-start")}>
                                                             {responderLabel && <MessageResponderBadge label={responderLabel} />}
                                                             <div
                                                                 className={cn(
-                                                                    "relative overflow-visible rounded-2xl border px-3.5 py-2.5 text-sm break-words [overflow-wrap:anywhere] shadow-[0_6px_18px_-14px_rgba(53,59,35,0.35)]",
+                                                                    styles.bubble, "relative overflow-visible rounded-2xl border px-3.5 py-2.5 break-words [overflow-wrap:anywhere] shadow-[0_6px_18px_-14px_rgba(53,59,35,0.35)]",
                                                                     msg.direction === "outbound"
                                                                         ? "text-foreground"
                                                                         : "border-border bg-card text-foreground",
@@ -3291,7 +3295,7 @@ export default function InboxPage() {
                                                                         "absolute -bottom-3 z-10 flex min-h-7 min-w-7 items-center justify-center rounded-full border border-border/40 bg-card px-1.5 text-base shadow-sm cursor-pointer transition-transform hover:scale-110",
                                                                         msg.direction === "outbound" ? "right-2" : "left-2",
                                                                     )}
-                                                                    onClick={() => setReaction(msg.id, null)}
+                                                                    onClick={() => { if (canWrite) void setReaction(msg.id, null); }}
                                                                     title="Quitar reacción"
                                                                 >
                                                                     {reactions[msg.id]}
@@ -3325,12 +3329,12 @@ export default function InboxPage() {
                                                         <div className="relative">
                                                             <DropdownMenu>
                                                                 <DropdownMenuTrigger asChild>
-                                                                    <button type="button" aria-label={`Opciones del mensaje${responderLabel ? ` de ${responderLabel}` : " del cliente"}`} className="self-start mt-1 opacity-0 group-hover/msg:opacity-100 focus-visible:opacity-100 transition-opacity h-6 w-6 flex items-center justify-center rounded-full hover:bg-muted/60 shrink-0">
+                                                                    <button type="button" aria-label={`Opciones del mensaje${responderLabel ? ` de ${responderLabel}` : " del cliente"}`} className={styles.messageMenu}>
                                                                         <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
                                                                     </button>
                                                                 </DropdownMenuTrigger>
                                                                 <DropdownMenuContent align={msg.direction === "outbound" ? "end" : "start"} className="w-44">
-                                                                    <DropdownMenuItem className="gap-2 text-sm" onClick={() => {
+                                                                    <DropdownMenuItem disabled={!canWrite} className="gap-2 text-sm" onClick={() => {
                                                                         setReplyingTo(msg);
                                                                     }}>
                                                                         <Reply className="h-4 w-4" /> Responder
@@ -3341,6 +3345,7 @@ export default function InboxPage() {
                                                                         <Copy className="h-4 w-4" /> Copiar
                                                                     </DropdownMenuItem>
                                                                     <DropdownMenuItem
+                                                                        disabled={!canWrite}
                                                                         className="gap-2 text-sm"
                                                                         onSelect={() => {
                                                                             setEmojiPickerMsgId(msg.id);
@@ -3348,8 +3353,8 @@ export default function InboxPage() {
                                                                     >
                                                                         <SmilePlus className="h-4 w-4" /> Reaccionar
                                                                     </DropdownMenuItem>
-                                                                    <DropdownMenuItem className="gap-2 text-sm" onClick={() => {
-                                                                        setForwardMsg(msg);
+                                                                    <DropdownMenuItem disabled={!canWrite} className="gap-2 text-sm" onClick={() => {
+                                                                        if (canWrite) setForwardMsg(msg);
                                                                     }}>
                                                                         <Forward className="h-4 w-4" /> Reenviar
                                                                     </DropdownMenuItem>
@@ -3358,6 +3363,7 @@ export default function InboxPage() {
                                                                     </DropdownMenuItem>}
                                                                     <DropdownMenuSeparator />
                                                                     <DropdownMenuItem
+                                                                        disabled={!canWrite}
                                                                         className="gap-2 text-sm text-destructive focus:text-destructive"
                                                                         onClick={() => {
                                                                             setConfirmAction({
@@ -3476,7 +3482,7 @@ export default function InboxPage() {
                                             <p className="text-sm font-medium truncate">{pendingFile.fileName}</p>
                                             <p className="text-xs text-muted-foreground">{pendingFile.mimeType}</p>
                                         </div>
-                                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setPendingFile(null)}>
+                                        <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Quitar archivo adjunto" onClick={() => setPendingFile(null)}>
                                             <X className="h-4 w-4" />
                                         </Button>
                                     </div>
@@ -3489,7 +3495,7 @@ export default function InboxPage() {
                             ) : null}
 
                             {/* Input Area — Locked when 24h window is closed */}
-                            {isMetaReplyWindowExpired ? (
+                            {!canWrite ? <div className={styles.readOnly}>Solo lectura · Puedes consultar los mensajes, pero no responder ni modificar este chat.</div> : isMetaReplyWindowExpired ? (
                                 /* ═══ LOCKED: 24h window expired ═══ */
                                 <div className="shrink-0 space-y-0">
                                     <p className="text-xs text-center text-muted-foreground px-6 py-3">
@@ -3503,20 +3509,21 @@ export default function InboxPage() {
                                             variant="outline"
                                             className="rounded-full px-6 gap-2 border-border hover:bg-primary/5 hover:border-primary/30"
                                             onClick={() => setTemplateModalOpen(true)}
+                                            disabled={!canWrite || !isMetaTransportReady}
                                         >
                                             <LayoutTemplate className="h-4 w-4" />
-                                            Mensaje de plantilla (WhatsApp API)
+                                            Mensaje de plantilla
                                         </Button>
                                     </div>
                                 </div>
                             ) : (
                                 /* ═══ UNLOCKED: Normal input area ═══ */
                                 <div
-                                    className="shrink-0 border-t border-border bg-card px-3 pt-3"
+                                    className={styles.composer}
                                     style={{ paddingBottom: "max(0.25rem, env(safe-area-inset-bottom))" }}
                                 >
                                     {shouldShowWhatsAppWarning && (
-                                        <div className="mx-auto mb-3 max-w-[54rem] rounded-[1.35rem] border border-amber-200/80 bg-amber-50/95 px-4 py-3 text-amber-950 shadow-[0_18px_40px_-28px_rgba(217,119,6,0.35)]">
+                                        <div className={styles.disconnected}>
                                             <div className="flex items-start gap-3">
                                                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
                                                 <div>
@@ -3536,7 +3543,7 @@ export default function InboxPage() {
                                                     <p className="text-xs font-semibold text-primary">Respondiendo</p>
                                                     <p className="text-xs text-muted-foreground truncate">{replyingTo.content?.slice(0, 80)}</p>
                                                 </div>
-                                                <button className="shrink-0 p-1 rounded hover:bg-muted" onClick={() => setReplyingTo(null)}>
+                                                <button className="shrink-0 p-1 rounded hover:bg-muted" aria-label="Cancelar respuesta citada" onClick={() => setReplyingTo(null)}>
                                                     <X className="h-3.5 w-3.5 text-muted-foreground" />
                                                 </button>
                                             </div>
@@ -3596,7 +3603,7 @@ export default function InboxPage() {
                                             </Button>
                                         </div>
                                     ) : (
-                                        <div className="mx-auto flex max-w-[58rem] items-end gap-2 rounded-2xl border border-border bg-background p-1.5 shadow-sm">
+                                        <div className={styles.composeRow}>
                                             <input ref={fileInputRef} type="file" className="hidden"
                                                 accept="image/*,audio/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.rar"
                                                 onChange={handleFileSelect}
@@ -3605,26 +3612,27 @@ export default function InboxPage() {
                                                 accept="image/*"
                                                 onChange={handleFileSelect}
                                             />
-                                            <div className="flex gap-1 pb-1 pl-1">
-                                                <TemplatePicker templates={templates} onApply={(template) => { void applyTemplate(template); }} disabled={!selectedChat || isUploading || !isWhatsAppTransportReady} />
+                                            <div className={styles.composeTools}>
+                                                <TemplatePicker templates={templates} onApply={(template) => { void applyTemplate(template); }} disabled={!canWrite || !selectedChat || isUploading || !isWhatsAppTransportReady} />
                                                 <Button variant="ghost" size="icon" className="h-10 w-10 shrink-0 rounded-full border border-transparent text-muted-foreground hover:border-border/50 hover:text-foreground hover:bg-muted/50"
-                                                    onClick={() => fileInputRef.current?.click()} disabled={isUploading || !isWhatsAppTransportReady} title="Adjuntar archivo">
+                                                    onClick={() => fileInputRef.current?.click()} disabled={!canWrite || isUploading || !isWhatsAppTransportReady} title="Adjuntar archivo">
                                                     {isUploading
                                                         ? <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
                                                         : <Paperclip className="h-5 w-5" />}
                                                 </Button>
                                                 <Button variant="ghost" size="icon" className="h-10 w-10 shrink-0 rounded-full border border-transparent text-muted-foreground hover:border-border/50 hover:text-foreground hover:bg-muted/50"
-                                                    onClick={() => imageInputRef.current?.click()} disabled={isUploading || !isWhatsAppTransportReady} title="Enviar imagen">
+                                                    onClick={() => imageInputRef.current?.click()} data-optional-image disabled={!canWrite || isUploading || !isWhatsAppTransportReady} title="Enviar imagen">
                                                     <ImageIcon className="h-5 w-5" />
                                                 </Button>
                                             </div>
-                                            <div className="mb-1 flex-1 rounded-[1.25rem] border border-transparent bg-muted/20 p-1 transition-all focus-within:border-border/60 focus-within:bg-background/92 focus-within:ring-1 ring-primary/30">
+                                            <div className={styles.composerText}>
                                                 <Textarea
                                                     ref={composerTextareaRef}
+                                                    aria-label="Mensaje para el cliente"
                                                     rows={1}
-                                                    placeholder={isWhatsAppTransportReady ? (pendingFile ? "Agregar descripción..." : "Escribe un mensaje...") : "Conecta un número de WhatsApp para responder desde este chat..."}
+                                                    placeholder={isWhatsAppTransportReady ? (pendingFile ? "Agregar descripción..." : "Escribe un mensaje...") : "Escribe un borrador..."}
                                                     className="min-h-[44px] max-h-32 resize-none border-0 bg-transparent px-3 py-3 text-base shadow-none focus-visible:ring-0"
-                                                    disabled={!isWhatsAppTransportReady}
+                                                    disabled={!canWrite}
                                                     value={inputText}
                                                     onChange={(e) => setInputText(e.target.value)}
                                                     onPaste={handleComposerPaste}
@@ -3633,11 +3641,11 @@ export default function InboxPage() {
                                             </div>
                                             <div className="pb-1 pr-1 shrink-0">
                                                 {(inputText.trim() || pendingFile) ? (
-                                                    <Button size="icon" className="h-11 w-11 rounded-xl animate-in zoom-in-50 duration-200 bg-primary text-primary-foreground shadow-none hover:bg-primary/90" onClick={handleSendMessage} disabled={!isWhatsAppTransportReady}>
+                                                    <Button size="icon" className="h-11 w-11 rounded-xl animate-in zoom-in-50 duration-200 bg-primary text-primary-foreground shadow-none hover:bg-primary/90" aria-label="Enviar mensaje" onClick={handleSendMessage} disabled={!canWrite || !isWhatsAppTransportReady}>
                                                         <Send className="h-5 w-5 ml-0.5" />
                                                     </Button>
                                                 ) : (
-                                                    <Button size="icon" className="h-11 w-11 shrink-0 rounded-xl bg-primary text-primary-foreground shadow-none hover:bg-primary/90" onClick={handleMicClick} title="Nota de voz" disabled={!isWhatsAppTransportReady}>
+                                                    <Button size="icon" className="h-11 w-11 shrink-0 rounded-xl bg-primary text-primary-foreground shadow-none hover:bg-primary/90" onClick={handleMicClick} title="Nota de voz" disabled={!canWrite || !isWhatsAppTransportReady}>
                                                         <Mic className="h-5 w-5" />
                                                     </Button>
                                                 )}
@@ -3660,15 +3668,17 @@ export default function InboxPage() {
 
                 {/* ──── Contact Info Panel ──── */}
                 {selectedChat && (
-                    <div className="hidden h-full shrink-0 xl:flex">
+                    <div className={styles.desktopProfile}>
                         <ContactInfoPanel conversation={selectedChat} onClose={() => setShowContactInfo(false)} showClose={false} />
                     </div>
                 )}
-                {showContactInfo && selectedChat && (
-                    <div className="absolute inset-y-0 right-0 z-30 flex h-full shadow-2xl xl:hidden">
-                        <ContactInfoPanel conversation={selectedChat} onClose={() => setShowContactInfo(false)} />
-                    </div>
-                )}
+                {showContactInfo && selectedChat && <Dialog open onOpenChange={(open)=>{if (!open) setShowContactInfo(false);}}>
+                    <DialogContent className={styles.profileDialog} showCloseButton={false}>
+                        <DialogHeader className="sr-only"><DialogTitle>Ficha del cliente</DialogTitle><DialogDescription>Datos de {selectedChat.contact?.name || "este cliente"}</DialogDescription></DialogHeader>
+                        <ContactInfoPanel conversation={selectedChat} onClose={()=>setShowContactInfo(false)} />
+                    </DialogContent>
+                </Dialog>}
+
             </div >
 
             {/* Image Viewer Lightbox */}
@@ -3720,55 +3730,25 @@ export default function InboxPage() {
                     }}
                 />
             )}
+            {assignmentOpen && selectedChat && <Dialog open onOpenChange={setAssignmentOpen}><DialogContent className={styles.dialog}>
+                <DialogHeader><DialogTitle>Responsable del chat</DialogTitle><DialogDescription>Elige quién atenderá esta conversación.</DialogDescription></DialogHeader>
+                <Select value={assignmentDraft} onValueChange={setAssignmentDraft} disabled={!canWrite}><SelectTrigger aria-label="Responsable del chat"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="__unassigned__">Sin asignar</SelectItem>{assignableUsers.map(user=><SelectItem key={user.id} value={user.id}>{user.name || user.email}</SelectItem>)}</SelectContent></Select>
+                {actionError && <p role="alert" className="text-sm text-destructive">{actionError}</p>}
+                <DialogFooter><Button variant="outline" onClick={()=>setAssignmentOpen(false)}>Cancelar</Button><Button disabled={!canWrite} onClick={async()=>{if (await handleAssignConversation(assignmentDraft==="__unassigned__" ? "" : assignmentDraft)) setAssignmentOpen(false);}}>Guardar responsable</Button></DialogFooter>
+            </DialogContent></Dialog>}
             {/* Forward Message Dialog */}
             {trainingMessageId && <AiTrainingDialog key={trainingMessageId} messageId={trainingMessageId} onClose={() => setTrainingMessageId(null)} />}
-            {forwardMsg && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setForwardMsg(null)}>
-                    <div className="bg-card border rounded-2xl shadow-2xl w-full max-w-sm mx-4 animate-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex items-center justify-between px-5 py-4 border-b">
-                            <h3 className="text-base font-semibold">Reenviar mensaje</h3>
-                            <button className="p-1 rounded hover:bg-muted" onClick={() => setForwardMsg(null)}>
-                                <X className="h-4 w-4" />
-                            </button>
-                        </div>
-                        <div className="px-3 py-2 border-b">
-                            <div className="px-3 py-2 rounded-lg bg-muted/40 text-xs text-muted-foreground line-clamp-2">
-                                {forwardMsg.content?.slice(0, 120)}
-                            </div>
-                        </div>
-                        <ScrollArea className="max-h-64">
-                            <div className="py-1">
-                                {conversations
-                                    .filter(c => c.id !== selectedChat?.id)
-                                    .map(conv => (
-                                        <button
-                                            key={conv.id}
-                                            className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-muted/50 transition-colors text-left"
-                                            onClick={() => handleForward(conv.id)}
-                                        >
-                                            <Avatar className="h-9 w-9 shrink-0">
-                                                <AvatarImage
-                                                    src={conv.contact?.avatarUrl || undefined}
-                                                    alt={conv.contact?.name || "Contacto"}
-                                                />
-                                                <AvatarFallback className={cn("text-white text-sm font-bold", getAvatarColor(conv.contact?.name))}>
-                                                    {(conv.contact?.name || "?").charAt(0).toUpperCase()}
-                                                </AvatarFallback>
-                                            </Avatar>
-                                            <div className="min-w-0 flex-1">
-                                                <p className="text-sm font-medium truncate">{conv.contact?.name || "Desconocido"}</p>
-                                                <p className="text-xs text-muted-foreground truncate">{conv.contact?.phone || ""}</p>
-                                            </div>
-                                        </button>
-                                    ))}
-                                {conversations.filter(c => c.id !== selectedChat?.id).length === 0 && (
-                                    <p className="text-sm text-muted-foreground text-center py-6">No hay otras conversaciones</p>
-                                )}
-                            </div>
-                        </ScrollArea>
-                    </div>
-                </div>
-            )}
+            {forwardMsg && <Dialog open onOpenChange={open=>{if (!open) setForwardMsg(null);}}><DialogContent className={styles.forwardDialog}>
+                <DialogHeader className="border-b p-5 pr-12"><DialogTitle>Reenviar mensaje</DialogTitle><DialogDescription>Elige la conversación de destino.</DialogDescription></DialogHeader>
+                <p className="border-b p-4 text-sm text-muted-foreground line-clamp-3 break-words">{forwardMsg.content?.slice(0,120)}</p>
+                {actionError && <p role="alert" className={styles.actionError}>{actionError}</p>}
+                <div className={styles.forwardScroll}>{conversations.filter(c=>c.id!==selectedChat?.id).map(conv=><button key={conv.id} disabled={!canWrite || !isConversationTransportReady(conv)} className="flex w-full items-center gap-3 px-5 py-3 text-left hover:bg-muted disabled:opacity-50" onClick={()=>void handleForward(conv.id)}>
+                    <Avatar className="size-10 shrink-0"><AvatarImage src={conv.contact?.avatarUrl || undefined} alt="" /><AvatarFallback>{conv.contact?.name?.charAt(0) || "?"}</AvatarFallback></Avatar>
+                    <span className="min-w-0"><strong className="block break-words text-sm">{conv.contact?.name || "Desconocido"}</strong><span className="block text-xs text-muted-foreground">{conv.contact?.phone}{!isConversationTransportReady(conv) ? " · Canal desconectado" : ""}</span></span>
+                </button>)}{conversations.filter(c=>c.id!==selectedChat?.id).length===0 && <p className="p-5 text-sm text-muted-foreground">No hay otras conversaciones</p>}</div>
+                <DialogFooter className="border-t p-4"><Button variant="outline" onClick={()=>setForwardMsg(null)}>Cancelar</Button></DialogFooter>
+            </DialogContent></Dialog>}
+
         </>
     );
 }

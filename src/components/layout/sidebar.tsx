@@ -162,6 +162,7 @@ export function Sidebar({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <header
+        data-mobile-workspace-header
         className={cn(
           styles.mobileHeader,
           "border-b border-border bg-card px-4",
@@ -296,6 +297,7 @@ export function Sidebar({
 
       <nav
         aria-label="Navegación móvil"
+        data-mobile-workspace-navigation
         hidden={keyboardOpen}
         className={cn(
           styles.mobileNavigation,

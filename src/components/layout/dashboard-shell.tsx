@@ -55,6 +55,7 @@ export function DashboardShell({
   return (
     <WorkspaceAccessContext.Provider value={{ readOnly }}>
       <div
+        data-workspace-body
         className={cn(
           styles.body,
           "flex min-w-0 flex-1 flex-col overflow-hidden bg-background",
@@ -71,7 +72,7 @@ export function DashboardShell({
         <main
           className={cn(
             styles.main,
-            (isCalendar || isClients || isServices) && styles.fixedMain,
+            (isInbox || isCalendar || isClients || isServices) && styles.fixedMain,
             isHome ? styles.homeContent : "",
             !isHome &&
               (isInbox
