@@ -3,7 +3,8 @@
 import { useWorkspaceAccess } from "@/components/layout/workspace-access-context";
 import layout from "@/components/shared/management-workspace.module.css";
 import styles from "@/components/shared/business-workspace.module.css";
-import { useEffect, useState, type ChangeEvent, type ComponentType } from "react";
+import settings from "@/components/shared/settings-workspace.module.css";
+import { useCallback, useEffect, useState, type ChangeEvent, type ComponentType } from "react";
 import { useSession } from "next-auth/react";
 import Image from "next/image";
 import Link from "next/link";
@@ -168,7 +169,7 @@ export function SettingsWorkspace({
     const { data: session, status } = useSession();
     const sessionUser = session?.user as { id?: string; role?: string; permissions?: unknown } | undefined;
     const currentUserId = sessionUser?.id;
-    const canAccess = (permission: PermissionKey) => status !== "loading" && hasPermission(sessionUser, permission);
+    const canAccess = useCallback((permission: PermissionKey) => status !== "loading" && hasPermission(sessionUser, permission), [status, sessionUser]);
     const canManageBusiness = canAccess("settings.manage");
     const canManagePortal = canAccess("portal.manage");
 
@@ -259,16 +260,14 @@ export function SettingsWorkspace({
             const tab = requestedSection === "operation" ? requestedOperationTab || "operation" : requestedSection;
             router.replace(`/dashboard/business?tab=${encodeURIComponent(tab)}`);
             return;
-        } else if (requestedSection && SECTIONS.some((section) => section.id === requestedSection)) {
-            const requestedDefinition = SECTIONS.find((section) => section.id === requestedSection);
-            if (isTenantWorkspace && (requestedDefinition?.platformInternal || requestedDefinition?.separateTenantPage)) {
-                setActiveSection("theme");
-            } else {
-                setActiveSection(requestedSection as SectionId);
-            }
-            if (requestedSection === "operation" && ["brand", "operation", "portal"].includes(requestedOperationTab || "")) {
-                setOperationTab(requestedOperationTab as "brand" | "operation" | "portal");
-            }
+        } else {
+            const definition = SECTIONS.find((section) => section.id === requestedSection);
+            const allowed = definition &&
+                (!definition.tenantOnly || isTenantWorkspace) &&
+                (!isTenantWorkspace || (!definition.platformInternal && !definition.separateTenantPage)) &&
+                (!definition.permission || canAccess(definition.permission)) &&
+                (!definition.permissions || definition.permissions.some(permission => canAccess(permission)));
+            setActiveSection(allowed ? definition.id : "theme");
         }
 
         const googleState = searchParams.get("google");
@@ -284,7 +283,7 @@ export function SettingsWorkspace({
                 variant: "destructive",
             });
         }
-    }, [businessOnly, isTenantWorkspace, router, searchParams, toast, canManageBusiness, canManagePortal]);
+    }, [businessOnly, isTenantWorkspace, router, searchParams, toast, canManageBusiness, canManagePortal, canAccess]);
 
     const updateBusinessDay = (day: BusinessDayKey, patch: Partial<BusinessWeeklySchedule[BusinessDayKey]>) => {
         setBusinessWeeklySchedule((current) => ({
@@ -491,8 +490,19 @@ export function SettingsWorkspace({
         (!section.permissions || section.permissions.some((permission) => canAccess(permission))),
     );
 
+    const selectSection = (section: SectionId) => {
+        if (!visibleSections.some(item => item.id === section)) return;
+        setActiveSection(section);
+        const params = new URLSearchParams(searchParams.toString());
+        params.set("section", section);
+        params.delete("google");
+        params.delete("reason");
+        router.replace(`${pathname}?${params}`, { scroll: false });
+    };
+    const selectedSection = visibleSections.find(section => section.id === activeSection);
+
     return (
-        <div className={businessOnly ? `${layout.workspace} ${styles.business}` : "mx-auto max-w-6xl space-y-6"} data-business-workspace={businessOnly || undefined}>
+        <div className={businessOnly ? `${layout.workspace} ${styles.business}` : `${layout.workspace} ${settings.workspace}`} data-business-workspace={businessOnly || undefined} data-settings-workspace={!businessOnly || undefined}>
             <LogoCropDialog
                 file={logoCrop?.file || null}
                 open={Boolean(logoCrop)}
@@ -501,7 +511,7 @@ export function SettingsWorkspace({
                 onOpenChange={(open) => !open && setLogoCrop(null)}
                 onApply={handleCroppedLogoApply}
             />
-            <div className={businessOnly ? layout.heading : undefined}>
+            <div className={layout.heading}>
                 <div><h1 className="flex items-center gap-2 text-2xl font-bold">
                     {businessOnly ? <Store className="h-6 w-6 text-primary" /> : <Settings className="h-6 w-6 text-primary" />}
                     {businessOnly ? "Mi Negocio" : "Configuración"}
@@ -518,55 +528,29 @@ export function SettingsWorkspace({
             {loadError && <p role="alert" className="rounded-xl border p-4 text-sm text-destructive">{loadError} <Button variant="outline" onClick={() => setLoadAttempt(value => value+1)}>Reintentar</Button></p>}
             {businessOnly && !settingsLoaded && !loadError && <p role="status" className="text-sm text-muted-foreground">Cargando información del negocio…</p>}
             {businessOnly && readOnly && <p className={layout.readonly}>Solo lectura. Puedes consultar tu configuración y tu portal.</p>}
-            {!businessOnly ? <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                {visibleSections.map((section) => {
-                    const Icon = section.icon;
-                    const isActive = activeSection === section.id;
-                    return (
-                        <button
-                            key={section.id}
-                            onClick={() => setActiveSection(section.id)}
-                            className={`min-w-0 rounded-2xl border px-4 py-4 text-left transition ${
-                                isActive
-                                    ? "border-primary bg-primary/5 shadow-sm"
-                                    : "bg-card hover:border-primary/35 hover:bg-muted/20"
-                            }`}
-                        >
-                            <div className="flex min-h-[112px] flex-col justify-between gap-4">
-                                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                                    <Icon className="h-5 w-5" />
-                                </div>
-                                <div className="min-w-0">
-                                    <p className="font-medium">{section.label}</p>
-                                    <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                                        {section.description}
-                                    </p>
-                                </div>
-                            </div>
-                        </button>
-                    );
-                })}
-                {billingHref ? (
-                    <Link
-                        href={billingHref}
-                        className="min-w-0 rounded-2xl border bg-card px-4 py-4 text-left transition hover:border-primary/35 hover:bg-muted/20"
-                    >
-                        <div className="flex min-h-[112px] flex-col justify-between gap-4">
-                            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                                <ReceiptText className="h-5 w-5" />
-                            </div>
-                            <div className="min-w-0">
-                                <p className="font-medium">Plan y facturación</p>
-                                <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                                    Plan actual, pagos y métodos de pago
-                                </p>
-                            </div>
-                        </div>
-                    </Link>
-                ) : null}
-            </div> : null}
-
-            <div data-business-panel className="rounded-2xl border bg-card p-4 sm:p-5 md:p-7">
+            {!businessOnly && readOnly && <p className={layout.readonly}>Solo lectura. Puedes consultar la configuración; reactiva un plan para modificarla.</p>}
+            <div className={businessOnly ? undefined : settings.frame}>
+            {!businessOnly && <nav aria-label="Secciones de configuración" className={settings.navigation}>
+                <div className={settings.mobileNavigation}>
+                    <Label htmlFor="settings-section">Sección</Label>
+                    <select id="settings-section" value={selectedSection?.id || "theme"} onChange={event => selectSection(event.target.value as SectionId)}>
+                        {visibleSections.map(section => <option key={section.id} value={section.id}>{section.label}</option>)}
+                    </select>
+                </div>
+                <div className={settings.desktopNavigation}>
+                    {visibleSections.map(section => {
+                        const Icon = section.icon;
+                        return <button type="button" key={section.id} onClick={() => selectSection(section.id)} aria-current={activeSection === section.id ? "page" : undefined} className={settings.navItem}>
+                            <Icon className="size-5 shrink-0" />
+                            <span><strong>{section.label}</strong><small>{section.description}</small></span>
+                        </button>;
+                    })}
+                </div>
+                {billingHref && <Link href={billingHref} className={settings.billingLink}><ReceiptText className="size-4 shrink-0" />Plan y facturación<span aria-hidden="true">↗</span></Link>}
+            </nav>}
+            <div data-business-panel className={businessOnly ? "rounded-2xl border bg-card p-4 sm:p-5 md:p-7" : settings.content}>
+                {!businessOnly && selectedSection && <header className={settings.sectionHeading}><h2>{selectedSection.label}</h2><p>{selectedSection.description}</p></header>}
+                <fieldset className={businessOnly ? undefined : settings.fields} disabled={!businessOnly && !["theme", "chats"].includes(activeSection) && (readOnly || !settingsLoaded)}>
                 {activeSection === "operation" && (
                     <div role="tablist" aria-label="Secciones del negocio" className={businessOnly ? layout.tabs : "mb-6 flex w-full max-w-xl border-b"}>
                         {([
@@ -595,7 +579,7 @@ export function SettingsWorkspace({
                         <div className="space-y-3">
                             <div className="flex items-center gap-2">
                                 <Palette className="h-4 w-4 text-primary" />
-                                <h2 className="font-semibold">Modo de visualizacion</h2>
+                                <h2 className="font-semibold">Modo de visualización</h2>
                             </div>
                             <ThemeToggle />
                         </div>
@@ -822,7 +806,7 @@ export function SettingsWorkspace({
                                                 <span>Tamano</span>
                                                 <span>{clinicLogoScale}%</span>
                                             </div>
-                                            <Slider
+                                            <Slider thumbLabel="Tamaño del logo"
                                                 value={[clinicLogoScale]}
                                                 min={60}
                                                 max={160}
@@ -1132,43 +1116,24 @@ export function SettingsWorkspace({
                                             </div>
 
                                             {NOTIFICATION_SOUNDS.map((sound) => (
-                                                <button
-                                                    key={sound.id}
-                                                    onClick={() =>
-                                                        setNotifPrefs((current) => ({ ...current, soundType: sound.id }))
-                                                    }
-                                                    className={`flex w-full items-center justify-between gap-4 rounded-xl border px-4 py-4 text-left transition ${
-                                                        notifPrefs.soundType === sound.id
-                                                            ? "border-primary bg-primary/5"
-                                                            : "bg-background/80 hover:border-primary/30"
-                                                    }`}
-                                                >
-                                                    <div className="min-w-0 pr-4">
-                                                        <p className="font-medium">{sound.name}</p>
-                                                        <p className="mt-1 text-sm text-muted-foreground">
-                                                            {sound.description}
-                                                        </p>
-                                                    </div>
-                                                    <Button
-                                                        type="button"
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        onClick={(event) => {
-                                                            event.stopPropagation();
-                                                            playNotificationSound(sound.id, notifPrefs.volume);
-                                                        }}
-                                                        title={`Probar sonido ${sound.name}`}
-                                                    >
+                                                <div key={sound.id} className={settings.soundRow} data-selected={notifPrefs.soundType === sound.id}>
+                                                    <button type="button" aria-pressed={notifPrefs.soundType === sound.id} className={settings.soundChoice}
+                                                        onClick={() => setNotifPrefs(current => ({ ...current, soundType: sound.id }))}>
+                                                        <span className="font-medium">{sound.name}</span>
+                                                        <span className="mt-1 block text-sm text-muted-foreground">{sound.description}</span>
+                                                    </button>
+                                                    <Button type="button" variant="ghost" size="icon" aria-label={`Probar sonido ${sound.name}`}
+                                                        onClick={() => playNotificationSound(sound.id, notifPrefs.volume)}>
                                                         <Play className="h-4 w-4" />
                                                     </Button>
-                                                </button>
+                                                </div>
                                             ))}
                                         </div>
 
                                         <div className="space-y-3 rounded-xl border bg-background/80 px-4 py-4">
                                             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                                                 <div>
-                                                    <Label>Volumen</Label>
+                                                    <Label id="notification-volume-label">Volumen</Label>
                                                     <p className="mt-1 text-sm text-muted-foreground">
                                                         Ajusta la intensidad antes de guardar.
                                                     </p>
@@ -1177,7 +1142,7 @@ export function SettingsWorkspace({
                                                     {Math.round(notifPrefs.volume * 100)}%
                                                 </span>
                                             </div>
-                                            <Slider
+                                            <Slider thumbLabel="Volumen de notificaciones" aria-labelledby="notification-volume-label"
                                                 min={0}
                                                 max={100}
                                                 step={1}
@@ -1212,6 +1177,8 @@ export function SettingsWorkspace({
                         </div>
                     </div>
                 )}
+            </fieldset>
+            </div>
             </div>
             {businessOnly && operationTab !== "portal" && <div className={layout.saveBar} role="region" aria-label="Guardar información del negocio"><p className="hidden sm:block text-sm text-muted-foreground">{currentBusinessDirty ? "Cambios sin guardar" : "Información del negocio"}</p><div><Button onClick={handleSave} disabled={!canManageBusiness || readOnly || isSaving || !settingsLoaded || isUploadingClinicLogo || isUploadingBrandLogo || isUploadingBrandFavicon}>{isSaving && <Loader2 className="size-4 animate-spin" />}Guardar {operationTab === "brand" ? "marca" : "negocio"}</Button></div></div>}
         </div>

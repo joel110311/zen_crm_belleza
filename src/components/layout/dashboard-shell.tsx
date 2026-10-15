@@ -50,7 +50,7 @@ export function DashboardShell({
   const isCalendar = workspacePath === "/dashboard/calendar";
   const isClients = workspacePath.startsWith("/dashboard/contacts");
   const isServices = workspacePath.startsWith("/dashboard/services");
-  const isManagement = workspacePath === "/dashboard/templates" || workspacePath === "/dashboard/brain" || workspacePath === "/dashboard/business" || workspacePath === "/dashboard/specialists" || workspacePath === "/dashboard/reception";
+  const isManagement = workspacePath === "/dashboard/settings" || workspacePath === "/dashboard/templates" || workspacePath === "/dashboard/brain" || workspacePath === "/dashboard/business" || workspacePath === "/dashboard/specialists" || workspacePath === "/dashboard/reception";
   const hidesGlobalHeader = isInbox || isCalendar || isClients || isServices || isManagement;
 
   return (

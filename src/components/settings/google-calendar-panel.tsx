@@ -14,6 +14,7 @@ import {
     Unlink,
     Users,
 } from "lucide-react";
+import { useWorkspaceAccess } from "@/components/layout/workspace-access-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -29,6 +30,9 @@ function sortSources(sources: GoogleCalendarSourceSummary[]) {
 }
 
 export function GoogleCalendarPanel() {
+    const { readOnly } = useWorkspaceAccess();
+    const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
     const operationContext = useOperationContext();
     const { toast } = useToast();
     const [status, setStatus] = useState<GoogleCalendarStatus>({
@@ -47,11 +51,13 @@ export function GoogleCalendarPanel() {
     );
 
     const loadStatus = useCallback(async () => {
+        setLoading(true);
+        setLoadError(null);
         try {
             const response = await fetch("/api/google-calendar/status", { cache: "no-store" });
             if (!response.ok) throw new Error("No se pudo consultar el estado.");
             let payload = (await response.json()) as GoogleCalendarStatus;
-            if (payload.connected) {
+            if (payload.connected && !readOnly) {
                 const refreshResponse = await fetch("/api/google-calendar/status", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
@@ -64,25 +70,30 @@ export function GoogleCalendarPanel() {
             setStatus(payload);
             setDraftSources(sortSources(payload.sources || []));
         } catch (error) {
+            setLoadError(error instanceof Error ? error.message : "No se pudo consultar Google Calendar.");
             toast({
                 title: "No se pudo cargar Google Calendar",
                 description: error instanceof Error ? error.message : "Fallo al consultar el estado.",
                 variant: "destructive",
             });
+        } finally {
+            setLoading(false);
         }
-    }, [toast]);
+    }, [toast, readOnly]);
 
     useEffect(() => {
         void loadStatus();
     }, [loadStatus]);
 
     const mutateSource = (calendarId: string, updater: (source: GoogleCalendarSourceSummary) => GoogleCalendarSourceSummary) => {
+        if (readOnly || isWorking || loading || loadError) return;
         setDraftSources((current) => sortSources(current.map((source) => (
             source.calendarId === calendarId ? updater(source) : source
         ))));
     };
 
     const handleConnect = async () => {
+        if (readOnly || isWorking || loading || loadError) return;
         setIsWorking(true);
         try {
             window.location.href = "/api/google-calendar/auth";
@@ -105,6 +116,7 @@ export function GoogleCalendarPanel() {
     };
 
     const handleSync = async () => {
+        if (readOnly || isWorking || loading || loadError) return;
         setIsWorking(true);
         try {
             const payload = await postStatusAction("sync");
@@ -126,6 +138,7 @@ export function GoogleCalendarPanel() {
     };
 
     const handleDisconnect = async () => {
+        if (readOnly || isWorking || loading || loadError) return;
         setIsWorking(true);
         try {
             const payload = await postStatusAction("disconnect");
@@ -147,6 +160,7 @@ export function GoogleCalendarPanel() {
     };
 
     const handleDiscover = async () => {
+        if (readOnly || isWorking || loading || loadError) return;
         setIsWorking(true);
         try {
             const payload = await postStatusAction("discover");
@@ -168,6 +182,7 @@ export function GoogleCalendarPanel() {
     };
 
     const handleSaveSources = async () => {
+        if (readOnly || isWorking || loading || loadError) return;
         setIsWorking(true);
         try {
             const payload = await postStatusAction("save_sources", {
@@ -208,7 +223,9 @@ export function GoogleCalendarPanel() {
                 </p>
             </div>
 
-            <div className="grid gap-4 xl:grid-cols-[minmax(0,1.12fr)_minmax(0,0.88fr)]">
+            {loading && <p role="status" className="rounded-xl bg-muted/30 p-4 text-sm text-muted-foreground">Consultando Google Calendar…</p>}
+            {loadError && <div role="alert" className="space-y-3 rounded-xl border p-4 text-sm"><p className="text-destructive">{loadError}</p><Button variant="outline" onClick={() => void loadStatus()}>Reintentar consulta</Button></div>}
+            {!loading && !loadError && <div data-settings-grid="calendars" className="grid gap-4 xl:grid-cols-[minmax(0,1.12fr)_minmax(0,0.88fr)]">
                 <div className="min-w-0 space-y-4">
                     <Card className="min-w-0">
                         <CardHeader className="min-w-0">
@@ -225,19 +242,19 @@ export function GoogleCalendarPanel() {
                             </div>
 
                             <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-                                <Button onClick={handleConnect} disabled={!status.configured || isWorking} className="w-full justify-center sm:w-auto">
+                                <Button onClick={handleConnect} disabled={readOnly || !status.configured || isWorking} className="w-full justify-center sm:w-auto">
                                     {isWorking ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Link2 className="mr-2 h-4 w-4" />}
                                     Conectar cuenta Google
                                 </Button>
-                                <Button onClick={handleDiscover} disabled={!status.connected || isWorking} variant="secondary" className="w-full justify-center sm:w-auto">
+                                <Button onClick={handleDiscover} disabled={readOnly || !status.connected || isWorking} variant="secondary" className="w-full justify-center sm:w-auto">
                                     <RefreshCw className="mr-2 h-4 w-4" />
                                     Traer calendarios
                                 </Button>
-                                <Button onClick={handleSync} disabled={!status.connected || isWorking} variant="secondary" className="w-full justify-center sm:w-auto">
+                                <Button onClick={handleSync} disabled={readOnly || !status.connected || isWorking} variant="secondary" className="w-full justify-center sm:w-auto">
                                     <CalendarSync className="mr-2 h-4 w-4" />
                                     Sincronizar ahora
                                 </Button>
-                                <Button onClick={handleDisconnect} disabled={!status.connected || isWorking} variant="ghost" className="w-full justify-center text-destructive hover:text-destructive sm:w-auto">
+                                <Button onClick={handleDisconnect} disabled={readOnly || !status.connected || isWorking} variant="ghost" className="w-full justify-center text-destructive hover:text-destructive sm:w-auto">
                                     <Unlink className="mr-2 h-4 w-4" />
                                     Desconectar
                                 </Button>
@@ -346,7 +363,7 @@ export function GoogleCalendarPanel() {
                                                                     </div>
                                                                     <Switch
                                                                         checked={source.isWriteTarget}
-                                                                        disabled={!source.writable}
+                                                                        disabled={readOnly || !source.writable}
                                                                         onCheckedChange={(checked) => {
                                                                             setDraftSources((current) => sortSources(current.map((entry) => ({
                                                                                 ...entry,
@@ -363,7 +380,7 @@ export function GoogleCalendarPanel() {
                                                                     </div>
                                                                     <Switch
                                                                         checked={source.isSpecialist}
-                                                                        disabled={!source.writable || specialistLimitReached}
+                                                                        disabled={readOnly || !source.writable || specialistLimitReached}
                                                                         onCheckedChange={(checked) => mutateSource(source.calendarId, (current) => ({
                                                                             ...current,
                                                                             isSpecialist: checked,
@@ -400,7 +417,7 @@ export function GoogleCalendarPanel() {
                             )}
 
                             {draftSources.length > 0 ? (
-                                <Button onClick={handleSaveSources} disabled={!status.connected || isWorking} className="w-full sm:w-auto">
+                                <Button onClick={handleSaveSources} disabled={readOnly || !status.connected || isWorking} className="w-full sm:w-auto">
                                     {isWorking ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
                                     Guardar configuracion de calendarios
                                 </Button>
@@ -499,7 +516,7 @@ export function GoogleCalendarPanel() {
                         </CardContent>
                     </Card>
                 </div>
-            </div>
+            </div>}
         </div>
     );
 }

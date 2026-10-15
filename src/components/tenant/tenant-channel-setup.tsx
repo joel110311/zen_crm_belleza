@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Image from "next/image";
 import { CheckCircle2, CreditCard, ExternalLink, Loader2, QrCode, RefreshCw, ShieldCheck, Smartphone, Unplug } from "lucide-react";
+import { useWorkspaceAccess } from "@/components/layout/workspace-access-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { META_COEXISTENCE_GUIDANCE, META_COEXISTENCE_STEPS, metaSignupExtras, metaSignupWaitMs, parseMetaSignupMessage, metaSignupFailure, isMetaSignupOrigin, type MetaSignupMode } from "@/lib/meta-signup";
@@ -55,9 +56,12 @@ export function TenantChannelSetup({
     const [registrationPin, setRegistrationPin] = useState("");
     const [metaMode, setMetaMode] = useState<MetaSignupMode>("coexistence");
 
+    const { readOnly } = useWorkspaceAccess();
+
     const endpoint = `/api/t/${encodeURIComponent(tenantSlug)}/v1/channels`;
 
     function requestSetup(provider: "META_CLOUD" | "WUZAPI", proceed: () => void) {
+        if (readOnly || busy !== null || loading) return;
         if (onSetupRequest) onSetupRequest(provider, proceed);
         else proceed();
     }
@@ -120,6 +124,7 @@ export function TenantChannelSetup({
     }
 
     async function connectMeta() {
+        if (readOnly || busy !== null || loading) return;
         if (metaMode === "cloud" && !/^\d{6}$/.test(registrationPin)) {
             setMessage("Captura un PIN de registro de seis dígitos. Consérvalo: Meta lo usa para la verificación en dos pasos.");
             return;
@@ -217,6 +222,7 @@ export function TenantChannelSetup({
     }
 
     async function connectQr() {
+        if (readOnly || busy !== null || loading) return;
         setBusy("qr");
         setMessage(null);
         try {
@@ -238,6 +244,7 @@ export function TenantChannelSetup({
     }
 
     async function disconnectQr() {
+        if (readOnly || busy !== null || loading) return;
         setBusy("disconnect");
         setMessage(null);
         try {
@@ -262,14 +269,14 @@ export function TenantChannelSetup({
     const official = channels.find((channel) => channel.provider === "META_CLOUD" && channel.status === "CONNECTED");
 
     return <div className="space-y-4 rounded-2xl border bg-muted/20 p-4">
-        <div className="flex items-start justify-between gap-3"><div><p className="font-medium">Conecta WhatsApp</p><p className="text-sm text-muted-foreground">Elige una forma de conexión. La configuración técnica se administra de manera segura por la plataforma.</p></div><Button type="button" variant="outline" size="sm" onClick={() => void refresh()} disabled={loading}><RefreshCw className="mr-2 size-4" />Actualizar</Button></div>
+        <div data-settings-header className="flex items-start justify-between gap-3"><div><p className="font-medium">Conecta WhatsApp</p><p className="text-sm text-muted-foreground">Elige una forma de conexión. La configuración técnica se administra de manera segura por la plataforma.</p></div><Button type="button" variant="outline" size="sm" onClick={() => void refresh()} disabled={loading}><RefreshCw className="mr-2 size-4" />Actualizar</Button></div>
         {loading ? <p className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" />Consultando conexiones…</p> : null}
-        <div className="grid gap-4 lg:grid-cols-2">
+        <div data-settings-grid="channels" className="grid gap-4 lg:grid-cols-2">
             <section className="flex flex-col rounded-2xl border bg-background p-4">
                 <div className="flex items-start justify-between gap-3"><span className="flex size-10 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-700"><ShieldCheck className="size-5" /></span>{official ? <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-semibold text-emerald-700"><CheckCircle2 className="size-3.5" />Activa</span> : <span className="rounded-full border px-2.5 py-1 text-xs text-muted-foreground">Oficial</span>}</div>
                 <h3 className="mt-4 font-semibold">Conexión oficial de WhatsApp</h3>
                 <p className="mt-1 flex-1 text-sm text-muted-foreground">Recomendada para operar con la plataforma oficial de Meta, plantillas aprobadas y mayor estabilidad.</p>
-                <fieldset className="mt-4 space-y-2" disabled={busy !== null}>
+                <fieldset className="mt-4 space-y-2" disabled={readOnly || loading || busy !== null}>
                     <legend className="mb-2 text-sm font-medium">¿Cómo usas WhatsApp hoy?</legend>
                     <label className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition-colors ${metaMode === "coexistence" ? "border-emerald-600 bg-emerald-500/5 ring-1 ring-emerald-600/20" : "bg-background hover:bg-muted/40"}`}>
                         <input type="radio" name={`meta-mode-${tenantSlug}`} value="coexistence" checked={metaMode === "coexistence"} onChange={() => setMetaMode("coexistence")} className="mt-1 accent-emerald-700" />
@@ -279,23 +286,23 @@ export function TenantChannelSetup({
                         <input type="radio" name={`meta-mode-${tenantSlug}`} value="cloud" checked={metaMode === "cloud"} onChange={() => setMetaMode("cloud")} className="mt-1 accent-primary" />
                         <span className="min-w-0 flex-1"><span className="flex flex-wrap items-center gap-2 font-medium"><ShieldCheck className="size-4 text-primary" />Quiero conectar un número para la API<span className="rounded-full border px-2 py-0.5 text-[11px] font-medium text-muted-foreground">Número dedicado</span></span><span className="mt-1 block text-xs leading-relaxed text-muted-foreground">Para un número nuevo o dedicado. Si ya lo usas en WhatsApp Business, elige coexistencia.</span></span>
                     </label>
-                    {metaMode === "coexistence" ? <div className="space-y-2 rounded-xl border border-emerald-500/25 bg-emerald-500/5 p-3 text-xs leading-5">
-                        <p className="font-semibold">Así será la conexión</p>
+                    {metaMode === "coexistence" ? <details className="space-y-2 rounded-xl border border-emerald-500/25 bg-emerald-500/5 p-3 text-xs leading-5">
+                        <summary className="flex min-h-11 cursor-pointer items-center font-semibold text-sm">Cómo conectar WhatsApp Business</summary>
                         <ol className="list-decimal space-y-1.5 pl-4 text-muted-foreground">{META_COEXISTENCE_STEPS.map(step => <li key={step}>{step}</li>)}</ol>
                         <p className="rounded-lg bg-background/80 p-2 text-amber-900 dark:text-amber-200">{META_COEXISTENCE_GUIDANCE}</p>
                         <p className="text-muted-foreground">Los mensajes que envíes desde el celular pausarán el bot en ese chat. Meta puede desvincular dispositivos adicionales; podrás enlazarlos de nuevo después.</p>
                         <p className="text-muted-foreground">Ten a la mano el nombre legal del negocio y su sitio o perfil público por si Meta los solicita.</p>
-                    </div> : <p className="rounded-xl border bg-muted/30 p-3 text-xs leading-relaxed text-muted-foreground">Esta ruta conecta el número con la API. Si quieres seguir usando en el celular el mismo número que vas a conectar, regresa y selecciona coexistencia antes de abrir Meta.</p>}
+                    </details> : <p className="rounded-xl border bg-muted/30 p-3 text-xs leading-relaxed text-muted-foreground">Esta ruta conecta el número con la API. Si quieres seguir usando en el celular el mismo número que vas a conectar, regresa y selecciona coexistencia antes de abrir Meta.</p>}
                 </fieldset>
                 {metaMode === "cloud" ? <div className="mt-3 space-y-2">
                     <label htmlFor={`meta-pin-${tenantSlug}`} className="text-sm font-medium">PIN de registro de WhatsApp</label>
-                    <Input id={`meta-pin-${tenantSlug}`} type="password" inputMode="numeric" autoComplete="off" maxLength={6} value={registrationPin} onChange={event => setRegistrationPin(event.target.value.replace(/\D/g, ""))} placeholder="6 dígitos" disabled={busy !== null} />
+                    <Input id={`meta-pin-${tenantSlug}`} type="password" inputMode="numeric" autoComplete="off" maxLength={6} value={registrationPin} onChange={event => setRegistrationPin(event.target.value.replace(/\D/g, ""))} placeholder="6 dígitos" disabled={readOnly || loading || busy !== null} />
                     <p className="text-xs text-muted-foreground">Usa el PIN de verificación en dos pasos de este número, o define uno si es nuevo. Guárdalo en un lugar seguro; no es el código de SMS.</p>
                 </div> : null}
                 {official?.isCoexistence ? <p className="mt-2 text-xs text-emerald-700">API y WhatsApp Business del celular conectados al mismo número.</p> : null}
                 {official?.coexistenceSync ? <p className="mt-2 text-xs text-muted-foreground" role="status">{official.coexistenceSync.error ? `Sincronización: ${official.coexistenceSync.error}` : typeof official.coexistenceSync.historyProgress === "number" ? `Historial recibido de Meta: ${official.coexistenceSync.historyProgress}% · procesamiento por lotes.` : "Sincronización solicitada. Mantén WhatsApp Business abierto y usa Actualizar para revisar el estado."}</p> : null}
                 {official?.requiresReconnect ? <p className="mt-2 text-xs text-amber-700">Vuelve a conectar para habilitar las plantillas con las credenciales de este negocio.</p> : null}
-                <Button type="button" className="mt-4 w-full" onClick={() => requestSetup("META_CLOUD", () => void connectMeta())} disabled={busy !== null}>{busy === "meta" ? <Loader2 className="mr-2 size-4 animate-spin" /> : <ShieldCheck className="mr-2 size-4" />}{official ? "Revisar o reconectar con Meta" : metaMode === "coexistence" ? "Conectar mi WhatsApp Business" : "Conectar número para API"}</Button>
+                <Button type="button" className="mt-4 w-full" onClick={() => requestSetup("META_CLOUD", () => void connectMeta())} disabled={readOnly || loading || busy !== null}>{busy === "meta" ? <Loader2 className="mr-2 size-4 animate-spin" /> : <ShieldCheck className="mr-2 size-4" />}{official ? "Revisar o reconectar con Meta" : metaMode === "coexistence" ? "Conectar mi WhatsApp Business" : "Conectar número para API"}</Button>
                 <div className="mt-4 rounded-xl border border-sky-500/25 bg-sky-500/5 p-3">
                     <div className="flex items-start gap-2.5">
                         <CreditCard className="mt-0.5 size-4 shrink-0 text-sky-700 dark:text-sky-300" aria-hidden="true" />
@@ -346,8 +353,8 @@ export function TenantChannelSetup({
                 {qrSession.phone ? <div className="mt-3 rounded-xl border bg-muted/30 px-3 py-2"><p className="text-xs text-muted-foreground">Número vinculado</p><p className="break-all text-sm font-medium">{qrSession.phone.replace(/@.+$/, "")}</p></div> : null}
                 {qrSession.qrCode && !qrSession.active ? <div className="mt-4 rounded-2xl border border-dashed bg-white p-3"><Image src={qrSession.qrCode} alt="Código QR para vincular WhatsApp" width={224} height={224} unoptimized className="mx-auto h-auto w-full max-w-56" /><p className="mt-2 text-center text-xs text-slate-600">En WhatsApp abre Dispositivos vinculados, toca Vincular dispositivo y escanea este código.</p></div> : null}
                 <div className="mt-4 flex flex-wrap gap-2">
-                    {qrSession.active ? <Button type="button" variant="outline" className="flex-1" onClick={() => void disconnectQr()} disabled={busy !== null}>{busy === "disconnect" ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Unplug className="mr-2 size-4" />}Desvincular</Button> : <Button type="button" variant="outline" className="flex-1" onClick={() => requestSetup("WUZAPI", () => void connectQr())} disabled={busy !== null || !qrRiskAccepted}>{busy === "qr" ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Smartphone className="mr-2 size-4" />}{qrSession.qrCode ? "Generar otro código" : "Conectar por QR bajo mi responsabilidad"}</Button>}
-                    {qrSession.configured && !qrSession.active ? <Button type="button" variant="ghost" onClick={() => void refreshQr(true)} disabled={busy !== null}><RefreshCw className="mr-2 size-4" />Revisar estado</Button> : null}
+                    {qrSession.active ? <Button type="button" variant="outline" className="flex-1" onClick={() => void disconnectQr()} disabled={readOnly || loading || busy !== null}>{busy === "disconnect" ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Unplug className="mr-2 size-4" />}Desvincular</Button> : <Button type="button" variant="outline" className="flex-1" onClick={() => requestSetup("WUZAPI", () => void connectQr())} disabled={readOnly || loading || busy !== null || !qrRiskAccepted}>{busy === "qr" ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Smartphone className="mr-2 size-4" />}{qrSession.qrCode ? "Generar otro código" : "Conectar por QR bajo mi responsabilidad"}</Button>}
+                    {qrSession.configured && !qrSession.active ? <Button type="button" variant="ghost" onClick={() => void refreshQr(true)} disabled={readOnly || loading || busy !== null}><RefreshCw className="mr-2 size-4" />Revisar estado</Button> : null}
                 </div>
             </section>
         </div>

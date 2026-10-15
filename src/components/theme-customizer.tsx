@@ -64,6 +64,7 @@ export function ThemeCustomizer() {
                     <button
                         key={option.id}
                         type="button"
+                        aria-pressed={isActive}
                         onClick={() => handleColorThemeChange(option.id)}
                         className={cn(
                             "w-full rounded-xl border-2 p-1 text-left transition-all",
@@ -73,7 +74,7 @@ export function ThemeCustomizer() {
                         )}
                     >
                         <div className="flex min-w-0 items-center gap-3 rounded-lg bg-secondary p-3">
-                            <div className={cn("h-10 w-10 rounded-full bg-gradient-to-br shadow-md", option.gradient)} />
+                            <div className={cn("h-10 w-10 shrink-0 rounded-full bg-gradient-to-br shadow-md", option.gradient)} />
                             <div className="min-w-0 flex-1 space-y-0.5">
                                 <p className="text-sm font-semibold text-foreground">{option.name}</p>
                                 <p className="text-xs leading-relaxed text-muted-foreground">{option.description}</p>

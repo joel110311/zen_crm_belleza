@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { Check, Loader2, Pencil, Plus, RefreshCw, Save, ShieldCheck, Trash2, X } from "lucide-react";
 import { createUser, deleteUser, getUsers, updateUser } from "@/app/actions/users";
+import { useWorkspaceAccess } from "@/components/layout/workspace-access-context";
+import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -51,6 +53,9 @@ function countExtraPermissions(role: string, permissions: unknown) {
 
 export function UserAccessPanel({ currentUserId }: { currentUserId?: string }) {
     const { toast } = useToast();
+    const { readOnly } = useWorkspaceAccess();
+    const [loaded, setLoaded] = useState(false);
+    const [loadError, setLoadError] = useState(false);
     const [users, setUsers] = useState<UserRow[]>([]);
     const [showAddForm, setShowAddForm] = useState(false);
     const [editingUserId, setEditingUserId] = useState<string | null>(null);
@@ -59,11 +64,14 @@ export function UserAccessPanel({ currentUserId }: { currentUserId?: string }) {
     const [isPending, startTransition] = useTransition();
 
     const loadUsers = () => {
+        setLoadError(false);
         startTransition(async () => {
             try {
                 const data = await getUsers();
                 setUsers(data);
+                setLoaded(true);
             } catch (error) {
+                setLoadError(true);
                 console.error("Failed to load users:", error);
                 toast({ title: "No se pudieron cargar usuarios", variant: "destructive" });
             }
@@ -113,6 +121,7 @@ export function UserAccessPanel({ currentUserId }: { currentUserId?: string }) {
     };
 
     const handleCreateUser = () => {
+        if (readOnly || isPending) return;
         if (!newUser.name.trim() || !newUser.email.trim() || !newUser.password.trim()) return;
         startTransition(async () => {
             const result = await createUser({
@@ -134,6 +143,7 @@ export function UserAccessPanel({ currentUserId }: { currentUserId?: string }) {
     };
 
     const handleStartEdit = (user: UserRow) => {
+        if (readOnly || isPending) return;
         const role = normalizeRole(user.role);
         setEditingUserId(user.id);
         setEditUser({
@@ -146,6 +156,7 @@ export function UserAccessPanel({ currentUserId }: { currentUserId?: string }) {
     };
 
     const handleUpdateUser = (userId: string) => {
+        if (readOnly || isPending) return;
         startTransition(async () => {
             const result = await updateUser(userId, {
                 name: editUser.name.trim(),
@@ -166,6 +177,7 @@ export function UserAccessPanel({ currentUserId }: { currentUserId?: string }) {
     };
 
     const handleDeleteUser = (userId: string, name: string | null) => {
+        if (readOnly || isPending) return;
         if (!confirm(`Eliminar a ${name || "este usuario"}?`)) return;
         startTransition(async () => {
             const result = await deleteUser(userId);
@@ -198,19 +210,21 @@ export function UserAccessPanel({ currentUserId }: { currentUserId?: string }) {
                         <RefreshCw className="mr-2 h-4 w-4" />
                         Refrescar
                     </Button>
-                    <Button variant="outline" onClick={() => setShowAddForm((current) => !current)} className="w-full sm:w-auto">
+                    <Button variant="outline" disabled={readOnly || isPending || !loaded || loadError} onClick={() => setShowAddForm((current) => !current)} className="w-full sm:w-auto">
                         {showAddForm ? <X className="mr-2 h-4 w-4" /> : <Plus className="mr-2 h-4 w-4" />}
                         {showAddForm ? "Cancelar" : "Agregar"}
                     </Button>
                 </div>
             </div>
 
+            {loadError && <p role="alert" className="rounded-xl border p-4 text-sm text-destructive">No se pudieron cargar los usuarios. Usa Refrescar para reintentar.</p>}
+            {!loaded && !loadError && <p role="status" className="rounded-xl bg-muted/30 p-4 text-sm text-muted-foreground">Cargando usuarios…</p>}
             {showAddForm ? (
                 <UserForm
                     title="Nuevo usuario"
                     form={newUser}
                     target="new"
-                    isPending={isPending}
+                    isPending={isPending || readOnly}
                     effectivePermissions={activeAccess.permissions.length}
                     onChange={setNewUser}
                     onRoleChange={setRole}
@@ -234,7 +248,7 @@ export function UserAccessPanel({ currentUserId }: { currentUserId?: string }) {
                                     title={`Editar ${user.name || user.email}`}
                                     form={editUser}
                                     target="edit"
-                                    isPending={isPending}
+                                    isPending={isPending || readOnly}
                                     effectivePermissions={describePermissions(editUser).permissions.length}
                                     onChange={setEditUser}
                                     onRoleChange={setRole}
@@ -271,12 +285,12 @@ export function UserAccessPanel({ currentUserId }: { currentUserId?: string }) {
                                         </p>
                                     </div>
                                     <div className="flex flex-col gap-2 sm:flex-row">
-                                        <Button variant="outline" size="sm" onClick={() => handleStartEdit(user)} className="w-full sm:w-auto">
+                                        <Button variant="outline" size="sm" disabled={readOnly || isPending} onClick={() => handleStartEdit(user)} className="w-full sm:w-auto">
                                             <Pencil className="mr-2 h-4 w-4" />
                                             Editar
                                         </Button>
                                         {user.id !== currentUserId ? (
-                                            <Button variant="ghost" size="sm" className="w-full text-destructive sm:w-auto" onClick={() => handleDeleteUser(user.id, user.name)}>
+                                            <Button variant="ghost" size="sm" className="w-full text-destructive sm:w-auto" disabled={readOnly || isPending} onClick={() => handleDeleteUser(user.id, user.name)}>
                                                 <Trash2 className="mr-2 h-4 w-4" />
                                                 Eliminar
                                             </Button>
@@ -288,7 +302,7 @@ export function UserAccessPanel({ currentUserId }: { currentUserId?: string }) {
                     );
                 })}
 
-                {users.length === 0 ? (
+                {loaded && !loadError && users.length === 0 ? (
                     <div className="rounded-2xl border border-dashed px-4 py-8 text-sm text-muted-foreground">
                         No hay usuarios registrados.
                     </div>
@@ -329,7 +343,7 @@ function UserForm({
     const hasFullAccess = role === "ADMINISTRADOR" || selectedPermissions.has(FULL_ACCESS_PERMISSION);
 
     return (
-        <div className="space-y-4 rounded-2xl border bg-muted/15 p-4">
+        <fieldset disabled={isPending} className="min-w-0 space-y-4 rounded-2xl border bg-muted/15 p-4">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                     <h3 className="font-semibold">{title}</h3>
@@ -342,35 +356,13 @@ function UserForm({
                 </Badge>
             </div>
 
-            <div className="grid gap-3 md:grid-cols-2">
-                <Input
-                    placeholder="Nombre"
-                    value={form.name}
-                    onChange={(event) => onChange((current) => ({ ...current, name: event.target.value }))}
-                />
-                <Input
-                    placeholder="Email"
-                    type="email"
-                    value={form.email}
-                    onChange={(event) => onChange((current) => ({ ...current, email: event.target.value }))}
-                />
-                <Input
-                    placeholder={target === "new" ? "Contraseña" : "Nueva contraseña"}
-                    type="password"
-                    value={form.password}
-                    onChange={(event) => onChange((current) => ({ ...current, password: event.target.value }))}
-                />
-                <select
-                    value={form.role}
-                    onChange={(event) => onRoleChange(normalizeRole(event.target.value), target)}
-                    className="h-10 rounded-md border border-input bg-background px-3 text-sm"
-                >
-                    {APP_ROLES.map((roleOption) => (
-                        <option key={roleOption} value={roleOption}>
-                            {APP_ROLE_LABELS[roleOption]}
-                        </option>
-                    ))}
-                </select>
+            <div data-settings-grid="user-fields" className="grid gap-3 md:grid-cols-2">
+                <div className="space-y-2"><Label htmlFor={`${target}-user-name`}>Nombre</Label><Input id={`${target}-user-name`} autoComplete="name" value={form.name} onChange={event => onChange(current => ({ ...current, name: event.target.value }))} /></div>
+                <div className="space-y-2"><Label htmlFor={`${target}-user-email`}>Correo electrónico</Label><Input id={`${target}-user-email`} autoComplete="off" type="email" value={form.email} onChange={event => onChange(current => ({ ...current, email: event.target.value }))} /></div>
+                <div className="space-y-2"><Label htmlFor={`${target}-user-password`}>{target === "new" ? "Contraseña" : "Nueva contraseña (opcional)"}</Label><Input id={`${target}-user-password`} autoComplete="new-password" type="password" value={form.password} onChange={event => onChange(current => ({ ...current, password: event.target.value }))} /></div>
+                <div className="space-y-2"><Label htmlFor={`${target}-user-role`}>Rol</Label><select id={`${target}-user-role`} value={form.role} onChange={event => onRoleChange(normalizeRole(event.target.value), target)} className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
+                    {APP_ROLES.map(roleOption => <option key={roleOption} value={roleOption}>{APP_ROLE_LABELS[roleOption]}</option>)}
+                </select></div>
             </div>
 
             <div className="space-y-3">
@@ -380,7 +372,7 @@ function UserForm({
                             <p className="font-medium">{group.title}</p>
                             <p className="text-xs text-muted-foreground">{group.description}</p>
                         </div>
-                        <div className="grid gap-2 md:grid-cols-2">
+                        <div data-settings-grid="permissions" className="grid gap-2 md:grid-cols-2">
                             {group.permissions.map((permission) => {
                                 const isBase = basePermissions.has(permission.key);
                                 const isChecked = hasFullAccess || isBase || selectedPermissions.has(permission.key);
@@ -429,6 +421,6 @@ function UserForm({
                     </Button>
                 ) : null}
             </div>
-        </div>
+        </fieldset>
     );
 }

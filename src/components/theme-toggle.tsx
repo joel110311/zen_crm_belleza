@@ -1,79 +1,27 @@
-"use client"
+"use client";
 
-import * as React from "react"
-import { Laptop } from "lucide-react"
-import { useTheme } from "next-themes"
+import { useSyncExternalStore } from "react";
+import { Laptop, Moon, Sun } from "lucide-react";
+import { useTheme } from "next-themes";
+import styles from "@/components/shared/settings-workspace.module.css";
 
-import { cn } from "@/lib/utils"
+const MODES = [
+    { id: "light", label: "Claro", icon: Sun },
+    { id: "dark", label: "Oscuro", icon: Moon },
+    { id: "system", label: "Sistema", icon: Laptop },
+];
+
+const subscribe = () => () => {};
+const clientReady = () => true;
+const serverReady = () => false;
 
 export function ThemeToggle() {
-    const { setTheme, theme } = useTheme()
-    const [mounted, setMounted] = React.useState(false)
-
-    React.useEffect(() => {
-        setMounted(true)
-    }, [])
-
-    if (!mounted) {
-        return null
-    }
-
-    return (
-        <div className="space-y-4">
-            <div className="grid grid-cols-3 gap-4">
-                <div
-                    className={cn(
-                        "cursor-pointer rounded-lg border-2 p-1 hover:border-primary",
-                        theme === "light" ? "border-primary" : "border-muted"
-                    )}
-                    onClick={() => setTheme("light")}
-                >
-                    <div className="space-y-2 rounded-md bg-primary/5 p-2">
-                        <div className="space-y-2 rounded-md bg-white p-2 shadow-sm">
-                            <div className="h-2 w-[80px] rounded-lg bg-primary/15" />
-                            <div className="h-2 w-[100px] rounded-lg bg-primary/15" />
-                        </div>
-                        <div className="flex items-center space-x-2 rounded-md bg-white p-2 shadow-sm">
-                            <div className="h-4 w-4 rounded-full bg-primary/15" />
-                            <div className="h-2 w-[100px] rounded-lg bg-primary/15" />
-                        </div>
-                    </div>
-                    <div className="p-2 text-center text-sm font-medium">Claro</div>
-                </div>
-
-                <div
-                    className={cn(
-                        "cursor-pointer rounded-lg border-2 p-1 hover:border-primary",
-                        theme === "dark" ? "border-primary" : "border-muted"
-                    )}
-                    onClick={() => setTheme("dark")}
-                >
-                    <div className="space-y-2 rounded-md bg-black p-2">
-                        <div className="space-y-2 rounded-md bg-primary/20 p-2 shadow-sm">
-                            <div className="h-2 w-[80px] rounded-lg bg-primary" />
-                            <div className="h-2 w-[100px] rounded-lg bg-primary" />
-                        </div>
-                        <div className="flex items-center space-x-2 rounded-md bg-primary/20 p-2 shadow-sm">
-                            <div className="h-4 w-4 rounded-full bg-primary" />
-                            <div className="h-2 w-[100px] rounded-lg bg-primary" />
-                        </div>
-                    </div>
-                    <div className="p-2 text-center text-sm font-medium">Oscuro</div>
-                </div>
-
-                <div
-                    className={cn(
-                        "cursor-pointer rounded-lg border-2 p-1 hover:border-primary",
-                        theme === "system" ? "border-primary" : "border-muted"
-                    )}
-                    onClick={() => setTheme("system")}
-                >
-                    <div className="flex h-full flex-col justify-center items-center space-y-2 rounded-md bg-primary/5 p-2 dark:bg-black">
-                        <Laptop className="h-10 w-10 text-muted-foreground" />
-                    </div>
-                    <div className="p-2 text-center text-sm font-medium">Sistema</div>
-                </div>
-            </div>
-        </div>
-    )
+    const { setTheme, theme } = useTheme();
+    const mounted = useSyncExternalStore(subscribe, clientReady, serverReady);
+    if (!mounted) return <p role="status" className="text-sm text-muted-foreground">Cargando apariencia…</p>;
+    return <div className={styles.displayModes} role="group" aria-label="Modo de visualización">
+        {MODES.map(({ id, label, icon: Icon }) => <button key={id} type="button" aria-pressed={theme === id} onClick={() => setTheme(id)} className={styles.displayMode}>
+            <Icon className="size-5" aria-hidden="true" /><span>{label}</span>
+        </button>)}
+    </div>;
 }

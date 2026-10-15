@@ -93,7 +93,7 @@ export function AppointmentReminderSettingsPanel({
                         Programa avisos por WhatsApp al confirmar una cita o al cambiar su horario.
                     </p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div data-settings-toggle className="flex items-center gap-2">
                     <Label htmlFor="appointment-reminders-enabled" className="text-sm">
                         Activo
                     </Label>
@@ -105,9 +105,9 @@ export function AppointmentReminderSettingsPanel({
                 </div>
             </div>
 
-            <div className="grid gap-4 lg:grid-cols-3">
+            <div data-settings-grid="reminders" className="grid gap-4 lg:grid-cols-3">
                 <div className="space-y-2">
-                    <Label>Esquema de envio</Label>
+                    <Label htmlFor="reminder-frequency">Esquema de envio</Label>
                     <Select
                         value={presetKey}
                         onValueChange={(value) => {
@@ -115,10 +115,10 @@ export function AppointmentReminderSettingsPanel({
                             if (preset) onOffsetsChange([...preset.offsets]);
                         }}
                     >
-                        <SelectTrigger className="h-11 bg-background">
+                        <SelectTrigger id="reminder-frequency" className="h-11 bg-background">
                             <SelectValue placeholder="Selecciona frecuencia" />
                         </SelectTrigger>
-                        <SelectContent>
+                        <SelectContent className="max-w-[calc(100vw-24px)] [&_[data-slot=select-item]]:min-h-11 [&_[data-slot=select-item]]:whitespace-normal">
                             {REMINDER_PRESETS.map((preset) => (
                                 <SelectItem key={preset.key} value={preset.key}>
                                     {preset.label}
@@ -135,12 +135,12 @@ export function AppointmentReminderSettingsPanel({
                 </div>
 
                 <div className="space-y-2">
-                    <Label>Proveedor</Label>
+                    <Label htmlFor="reminder-provider">Proveedor</Label>
                     <Select value={provider} onValueChange={(value) => onProviderChange(value as ReminderProvider)}>
-                        <SelectTrigger className="h-11 bg-background">
+                        <SelectTrigger id="reminder-provider" className="h-11 bg-background">
                             <SelectValue />
                         </SelectTrigger>
-                        <SelectContent>
+                        <SelectContent className="max-w-[calc(100vw-24px)] [&_[data-slot=select-item]]:min-h-11 [&_[data-slot=select-item]]:whitespace-normal">
                             <SelectItem value="wuzapi">WuzAPI - mensaje normal</SelectItem>
                             <SelectItem value="meta">WhatsApp API - plantilla Meta</SelectItem>
                         </SelectContent>
@@ -156,7 +156,7 @@ export function AppointmentReminderSettingsPanel({
                         <span className="text-sm text-muted-foreground">
                             {sendOnlyConfirmed ? "Solo confirmadas" : "También pendientes"}
                         </span>
-                        <Switch checked={sendOnlyConfirmed} onCheckedChange={onSendOnlyConfirmedChange} />
+                        <Switch aria-label="Enviar solo a solicitudes del portal confirmadas" checked={sendOnlyConfirmed} onCheckedChange={onSendOnlyConfirmedChange} />
                     </div>
                     <p className="text-xs text-muted-foreground">
                         Aplica sólo a citas solicitadas desde la URL del cliente. Las citas creadas en el CRM programan recordatorio directo.
@@ -166,9 +166,9 @@ export function AppointmentReminderSettingsPanel({
 
             {provider === "wuzapi" ? (
                 <div className="space-y-2">
-                    <Label>Mensaje WuzAPI</Label>
+                    <Label htmlFor="reminder-message">Mensaje WuzAPI</Label>
                     <Textarea
-                        value={wuzapiTemplate}
+                        id="reminder-message" value={wuzapiTemplate}
                         onChange={(event) => onWuzapiTemplateChange(event.target.value)}
                         className="min-h-32 bg-background"
                     />
@@ -177,35 +177,35 @@ export function AppointmentReminderSettingsPanel({
                     </p>
                 </div>
             ) : (
-                <div className="grid gap-4 md:grid-cols-3">
+                <div data-settings-grid="reminders" className="grid gap-4 md:grid-cols-3">
                     <div className="space-y-2">
-                        <Label>Plantilla para 24h</Label>
+                        <Label htmlFor="reminder-template-24h">Plantilla para 24h</Label>
                         <Input
-                            value={metaTemplate24h}
+                            id="reminder-template-24h" value={metaTemplate24h}
                             onChange={(event) => onMetaTemplate24hChange(event.target.value)}
                             placeholder="recordatorio_cita_24h"
                             className="h-11 bg-background"
                         />
                     </div>
                     <div className="space-y-2">
-                        <Label>Plantilla mismo dia</Label>
+                        <Label htmlFor="reminder-template-day">Plantilla mismo dia</Label>
                         <Input
-                            value={metaTemplate4h}
+                            id="reminder-template-day" value={metaTemplate4h}
                             onChange={(event) => onMetaTemplate4hChange(event.target.value)}
                             placeholder="recordatorio_cita_mismo_dia"
                             className="h-11 bg-background"
                         />
                     </div>
                     <div className="space-y-2">
-                        <Label>Idioma</Label>
+                        <Label htmlFor="reminder-language">Idioma</Label>
                         <Input
-                            value={metaLanguage}
+                            id="reminder-language" value={metaLanguage}
                             onChange={(event) => onMetaLanguageChange(event.target.value)}
                             placeholder="es"
                             className="h-11 bg-background"
                         />
                     </div>
-                    <p className="md:col-span-3 text-xs text-muted-foreground">
+                    <p data-settings-wide className="md:col-span-3 text-xs text-muted-foreground">
                         Las variables BODY se envían en este orden: cliente, fecha, hora, especialista, clínica, link, motivo y anticipación.
                     </p>
                 </div>
