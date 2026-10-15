@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
-import { CalendarCheck, Loader2, Video, XCircle } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Loader2 } from "lucide-react";
+import { PortalFrame } from "./portal-frame";
+import styles from "./portal-workspace.module.css";
 import { useToast } from "@/components/ui/use-toast";
 import { cancelAppointmentByToken } from "@/app/actions/calendar";
 
@@ -33,8 +33,8 @@ type Props = {
 
 function statusLabel(status: string, confirmationStatus: string) {
     if (status === "cancelled") return "Cancelada";
-    if (confirmationStatus === "confirmed") return "Confirmada";
     if (status === "completed") return "Completada";
+    if (confirmationStatus === "confirmed") return "Confirmada";
     return "Solicitud recibida";
 }
 
@@ -42,6 +42,8 @@ export function AppointmentConfirmation({ token, appointment }: Props) {
     const { toast } = useToast();
     const [isPending, startTransition] = useTransition();
     const [reason, setReason] = useState("");
+    const [confirming, setConfirming] = useState(false);
+    const [error, setError] = useState<string | null>(null);
     const [operationContext, setOperationContext] = useState({
         locale: "es-MX",
         timeZone: "America/Mexico_City",
@@ -73,10 +75,13 @@ export function AppointmentConfirmation({ token, appointment }: Props) {
     }, []);
 
     const handleCancel = () => {
+        if (isPending || !confirming || ["cancelled", "completed"].includes(localState.status)) return;
+        setError(null);
         startTransition(async () => {
+            try {
             const result = await cancelAppointmentByToken(token, reason);
             if (!result.success) {
-                toast({ title: "No se pudo cancelar", description: result.error, variant: "destructive" });
+                setError(result.error || "No se pudo cancelar la cita.");
                 return;
             }
             setLocalState({
@@ -84,97 +89,24 @@ export function AppointmentConfirmation({ token, appointment }: Props) {
                 confirmationStatus: "declined",
                 cancellationReason: reason || "Cancelada por el cliente",
             });
+            setConfirming(false);
             toast({ title: "Cita cancelada" });
+            } catch { setError("No se pudo cancelar. Revisa tu conexión e inténtalo de nuevo."); }
         });
     };
 
-    return (
-        <div className="min-h-screen bg-background px-4 py-8">
-            <main className="mx-auto max-w-2xl rounded-2xl border bg-card p-6 shadow-sm">
-                <div className="flex items-start justify-between gap-4 border-b pb-5">
-                    <div>
-                        <p className="text-sm font-medium text-primary">Estado de cita</p>
-                        <h1 className="mt-1 text-2xl font-bold text-foreground">
-                            {statusLabel(localState.status, localState.confirmationStatus)}
-                        </h1>
-                        {localState.status !== "cancelled" && localState.confirmationStatus !== "confirmed" ? (
-                            <p className="mt-2 text-sm text-muted-foreground">
-                                El negocio revisará tu solicitud y te confirmará por WhatsApp.
-                            </p>
-                        ) : null}
-                    </div>
-                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-                        <CalendarCheck className="h-6 w-6" />
-                    </div>
-                </div>
-
-                <div className="mt-5 space-y-4 rounded-2xl border bg-muted/20 p-4">
-                    <div>
-                        <p className="text-xs text-muted-foreground">Cliente</p>
-                        <p className="font-semibold">{patientName}</p>
-                    </div>
-                    <div>
-                        <p className="text-xs text-muted-foreground">Motivo</p>
-                        <p className="font-semibold">{appointment.title}</p>
-                    </div>
-                    <div>
-                        <p className="text-xs text-muted-foreground">Fecha y hora</p>
-                        <p className="font-semibold">
-                            {new Intl.DateTimeFormat(operationContext.locale, {
-                                weekday: "long",
-                                day: "numeric",
-                                month: "long",
-                                hour: "2-digit",
-                                minute: "2-digit",
-                                timeZone: operationContext.timeZone,
-                            }).format(new Date(appointment.startTime))}
-                        </p>
-                    </div>
-                    {specialistName ? (
-                        <div>
-                            <p className="text-xs text-muted-foreground">Especialista</p>
-                            <p className="font-semibold">{specialistName}</p>
-                        </div>
-                    ) : null}
-                    {appointment.visitMode && appointment.visitMode !== "presencial" ? (
-                        <div>
-                            <p className="text-xs text-muted-foreground">Modalidad</p>
-                            <p className="font-semibold">{appointment.visitMode === "hibrida" ? "Hibrida" : "Virtual"}</p>
-                            {appointment.meetLink ? (
-                                <Button className="mt-2" size="sm" asChild>
-                                    <a href={appointment.meetLink} target="_blank" rel="noreferrer">
-                                        <Video className="mr-2 h-4 w-4" />
-                                        Abrir Google Meet
-                                    </a>
-                                </Button>
-                            ) : null}
-                        </div>
-                    ) : null}
-                    {localState.cancellationReason ? (
-                        <div>
-                            <p className="text-xs text-muted-foreground">Motivo de cancelacion</p>
-                            <p className="font-semibold">{localState.cancellationReason}</p>
-                        </div>
-                    ) : null}
-                </div>
-
-                {localState.status !== "cancelled" && localState.status !== "completed" ? (
-                    <div className="mt-5 space-y-4">
-                        <div className="flex gap-2">
-                            <Input
-                                value={reason}
-                                onChange={(event) => setReason(event.target.value)}
-                                placeholder="Motivo opcional"
-                                className="h-11"
-                            />
-                            <Button type="button" variant="outline" onClick={handleCancel} disabled={isPending} className="h-11 shrink-0">
-                                {isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <XCircle className="mr-2 h-4 w-4" />}
-                                Cancelar solicitud
-                            </Button>
-                        </div>
-                    </div>
-                ) : null}
-            </main>
-        </div>
-    );
+    return <PortalFrame name="Estado de tu cita"><section className={styles.statusPanel} aria-busy={isPending}>
+        <h1>{statusLabel(localState.status, localState.confirmationStatus)}</h1>
+        {localState.status !== "cancelled" && localState.confirmationStatus !== "confirmed" && localState.status !== "completed" && <p>El negocio revisará tu solicitud y te confirmará por WhatsApp.</p>}
+        <dl className={styles.details}>
+            <div><dt>Cliente</dt><dd>{patientName}</dd></div>
+            <div><dt>Servicio o motivo</dt><dd>{appointment.title}</dd></div>
+            <div><dt>Fecha y hora · horario del negocio</dt><dd>{new Intl.DateTimeFormat(operationContext.locale, { dateStyle: "full", timeStyle: "short", timeZone: operationContext.timeZone }).format(new Date(appointment.startTime))}</dd></div>
+            {specialistName && <div><dt>Profesional</dt><dd>{specialistName}</dd></div>}
+            {appointment.visitMode && appointment.visitMode !== "presencial" && <div><dt>Modalidad</dt><dd>{appointment.visitMode === "hibrida" ? "Híbrida" : "Virtual"}</dd>{appointment.meetLink && <a className={`${styles.secondary} mt-3`} href={appointment.meetLink} target="_blank" rel="noreferrer">Abrir Google Meet</a>}</div>}
+            {localState.cancellationReason && <div><dt>Motivo de cancelación</dt><dd>{localState.cancellationReason}</dd></div>}
+        </dl>
+        {error && <p role="alert" className={`${styles.error} mt-5`}>{error}</p>}
+        {!['cancelled', 'completed'].includes(localState.status) && (confirming ? <section className={styles.cancelPanel} aria-label="Confirmar cancelación"><h2>¿Cancelar esta cita?</h2><p>Revisa la fecha antes de confirmar la cancelación.</p><div className={`${styles.field} mt-4`}><label htmlFor="cancellation-reason">Motivo (opcional)</label><input id="cancellation-reason" value={reason} onChange={event => setReason(event.target.value)} disabled={isPending} /></div><div className={styles.actions}><button className={styles.secondary} disabled={isPending} onClick={() => { setConfirming(false); setError(null); }}>Conservar cita</button><button className={styles.danger} disabled={isPending} onClick={handleCancel}>{isPending ? <><Loader2 className="size-5 animate-spin" aria-hidden="true" />Cancelando…</> : "Sí, cancelar cita"}</button></div></section> : <div className={styles.actions}><button type="button" className={styles.secondary} onClick={() => setConfirming(true)}>Cancelar solicitud</button></div>)}
+    </section></PortalFrame>;
 }

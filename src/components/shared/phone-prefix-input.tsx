@@ -94,7 +94,7 @@ export function PhonePrefixInput({
                 onValueChange={(countryCode) => emitChange(getOperationCountry(countryCode), localNumber)}
                 disabled={disabled}
             >
-                <SelectTrigger className="h-full w-[104px] shrink-0 rounded-none border-0 border-r bg-transparent px-3 shadow-none focus:ring-0 focus:ring-offset-0">
+                <SelectTrigger aria-label="País del teléfono" className="h-full w-[104px] shrink-0 rounded-none border-0 border-r bg-transparent px-3 shadow-none focus:ring-0 focus:ring-offset-0">
                     <SelectValue>
                         {activeCountry.code} {activeCountry.callingCode}
                     </SelectValue>

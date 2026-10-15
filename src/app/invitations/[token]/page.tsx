@@ -2,6 +2,8 @@ import { notFound } from "next/navigation";
 import { InvitationAcceptanceForm } from "@/components/tenant/invitation-acceptance-form";
 import { isMultitenantInvitationsEnabled } from "@/lib/multitenant-features";
 
+export const metadata = { title: "Invitación de equipo | SynapseLogik CRM", robots: { index: false, follow: false } };
+
 export const dynamic = "force-dynamic";
 
 export default async function InvitationPage({ params }: { params: Promise<{ token: string }> }) {

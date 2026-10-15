@@ -2,39 +2,18 @@
 import { PortalSocialLinks } from "@/components/portal/portal-social-links";
 import type { PortalSocialLink } from "@/lib/portal-social-links";
 
-import { useEffect, useMemo, useState, useTransition, type ComponentType } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Image from "next/image";
-import {
-    ArrowLeft,
-    ArrowRight,
-    Bell,
-    CalendarDays,
-    Check,
-    CheckCircle2,
-    Clock,
-    Droplets,
-    Loader2,
-    MapPin,
-    Scissors,
-    HandHeart,
-    Sun,
-    Sunrise,
-    Tag,
-    UserRound,
-} from "lucide-react";
+import { PortalFrame } from "./portal-frame";
+import styles from "./portal-workspace.module.css";
+import { ArrowLeft, ArrowRight, Check, CheckCircle2, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
-import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
 import { PhonePrefixInput } from "@/components/shared/phone-prefix-input";
 import { bookPortalAppointment, getPortalAvailability } from "@/app/actions/portal";
 import { getOperationTodayKey, timeToOperationInputValue } from "@/lib/operation-dates";
-import { cn } from "@/lib/utils";
 
 export type PortalBookingData = {
     enabled: boolean;
@@ -76,8 +55,6 @@ type Props = {
     data: PortalBookingData;
     mode?: "legacy" | "tenant";
 };
-
-const SERVICE_ICONS: ComponentType<{ className?: string }>[] = [Scissors, HandHeart, Droplets];
 
 function dateKey(value: Date) {
     return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
@@ -125,7 +102,12 @@ export function PortalBooking({ data, mode = "legacy" }: Props) {
     const [email, setEmail] = useState("");
     const [reason, setReason] = useState(data.services[0]?.name || "Servicio de cuidado personal");
     const [sendReminders, setSendReminders] = useState(Boolean(data.remindersEnabled));
-    const [showCustomerForm, setShowCustomerForm] = useState(false);
+    const [step, setStep] = useState<"service" | "time" | "details">("service");
+    const [availabilityError, setAvailabilityError] = useState<string | null>(null);
+    const [formError, setFormError] = useState<string | null>(null);
+    const [availabilityAttempt, setAvailabilityAttempt] = useState(0);
+    const holdBusy = useRef(false);
+    const bookingKey = useRef("");
     const [confirmationToken, setConfirmationToken] = useState<string | null>(null);
     const [confirmedClientName, setConfirmedClientName] = useState("");
     const remindersGloballyEnabled = Boolean(data.remindersEnabled);
@@ -155,8 +137,8 @@ export function PortalBooking({ data, mode = "legacy" }: Props) {
         });
 
         return [
-            { key: "morning", label: "Mañana", icon: Sunrise, slots: morning },
-            { key: "afternoon", label: "Tarde", icon: Sun, slots: afternoon },
+            { key: "morning", label: "Mañana", slots: morning },
+            { key: "afternoon", label: "Tarde", slots: afternoon },
         ].filter((group) => group.slots.length > 0);
     }, [operationContext.timeZone, slots]);
 
@@ -166,50 +148,39 @@ export function PortalBooking({ data, mode = "legacy" }: Props) {
 
     useEffect(() => {
         if (!data.enabled || !selectedSpecialistId || !date) return;
-
+        let active = true;
         const load = async () => {
             setIsLoadingSlots(true);
+            setAvailabilityError(null);
+            setSlots([]);
             setSelectedSlot("");
             setSlotHoldToken("");
-            setShowCustomerForm(false);
+            setStep(current => current === "details" ? "time" : current);
             try {
                 if (mode === "tenant") {
-                    const query = new URLSearchParams({
-                        serviceId: selectedServiceId,
-                        specialistId: selectedSpecialistId,
-                        date,
-                    });
-                    const response = await fetch(`${tenantEndpoint}/availability?${query.toString()}`, { cache: "no-store" });
+                    const query = new URLSearchParams({ serviceId: selectedServiceId, specialistId: selectedSpecialistId, date });
+                    const response = await fetch(`${tenantEndpoint}/availability?${query}`, { cache: "no-store" });
                     const payload = await response.json().catch(() => null) as { data?: { slots?: string[] }; error?: { message?: string } } | null;
-                    if (!response.ok) {
-                        setSlots([]);
-                        toast({ title: "Sin disponibilidad", description: publicApiError(payload, "No fue posible consultar los horarios."), variant: "destructive" });
-                        return;
-                    }
-                    setSlots(payload?.data?.slots || []);
-                    return;
+                    if (!response.ok) throw new Error(publicApiError(payload, "No fue posible consultar los horarios."));
+                    if (active) setSlots(payload?.data?.slots || []);
+                } else {
+                    const result = await getPortalAvailability(data.slug, selectedSpecialistId, date, selectedServiceId);
+                    if (!result.success) throw new Error(result.error);
+                    if (active) setSlots(result.slots);
                 }
-                const result = await getPortalAvailability(
-                    data.slug,
-                    selectedSpecialistId,
-                    date,
-                    selectedServiceId,
-                );
-                if (!result.success) {
-                    setSlots([]);
-                    toast({ title: "Sin disponibilidad", description: result.error, variant: "destructive" });
-                    return;
-                }
-                setSlots(result.slots);
+            } catch (cause) {
+                if (active) setAvailabilityError(cause instanceof Error ? cause.message : "No fue posible consultar los horarios. Inténtalo de nuevo.");
             } finally {
-                setIsLoadingSlots(false);
+                if (active) setIsLoadingSlots(false);
             }
         };
-
         void load();
-    }, [data.enabled, data.slug, date, mode, selectedServiceId, selectedSpecialistId, tenantEndpoint, toast]);
+        return () => { active = false; };
+    }, [data.enabled, data.slug, date, mode, selectedServiceId, selectedSpecialistId, tenantEndpoint, availabilityAttempt]);
 
     const selectService = (serviceId: string) => {
+        if (isPending || holdingSlot) return;
+        setFormError(null);
         setSelectedServiceId(serviceId);
         const service = data.services.find((entry) => entry.id === serviceId);
         if (!service) return;
@@ -221,13 +192,15 @@ export function PortalBooking({ data, mode = "legacy" }: Props) {
     };
 
     const selectSlot = async (slot: string) => {
-        setShowCustomerForm(false);
+        if (holdBusy.current || isPending || isLoadingSlots) return;
+        setFormError(null);
         if (mode === "legacy") {
             setSelectedSlot(slot);
             return;
         }
         if (!selectedService || !specialist) return;
 
+        holdBusy.current = true;
         setHoldingSlot(slot);
         setSelectedSlot("");
         setSlotHoldToken("");
@@ -248,20 +221,26 @@ export function PortalBooking({ data, mode = "legacy" }: Props) {
             }
             setSelectedSlot(slot);
             setSlotHoldToken(payload.data.holdToken);
+            bookingKey.current = crypto.randomUUID();
         } catch (cause) {
             setSlots((current) => current.filter((entry) => entry !== slot));
+            setFormError(cause instanceof Error ? cause.message : "Selecciona otro horario.");
             toast({
                 title: "Horario no disponible",
                 description: cause instanceof Error ? cause.message : "Selecciona otro horario.",
                 variant: "destructive",
             });
         } finally {
+            holdBusy.current = false;
             setHoldingSlot("");
         }
     };
 
     const handleSubmit = () => {
+        if (isPending || holdingSlot || step !== "details") return;
+        setFormError(null);
         if (!selectedSpecialistId || !date || !selectedSlot || !firstName.trim() || !phone) {
+            setFormError("Completa servicio, profesional, horario, nombre y teléfono.");
             toast({
                 title: "Faltan datos",
                 description: "Completa servicio, profesional, horario, nombre y teléfono.",
@@ -271,14 +250,17 @@ export function PortalBooking({ data, mode = "legacy" }: Props) {
         }
 
         startTransition(async () => {
+            try {
             if (mode === "tenant") {
                 if (!slotHoldToken || !selectedService || !specialist) {
+                    setFormError("Vuelve a elegir el horario: el apartado temporal ya no está disponible.");
                     toast({ title: "Vuelve a elegir el horario", description: "El apartado temporal ya no está disponible.", variant: "destructive" });
                     return;
                 }
+                bookingKey.current ||= crypto.randomUUID();
                 const response = await fetch(`${tenantEndpoint}/bookings`, {
                     method: "POST",
-                    headers: { "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() },
+                    headers: { "Content-Type": "application/json", "Idempotency-Key": bookingKey.current },
                     body: JSON.stringify({
                         holdToken: slotHoldToken,
                         serviceId: selectedService.id,
@@ -296,7 +278,7 @@ export function PortalBooking({ data, mode = "legacy" }: Props) {
                     error?: { message?: string };
                 } | null;
                 if (!response.ok || !payload?.data?.bookingToken) {
-                    toast({ title: "No se pudo reservar", description: publicApiError(payload, "No fue posible confirmar la reservación."), variant: "destructive" });
+                    setFormError(publicApiError(payload, "No fue posible confirmar la reservación. Inténtalo de nuevo."));
                     return;
                 }
                 setConfirmedClientName(firstName.trim());
@@ -321,434 +303,85 @@ export function PortalBooking({ data, mode = "legacy" }: Props) {
             });
 
             if (!result.success) {
-                toast({ title: "No se pudo reservar", description: result.error, variant: "destructive" });
+                setFormError(result.error || "No se pudo reservar.");
                 return;
             }
 
             setConfirmedClientName(result.clientName || firstName.trim());
             setConfirmationToken(result.token || null);
             toast({ title: "Horario apartado", description: "El negocio recibió tu solicitud para confirmarla." });
+            } catch {
+                setFormError("No se pudo enviar la solicitud. Revisa tu conexión e inténtalo de nuevo.");
+            }
         });
     };
 
-    if (!data.enabled) {
-        return (
-            <div className="flex min-h-screen flex-col bg-[#f4f4ef] text-foreground">
-                <header className="border-b bg-white">
-                    <div className="flex min-h-16 w-full items-center gap-3 px-4 py-3 sm:px-6 xl:px-8">
-                        <div
-                            className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-2xl text-white"
-                            style={{ backgroundColor: data.primaryColor }}
-                        >
-                            {data.logoUrl ? (
-                                <Image
-                                    src={data.logoUrl}
-                                    alt=""
-                                    width={44}
-                                    height={44}
-                                    unoptimized
-                                    className="h-full w-full object-contain p-1"
-                                    style={{ transform: `scale(${Math.max(0.6, Math.min(1.6, data.logoScale / 100))})` }}
-                                />
-                            ) : (
-                                <HandHeart className="h-5 w-5" />
-                            )}
-                        </div>
-                        <div className="min-w-0">
-                            <p className="truncate font-semibold">{data.clinicName}</p>
-                            <p className="truncate text-xs text-muted-foreground">{data.subtitle}</p>
-                        </div>
-                    </div>
-                </header>
-                <main className="flex flex-1 items-center justify-center px-4 py-10">
-                    <div className="w-full max-w-lg rounded-3xl border bg-white p-8 text-center shadow-xl shadow-black/5">
-                        <div
-                            className="mx-auto flex h-16 w-16 items-center justify-center rounded-full text-white"
-                            style={{ backgroundColor: data.primaryColor }}
-                        >
-                            <CalendarDays className="h-8 w-8" />
-                        </div>
-                        <h1 className="mt-5 text-2xl font-bold">Reservas en línea no disponibles</h1>
-                        <p className="mt-3 text-muted-foreground">
-                            Por el momento este negocio no está recibiendo solicitudes desde el portal.
-                        </p>
-                    </div>
-                </main>
-            </div>
-        );
-    }
+    const busy = isPending || Boolean(holdingSlot);
+    const serviceReady = mode === "tenant" ? Boolean(selectedService && specialist) : Boolean(reason.trim() && specialist);
+    const timeReady = Boolean(selectedSlot && !isLoadingSlots && (mode !== "tenant" || slotHoldToken));
+    const details = <dl className={styles.details}>
+        <div><dt>Servicio</dt><dd>{selectedService?.name || reason}</dd></div>
+        <div><dt>Profesional</dt><dd>{specialist?.displayName || specialist?.name || "Sin profesional disponible"}</dd></div>
+        {selectedService && <div><dt>Duración{selectedService.showPrice ? " y precio" : ""}</dt><dd>{selectedService.durationMinutes} min{selectedService.showPrice ? ` · ${money(selectedService.price, selectedService.currency, operationContext.locale)}` : ""}</dd></div>}
+        <div><dt>Fecha y hora · horario del negocio</dt><dd>{format(selectedDate, "EEEE d 'de' MMMM", { locale: es })}{selectedSlot ? ` · ${timeToOperationInputValue(selectedSlot, operationContext.timeZone)}` : " · Elige una hora"}</dd></div>
+    </dl>;
+    const frameProps = { name: data.clinicName, subtitle: data.subtitle, logoUrl: data.logoUrl, logoScale: data.logoScale, primaryColor: data.primaryColor };
+    if (!data.enabled) return <PortalFrame {...frameProps}><section className={styles.statusPanel}><h1>Reservas no disponibles</h1><p>Por el momento este negocio no recibe solicitudes desde el portal.</p>{data.address && <p>{data.address}</p>}<PortalSocialLinks links={data.socialLinks} /></section></PortalFrame>;
+    if (confirmationToken) return <PortalFrame {...frameProps}><section className={styles.statusPanel}>
+        <CheckCircle2 className="mb-4 size-8" aria-hidden="true" /><h1>Solicitud recibida</h1>
+        <p>{confirmedClientName ? `${confirmedClientName}, ` : ""}el negocio recibió tu solicitud. La cita queda pendiente de su confirmación.</p>
+        {details}<div className={styles.actions}><a className={styles.primary} href={mode === "tenant" ? `/portal/${data.slug}/turno/${confirmationToken}` : `/portal/turno/${confirmationToken}`}>Ver estado de mi cita</a></div>
+    </section></PortalFrame>;
 
-    if (confirmationToken) {
-        return (
-            <div className="flex min-h-screen items-center justify-center bg-[#f4f4ef] px-4 py-10">
-                <div className="w-full max-w-xl rounded-3xl border bg-white p-8 text-center shadow-xl shadow-black/5">
-                    <div
-                        className="mx-auto flex h-16 w-16 items-center justify-center rounded-full text-white"
-                        style={{ backgroundColor: data.primaryColor }}
-                    >
-                        <CheckCircle2 className="h-9 w-9" />
-                    </div>
-                    <p className="mt-5 text-sm font-semibold uppercase tracking-[0.18em] text-muted-foreground">Solicitud recibida</p>
-                    <h1 className="mt-2 text-3xl font-bold text-foreground">Tu horario quedó apartado</h1>
-                    <p className="mt-3 text-muted-foreground">
-                        {confirmedClientName ? `${confirmedClientName}, ` : ""}el negocio confirmará la cita por WhatsApp. Mientras tanto nadie más podrá usar ese horario.
-                    </p>
-                    <div className="mt-6 rounded-2xl border bg-muted/20 p-4 text-left text-sm">
-                        <p className="font-semibold">{selectedService?.name || reason}</p>
-                        <p className="mt-1 text-muted-foreground">
-                            {format(selectedDate, "EEEE d 'de' MMMM", { locale: es })} · {selectedSlot ? timeToOperationInputValue(selectedSlot, operationContext.timeZone) : ""}
-                        </p>
-                    </div>
-                    <Button className="mt-6 h-11 w-full" asChild style={{ backgroundColor: data.primaryColor }}>
-                        <a href={mode === "tenant" ? `/portal/${data.slug}/turno/${confirmationToken}` : `/portal/turno/${confirmationToken}`}>Ver el estado de mi cita</a>
-                    </Button>
-                </div>
-            </div>
-        );
-    }
-
-    return (
-        <div className="min-h-screen bg-[#f4f4ef] text-foreground">
-            <header className="sticky top-0 z-30 border-b bg-white/95 backdrop-blur">
-                <div className="grid min-h-16 w-full items-center gap-x-4 gap-y-2 px-4 py-3 sm:px-6 lg:grid-cols-[minmax(0,1fr)_minmax(440px,2fr)_minmax(0,1fr)] xl:px-8">
-                    <div className="flex min-w-0 items-center gap-3">
-                        <div
-                            className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-2xl text-white"
-                            style={{ backgroundColor: data.primaryColor }}
-                        >
-                            {data.logoUrl ? (
-                                <Image src={data.logoUrl} alt="" width={44} height={44} unoptimized className="h-full w-full object-contain p-1" />
-                            ) : (
-                                <HandHeart className="h-5 w-5" />
-                            )}
-                        </div>
-                        <div className="min-w-0">
-                            <p className="truncate font-semibold">{data.clinicName}</p>
-                            <p className="truncate text-xs text-muted-foreground">{data.subtitle}</p>
-                        </div>
-                    </div>
-                    <div className="col-span-full text-center lg:col-span-1 lg:col-start-2 lg:row-start-1">
-                        <h1 className="text-balance text-2xl font-semibold tracking-tight sm:text-3xl 2xl:text-4xl">
-                            Elige tu servicio y aparta el mejor horario para ti
-                        </h1>
-                        {data.intro ? <p className="mx-auto mt-1 max-w-2xl text-sm text-muted-foreground">{data.intro}</p> : null}
-                    </div>
-                    {data.address ? (
-                        <div className="flex max-w-full items-center gap-2 justify-self-center rounded-full border bg-[#f8f8f4] px-3 py-2 text-xs text-muted-foreground lg:justify-self-end">
-                            <MapPin className="h-4 w-4 shrink-0" style={{ color: data.primaryColor }} />
-                            <span className="truncate">{data.address}</span>
-                        </div>
-                    ) : (
-                        <div aria-hidden="true" className="hidden lg:block" />
-                    )}
-                </div>
-            </header>
-
-            <main id="reservar" className="mx-auto w-full max-w-[1760px] px-4 py-4 sm:px-6 lg:py-5 xl:px-8">
-                <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-                    <PortalSocialLinks links={data.socialLinks} />
-                    {data.scheduleSummary ? (
-                        <p className="flex items-center gap-2 text-sm text-muted-foreground">
-                            <Clock className="h-4 w-4" />
-                            {data.scheduleSummary}
-                        </p>
-                    ) : null}
-                </div>
-                <div className="grid items-start gap-4 xl:grid-cols-[270px_minmax(440px,1fr)_330px] 2xl:grid-cols-[280px_minmax(640px,1fr)_360px] 2xl:gap-5">
-                    <section id="servicios" className="self-start rounded-3xl border bg-white p-4 shadow-sm">
-                        <div className="px-1 pb-4">
-                            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Paso 1</p>
-                            <h2 className="mt-1 text-lg font-semibold">Selecciona un servicio</h2>
-                        </div>
-                        <div className="portal-scrollbar max-h-[58vh] space-y-2 overflow-y-auto pr-2 [scrollbar-gutter:stable] 2xl:max-h-[620px]">
-                            {data.services.map((service, index) => {
-                                const Icon = SERVICE_ICONS[index % SERVICE_ICONS.length];
-                                const selected = selectedServiceId === service.id;
-                                return (
-                                    <button
-                                        key={service.id}
-                                        type="button"
-                                        onClick={() => selectService(service.id)}
-                                        className={cn(
-                                            "group flex w-full items-center gap-3 rounded-2xl border p-3 text-left transition",
-                                            selected ? "shadow-sm" : "border-transparent hover:border-border hover:bg-muted/25",
-                                        )}
-                                        style={selected ? { borderColor: data.primaryColor, backgroundColor: `${data.primaryColor}0D` } : undefined}
-                                    >
-                                        {service.imageUrl ? (
-                                            <Image src={service.imageUrl} alt="" width={56} height={56} unoptimized className="h-14 w-14 shrink-0 rounded-2xl border object-cover" />
-                                        ) : (
-                                            <span
-                                                className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl text-white"
-                                                style={{ backgroundColor: index % 2 ? "#A88B54" : data.primaryColor }}
-                                            >
-                                                <Icon className="h-6 w-6" />
-                                            </span>
-                                        )}
-                                        <span className="min-w-0 flex-1">
-                                            <span className="block truncate text-sm font-semibold">{service.name}</span>
-                                            <span className="mt-1 block text-xs text-muted-foreground">
-                                                {service.durationMinutes} min{service.showPrice ? ` · ${money(service.price, service.currency, operationContext.locale)}` : ""}
-                                            </span>
-                                        </span>
-                                        {selected ? <Check className="h-5 w-5 shrink-0" style={{ color: data.primaryColor }} /> : null}
-                                    </button>
-                                );
-                            })}
-                            {data.services.length === 0 ? (
-                                <div className="rounded-2xl border border-dashed p-4">
-                                    <Label>Servicio o motivo</Label>
-                                    <Input value={reason} onChange={(event) => setReason(event.target.value)} className="mt-2" />
-                                </div>
-                            ) : null}
-                        </div>
-                    </section>
-
-                    <section className="self-start space-y-4">
-                        <div className="rounded-3xl border bg-white p-4 shadow-sm sm:p-5">
-                            <div className="flex flex-col gap-4 border-b pb-4 sm:flex-row sm:items-end sm:justify-between">
-                                <div>
-                                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Paso 2</p>
-                                    <h2 className="mt-1 text-xl font-semibold">Elige profesional, fecha y hora</h2>
-                                </div>
-                                <div className="w-full sm:w-56">
-                                    <Label className="sr-only">Profesional</Label>
-                                    <Select value={selectedSpecialistId} onValueChange={setSelectedSpecialistId}>
-                                        <SelectTrigger className="h-10 rounded-xl bg-background">
-                                            <SelectValue placeholder="Selecciona profesional" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {availableSpecialists.map((entry) => (
-                                                <SelectItem key={entry.id} value={entry.id}>{entry.displayName || entry.name}</SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                            </div>
-
-                            <div className="flex justify-center py-4 sm:py-5">
-                                <div className="w-full max-w-[860px]">
-                                    <Calendar
-                                        mode="single"
-                                        selected={selectedDate}
-                                        onSelect={(value) => value && setDate(dateKey(value))}
-                                        disabled={{ before: new Date() }}
-                                        locale={es}
-                                        className="w-full bg-white p-0 [--cell-size:3rem]"
-                                        classNames={{
-                                            root: "w-full",
-                                            months: "relative flex w-full flex-col",
-                                            month: "flex w-full flex-col gap-2",
-                                            nav: "absolute right-2 top-1 z-10 flex w-auto items-center gap-1.5",
-                                            month_caption: "flex h-12 w-full items-center justify-start px-2",
-                                            caption_label: "text-2xl font-semibold capitalize tracking-normal sm:text-3xl",
-                                            button_previous: "size-9 rounded-xl border border-[#deddd7] bg-[#fbfaf7] p-0 text-foreground shadow-none transition hover:border-[#c9c7be] hover:bg-[#f1efe8]",
-                                            button_next: "size-9 rounded-xl border border-[#deddd7] bg-[#fbfaf7] p-0 text-foreground shadow-none transition hover:border-[#c9c7be] hover:bg-[#f1efe8]",
-                                            table: "w-full border-collapse",
-                                            weekdays: "grid w-full grid-cols-7",
-                                            weekday: "text-center text-sm font-semibold uppercase tracking-[0.08em] text-muted-foreground",
-                                            week: "mt-1 grid w-full grid-cols-7",
-                                            day: "h-11 w-full px-0 text-center sm:h-12 sm:px-1 xl:h-[52px] xl:px-2 2xl:px-3",
-                                            day_button: "h-full w-full min-w-0 rounded-xl text-base font-semibold",
-                                        }}
-                                        components={{
-                                            Chevron: ({ className, orientation, ...props }) => orientation === "left"
-                                                ? <ArrowLeft className={cn("h-4 w-4", className)} {...props} />
-                                                : <ArrowRight className={cn("h-4 w-4", className)} {...props} />,
-                                        }}
-                                    />
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="rounded-3xl border bg-white p-4 shadow-sm sm:p-5">
-                            <div className="flex items-center justify-between border-b pb-4">
-                                <div>
-                                    <h2 className="text-2xl font-semibold tracking-tight">Horarios disponibles</h2>
-                                    <p className="mt-1 text-sm font-medium uppercase tracking-[0.1em] text-muted-foreground">
-                                        {format(selectedDate, "d 'de' MMMM 'de' yyyy", { locale: es })}
-                                    </p>
-                                </div>
-                                {isLoadingSlots ? <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /> : null}
-                            </div>
-
-                            <div className="mt-5 grid gap-5 2xl:grid-cols-2">
-                                {groupedSlots.map((group) => {
-                                    const GroupIcon = group.icon;
-                                    return (
-                                        <div key={group.key} className="rounded-2xl border bg-[#fbfaf7] p-4">
-                                            <div className="mb-4 flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                                                <GroupIcon className="h-6 w-6" />
-                                                {group.label}
-                                            </div>
-                                            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                                                {group.slots.map((slot) => {
-                                                    const active = selectedSlot === slot;
-                                                    return (
-                                                        <button
-                                                            key={slot}
-                                                            type="button"
-                                                            onClick={() => void selectSlot(slot)}
-                                                            disabled={Boolean(holdingSlot)}
-                                                            className={cn(
-                                                                "flex h-12 items-center justify-center rounded-full border bg-white text-base font-semibold transition",
-                                                                active ? "text-white shadow-sm" : "bg-white hover:bg-muted/30",
-                                                            )}
-                                                            style={active ? { backgroundColor: data.primaryColor, borderColor: data.primaryColor } : undefined}
-                                                        >
-                                                            {holdingSlot === slot ? <Loader2 className="h-4 w-4 animate-spin" /> : timeToOperationInputValue(slot, operationContext.timeZone)}
-                                                        </button>
-                                                    );
-                                                })}
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                                {!isLoadingSlots && slots.length === 0 ? (
-                                    <p className="rounded-xl border border-dashed p-4 text-sm leading-5 text-muted-foreground">No hay horarios disponibles para este día.</p>
-                                ) : null}
-                            </div>
-                        </div>
-                    </section>
-
-                    <aside className="self-start rounded-3xl border bg-white p-4 shadow-sm sm:p-5 xl:sticky xl:top-24">
-                        <div className="border-b pb-4">
-                            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Resumen de reserva</p>
-                        </div>
-
-                        <div className="mt-4">
-                            {selectedService?.imageUrl ? (
-                                <Image
-                                    src={selectedService.imageUrl}
-                                    alt={selectedService.name}
-                                    width={640}
-                                    height={160}
-                                    unoptimized
-                                    className="h-40 w-full rounded-2xl object-cover"
-                                />
-                            ) : (
-                                <div
-                                    className="flex h-32 w-full items-center justify-center rounded-2xl text-white"
-                                    style={{ background: `linear-gradient(135deg, ${data.primaryColor}, #A88B54)` }}
-                                >
-                                    <HandHeart className="h-9 w-9" />
-                                </div>
-                            )}
-
-                            <span className="mt-4 inline-flex rounded-full bg-[#efeee8] px-3 py-1 text-[11px] font-medium text-muted-foreground">
-                                Servicio
-                            </span>
-                            <h2 className="mt-2 text-xl font-semibold leading-tight">{selectedService?.name || reason}</h2>
-
-                            <div className="mt-4 space-y-3 text-sm">
-                                <div className="flex items-start gap-3">
-                                    <UserRound className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" />
-                                    <div>
-                                        <p className="font-medium">{specialist?.displayName || specialist?.name || "Profesional por asignar"}</p>
-                                        <p className="text-xs text-muted-foreground">Profesional seleccionado</p>
-                                    </div>
-                                </div>
-                                <div className="flex items-center gap-3">
-                                    <Clock className="h-5 w-5 shrink-0 text-muted-foreground" />
-                                    <p>{selectedService?.durationMinutes} minutos</p>
-                                </div>
-                                {selectedService?.showPrice ? (
-                                    <div className="flex items-center gap-3">
-                                        <Tag className="h-5 w-5 shrink-0 text-muted-foreground" />
-                                        <p className="font-semibold">{money(selectedService.price, selectedService.currency, operationContext.locale)}</p>
-                                    </div>
-                                ) : null}
-                            </div>
-
-                            <div className="mt-5 rounded-2xl bg-[#f5f2eb] p-4">
-                                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Fecha seleccionada</p>
-                                <p className="mt-1 text-sm font-semibold capitalize">
-                                    {format(selectedDate, "EEEE, d 'de' MMMM", { locale: es })}
-                                    {selectedSlot ? ` · ${timeToOperationInputValue(selectedSlot, operationContext.timeZone)}` : " · Elige un horario"}
-                                </p>
-                            </div>
-
-                            {!showCustomerForm ? (
-                                <>
-                                    <Button
-                                        type="button"
-                                        onClick={() => setShowCustomerForm(true)}
-                                        disabled={!selectedSlot}
-                                        className="mt-5 h-12 w-full rounded-xl text-sm font-semibold uppercase tracking-[0.08em]"
-                                        style={selectedSlot ? { backgroundColor: data.primaryColor } : undefined}
-                                    >
-                                        Continuar <ArrowRight className="ml-2 h-5 w-5" />
-                                    </Button>
-                                    <p className="mt-2 text-center text-[11px] text-muted-foreground">Paso final: tus datos de contacto</p>
-                                </>
-                            ) : (
-                                <div className="mt-5 space-y-4 border-t pt-5">
-                                    <div className="flex items-center gap-3">
-                                        <div className="flex h-9 w-9 items-center justify-center rounded-xl text-white" style={{ backgroundColor: data.primaryColor }}>
-                                            <UserRound className="h-4 w-4" />
-                                        </div>
-                                        <div>
-                                            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Paso 3</p>
-                                            <h3 className="font-semibold">Completa tu reserva</h3>
-                                        </div>
-                                    </div>
-
-                                    <div className="space-y-2">
-                                        <Label>Nombre</Label>
-                                        <Input value={firstName} onChange={(event) => setFirstName(event.target.value)} placeholder="Tu nombre" className="h-11 rounded-xl" />
-                                    </div>
-                                    {mode === "tenant" ? (
-                                        <div className="space-y-2">
-                                            <Label>Apellidos (opcional)</Label>
-                                            <Input value={lastName} onChange={(event) => setLastName(event.target.value)} autoComplete="family-name" className="h-11 rounded-xl" />
-                                        </div>
-                                    ) : null}
-                                    <div className="space-y-2">
-                                        <Label>WhatsApp</Label>
-                                        <PhonePrefixInput value={phone} onChange={setPhone} placeholder="10 dígitos" required />
-                                        <p className="text-[11px] leading-4 text-muted-foreground">
-                                            Si ya tienes registro, lo vincularemos por tu numero; si el nombre era generico, lo actualizaremos.
-                                        </p>
-                                    </div>
-                                    {mode === "tenant" ? (
-                                        <div className="space-y-2">
-                                            <Label>Correo (opcional)</Label>
-                                            <Input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" className="h-11 rounded-xl" />
-                                        </div>
-                                    ) : (
-                                        <label className={cn(
-                                            "flex items-start gap-3 rounded-2xl border px-3 py-3",
-                                            remindersGloballyEnabled ? "cursor-pointer" : "bg-muted/30 text-muted-foreground",
-                                        )}>
-                                            <Checkbox
-                                                checked={sendReminders}
-                                                onCheckedChange={(checked) => setSendReminders(Boolean(checked))}
-                                                disabled={!remindersGloballyEnabled}
-                                                className="mt-0.5"
-                                            />
-                                            <span className="min-w-0">
-                                                <span className="flex items-center gap-2 text-sm font-medium"><Bell className="h-4 w-4" /> Recordatorios por WhatsApp</span>
-                                                <span className="mt-1 block text-[11px] leading-4 text-muted-foreground">Recibe avisos antes de tu cita.</span>
-                                            </span>
-                                        </label>
-                                    )}
-
-                                    <Button
-                                        onClick={handleSubmit}
-                                        disabled={isPending}
-                                        className="h-12 w-full rounded-xl text-base"
-                                        style={{ backgroundColor: data.primaryColor }}
-                                    >
-                                        {isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CalendarDays className="mr-2 h-4 w-4" />}
-                                        Apartar horario
-                                    </Button>
-                                    <p className="text-center text-[11px] leading-4 text-muted-foreground">El horario se bloquea y queda pendiente de confirmación del negocio.</p>
-                                </div>
-                            )}
-                        </div>
-                    </aside>
-                </div>
-            </main>
+    return <PortalFrame {...frameProps}>
+        <div className={styles.heading}><h1>Reserva tu cita</h1><p>{data.intro || "Elige un servicio y encuentra un horario para ti."}</p></div>
+        <nav className={styles.progress} aria-label="Pasos de la reserva">
+            {([{ id: "service", label: "Servicio" }, { id: "time", label: "Horario" }, { id: "details", label: "Tus datos" }] as const).map(item => <button type="button" key={item.id} aria-current={step === item.id ? "step" : undefined} disabled={busy || (item.id === "time" && !serviceReady) || (item.id === "details" && !timeReady)} onClick={() => { setStep(item.id); setFormError(null); }}>{item.label}</button>)}
+        </nav>
+        <div className={styles.layout}>
+            <section className={styles.panel} aria-label={step === "service" ? "Selecciona un servicio" : step === "time" ? "Elige tu horario" : "Datos de contacto"}>
+                {step === "service" && <>
+                    <h2>¿Qué servicio buscas?</h2>
+                    <div className={styles.catalog}>{data.services.map(service => <button type="button" className={styles.service} key={service.id} aria-pressed={selectedServiceId === service.id} onClick={() => selectService(service.id)} disabled={busy}>
+                        {service.imageUrl && <Image src={service.imageUrl} alt="" width={56} height={56} unoptimized />}
+                        <span><strong>{service.name}</strong>{service.description && <small>{service.description}</small>}<span className={styles.serviceMeta}><span>{service.durationMinutes} min</span>{service.showPrice && <span>{money(service.price, service.currency, operationContext.locale)}</span>}</span></span>
+                        <span className={styles.selectionMark} aria-hidden="true">{selectedServiceId === service.id && <Check className="size-4" />}</span>
+                    </button>)}</div>
+                    {!data.services.length && (mode === "legacy" ? <div className={styles.field}><label htmlFor="portal-reason">Servicio o motivo</label><input id="portal-reason" value={reason} onChange={event => setReason(event.target.value)} /></div> : <p className={styles.notice}>El negocio aún no tiene servicios disponibles para reservar.</p>)}
+                    {!specialist && <p className={styles.notice}>No hay profesionales disponibles para este servicio.</p>}
+                    <div className={styles.actions}><button type="button" className={styles.primary} disabled={!serviceReady || busy} onClick={() => setStep("time")}>Elegir horario <ArrowRight className="size-4" aria-hidden="true" /></button></div>
+                </>}
+                {step === "time" && <>
+                    <h2>Elige tu horario</h2>
+                    <p className={styles.hint}>{selectedService?.name || reason} · {selectedService?.durationMinutes || ""} min</p>
+                    <div className={styles.timeLayout}><div>
+                    <div className={`${styles.field} mt-5`}><label htmlFor="portal-specialist">Profesional</label><select id="portal-specialist" value={selectedSpecialistId} onChange={event => setSelectedSpecialistId(event.target.value)} disabled={busy}>{availableSpecialists.map(person => <option value={person.id} key={person.id}>{person.displayName || person.name}</option>)}</select></div>
+                    <div className={`${styles.field} ${styles.dateMobile}`}><label htmlFor="portal-date">Fecha</label><input id="portal-date" type="date" min={getOperationTodayKey(operationContext.timeZone)} value={date} onChange={event => event.target.value && setDate(event.target.value)} disabled={busy} /></div>
+                    <div className={styles.calendar}><Calendar mode="single" selected={selectedDate} onSelect={value => value && setDate(dateKey(value))} disabled={busy ? true : { before: dateFromKey(getOperationTodayKey(operationContext.timeZone)) }} locale={es} /></div>
+                    </div><section className={styles.times} aria-label="Horarios disponibles" aria-busy={isLoadingSlots}>
+                        <div><h2>Horarios disponibles</h2><p className={styles.hint}>{format(selectedDate, "EEEE d 'de' MMMM", { locale: es })} · {operationContext.timeZone}</p></div>
+                        {isLoadingSlots ? <p role="status" className={styles.notice}>Consultando horarios…</p> : availabilityError ? <div role="alert" className={styles.error}><p>{availabilityError}</p><button className={`${styles.secondary} mt-3`} onClick={() => setAvailabilityAttempt(value => value + 1)}>Reintentar consulta</button></div> : groupedSlots.length ? groupedSlots.map(group => <div key={group.key}><h3>{group.label}</h3><div className={styles.slotGrid}>{group.slots.map(slot => <button type="button" key={slot} aria-pressed={selectedSlot === slot} className={styles.slot} disabled={busy} onClick={() => void selectSlot(slot)}>{holdingSlot === slot ? <Loader2 className="mx-auto size-5 animate-spin" aria-label="Apartando horario" /> : timeToOperationInputValue(slot, operationContext.timeZone)}</button>)}</div></div>) : <p role="status" className={styles.notice}>No hay horarios para este día. Elige otra fecha o profesional.</p>}
+                    </section></div>
+                    {formError && <p role="alert" className={`${styles.error} mt-5`}>{formError}</p>}
+                    <div className={styles.actions}><button type="button" className={styles.secondary} disabled={busy} onClick={() => setStep("service")}><ArrowLeft className="size-4" aria-hidden="true" />Servicio</button><button type="button" className={styles.primary} disabled={!timeReady || busy} onClick={() => { setFormError(null); setStep("details"); }}>Continuar <ArrowRight className="size-4" aria-hidden="true" /></button></div>
+                </>}
+                {step === "details" && <>
+                    <h2>Tus datos de contacto</h2>
+                    <form onSubmit={event => { event.preventDefault(); handleSubmit(); }}>
+                        <fieldset className={styles.fields} disabled={busy}>
+                            <div className={styles.twoFields}><div className={styles.field}><label htmlFor="portal-first-name">{mode === "tenant" ? "Nombre" : "Nombre completo"}</label><input id="portal-first-name" autoComplete={mode === "tenant" ? "given-name" : "name"} required value={firstName} onChange={event => setFirstName(event.target.value)} /></div>{mode === "tenant" && <div className={styles.field}><label htmlFor="portal-last-name">Apellidos (opcional)</label><input id="portal-last-name" autoComplete="family-name" value={lastName} onChange={event => setLastName(event.target.value)} /></div>}</div>
+                            <div className={`${styles.field} ${styles.phone}`}><label htmlFor="portal-phone">Teléfono de WhatsApp</label><PhonePrefixInput inputId="portal-phone" required value={phone} onChange={setPhone} defaultCountry={operationContext.phoneDefaultCountry} disabled={busy} /><p className={styles.hint}>Selecciona el país y escribe tu número.</p></div>
+                            {mode === "tenant" && <div className={styles.field}><label htmlFor="portal-email">Correo electrónico (opcional)</label><input id="portal-email" type="email" autoComplete="email" value={email} onChange={event => setEmail(event.target.value)} /></div>}
+                            {mode === "legacy" && remindersGloballyEnabled && <label className="flex min-h-11 items-start gap-3 text-sm"><input type="checkbox" checked={sendReminders} onChange={event => setSendReminders(event.target.checked)} className="mt-1 size-5 shrink-0" /><span>Recibir recordatorios por WhatsApp</span></label>}
+                            {formError && <p role="alert" className={styles.error}>{formError}</p>}
+                            <div className={styles.actions}><button type="button" className={styles.secondary} onClick={() => setStep("time")} disabled={busy}><ArrowLeft className="size-4" aria-hidden="true" />Horario</button><button type="submit" className={styles.primary} disabled={busy}>{isPending ? <><Loader2 className="size-5 animate-spin" aria-hidden="true" />Enviando…</> : "Solicitar cita"}</button></div>
+                        </fieldset>
+                    </form>
+                    <p className={styles.hint}>Tu cita quedará pendiente de confirmación del negocio.</p>
+                </>}
+            </section>
+            <aside className={styles.summary} data-step={step} aria-label="Resumen de tu cita"><div className={styles.desktopSummary}><h2>Tu cita</h2>{details}</div><details className={styles.mobileSummary}><summary><strong>Resumen de tu cita</strong><span>{selectedService?.name || reason}{selectedSlot ? ` · ${format(selectedDate, "d MMM", { locale: es })} · ${timeToOperationInputValue(selectedSlot, operationContext.timeZone)}` : ""}</span></summary>{details}</details></aside>
         </div>
-    );
+        <section className={styles.businessInfo} aria-label="Información del negocio">{data.address && <p>{data.address}</p>}{data.scheduleSummary && <p>{data.scheduleSummary}</p>}<PortalSocialLinks links={data.socialLinks} /></section>
+    </PortalFrame>;
 }

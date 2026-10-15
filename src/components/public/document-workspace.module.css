@@ -1,0 +1,43 @@
+.workspace { min-height: 100dvh; display: flex; flex-direction: column; background: var(--background); color: var(--foreground); }
+.header, .footer { width: min(100%, 1200px); margin-inline: auto; display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 20px 32px; }
+.brand { min-width: 0; display: flex; align-items: center; gap: 12px; font-weight: 600; font-size: 15px; }
+.brand span { overflow-wrap: anywhere; }
+.logo { width: 36px; height: 36px; flex-shrink: 0; color: var(--primary); }
+.back { flex-shrink: 0; font-size: 14px; }
+.layout { width: min(100%, 1120px); margin: 24px auto auto; padding: 16px 32px 64px; display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: clamp(32px, 5vw, 72px); align-items: start; }
+.nav { display: grid; gap: 4px; position: sticky; top: 24px; }
+.nav p { padding: 0 12px 12px; font-size: 13px; color: var(--muted-foreground); line-height: 1.6; }
+.nav a { padding: 12px; min-height: 48px; border-radius: 8px; font-size: 14px; line-height: 1.7; font-weight: 550; }
+.nav a[aria-current] { color: var(--primary); background: var(--secondary); }
+.nav a:hover { background: var(--secondary); }
+.article { min-width: 0; max-width: 70ch; }
+.heading { padding-bottom: 28px; border-bottom: 1px solid var(--border); margin-bottom: 28px; }
+.heading h1 { font-size: clamp(28px, 3.5vw, 42px); line-height: 1.15; font-weight: 650; letter-spacing: -.035em; text-wrap: balance; overflow-wrap: anywhere; }
+.heading p { margin-top: 16px; color: var(--muted-foreground); font-size: 16px; line-height: 1.75; text-wrap: pretty; }
+.content { font-size: 16px; line-height: 1.8; overflow-wrap: anywhere; }
+.content > * + * { margin-top: 24px; }
+.content section + section { margin-top: 32px; }
+.content h2 { font-size: 21px; line-height: 1.4; font-weight: 600; letter-spacing: -.02em; text-wrap: pretty; }
+.content a { color: var(--primary); text-decoration: underline; text-underline-offset: 3px; }
+.content p, .content li { text-wrap: pretty; }
+.footer { flex-wrap: wrap; color: var(--muted-foreground); font-size: 13px; padding-bottom: max(16px, env(safe-area-inset-bottom)); }
+.header a, .footer a { min-height: 44px; display: inline-flex; align-items: center; }
+.workspace :is(button, a, input, select):focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
+.workspace :is(button, a) { transition: background-color 160ms ease, color 160ms ease; }
+.back:hover, .footer a:hover { text-decoration: underline; text-underline-offset: 4px; }
+.skip { position: fixed; left: 16px; top: -100px; z-index: 50; padding: 12px 16px; border-radius: 8px; background: var(--primary); color: var(--primary-foreground); }
+.skip:focus { top: 16px; }
+@media (max-width: 760px) {
+ .header, .footer { padding-inline: 20px; }
+ .layout { grid-template-columns: minmax(0, 1fr); gap: 28px; margin-top: 0; padding: 12px 20px 40px; }
+ .nav { position: static; display: flex; flex-wrap: wrap; gap: 4px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+ .nav p { width: 100%; padding: 0 0 4px; }
+ .nav a { padding-inline: 12px; }
+ .heading { padding-bottom: 24px; margin-bottom: 24px; }
+ .heading h1 { font-size: 30px; }
+ .brand { font-size: 14px; gap: 8px; }
+ .logo { width: 30px; height: 30px; }
+ .header { gap: 12px; }
+ .footer { gap: 4px 16px; }
+}
+@media (prefers-reduced-motion: reduce) { .workspace :is(button, a) { transition: none; } }

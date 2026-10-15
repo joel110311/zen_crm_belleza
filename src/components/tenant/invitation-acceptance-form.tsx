@@ -1,21 +1,24 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
-import { CheckCircle2, Loader2, UsersRound } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Eye, EyeOff, Loader2 } from "lucide-react";
+import { AuthShell } from "@/components/public/auth-shell";
+import styles from "@/components/public/auth-workspace.module.css";
 
 export function InvitationAcceptanceForm({ token }: { token: string }) {
     const [name, setName] = useState("");
     const [password, setPassword] = useState("");
+    const [visible, setVisible] = useState(false);
     const [submitting, setSubmitting] = useState(false);
+    const submittingRef = useRef(false);
     const [error, setError] = useState<string | null>(null);
     const [complete, setComplete] = useState<{ displayName: string; signInPath: string } | null>(null);
 
     async function accept(event: React.FormEvent<HTMLFormElement>) {
         event.preventDefault();
+        if (submittingRef.current || complete) return;
+        submittingRef.current = true;
         setSubmitting(true);
         setError(null);
         try {
@@ -31,36 +34,40 @@ export function InvitationAcceptanceForm({ token }: { token: string }) {
             if (!response.ok || !payload?.data?.displayName || !payload.data.signInPath) {
                 throw new Error(payload?.error?.message || "No fue posible aceptar la invitación.");
             }
+            setPassword("");
             setComplete({ displayName: payload.data.displayName, signInPath: payload.data.signInPath });
         } catch (cause) {
             setError(cause instanceof Error ? cause.message : "No fue posible aceptar la invitación.");
         } finally {
+            submittingRef.current = false;
             setSubmitting(false);
         }
     }
 
-    return (
-        <main className="flex min-h-dvh items-center justify-center bg-muted/30 px-5 py-10">
-            <section className="w-full max-w-md rounded-3xl border bg-background p-6 shadow-xl shadow-black/5 sm:p-8">
-                {complete ? <div className="text-center">
-                    <CheckCircle2 className="mx-auto size-12 text-emerald-600" />
-                    <p className="mt-5 text-sm font-semibold uppercase tracking-[0.15em] text-muted-foreground">Invitación aceptada</p>
-                    <h1 className="mt-2 text-2xl font-semibold">Ya formas parte de {complete.displayName}</h1>
-                    <p className="mt-3 text-sm leading-6 text-muted-foreground">Inicia sesión para entrar a tu espacio. Si ya tenías cuenta, usa la contraseña que ya conoces.</p>
-                    <Button className="mt-6 w-full" asChild><Link href={complete.signInPath}>Iniciar sesión</Link></Button>
-                </div> : <>
-                    <div className="flex size-12 items-center justify-center rounded-2xl bg-primary/10 text-primary"><UsersRound className="size-6" /></div>
-                    <p className="mt-5 text-sm font-semibold uppercase tracking-[0.15em] text-muted-foreground">Invitación de equipo</p>
-                    <h1 className="mt-2 text-2xl font-semibold">Únete al negocio</h1>
-                    <p className="mt-2 text-sm leading-6 text-muted-foreground">Si este correo aún no tiene cuenta, escribe tu nombre y crea una contraseña. Si ya tienes una, puedes dejar ambos campos vacíos.</p>
-                    <form className="mt-6 space-y-4" onSubmit={accept}>
-                        <label className="block space-y-2"><Label>Nombre (solo para una cuenta nueva)</Label><Input value={name} onChange={(event) => setName(event.target.value)} maxLength={160} autoComplete="name" /></label>
-                        <label className="block space-y-2"><Label>Contraseña nueva (solo para una cuenta nueva)</Label><Input value={password} onChange={(event) => setPassword(event.target.value)} type="password" minLength={12} maxLength={128} autoComplete="new-password" /></label>
-                        {error ? <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">{error}</p> : null}
-                        <Button type="submit" disabled={submitting} className="w-full">{submitting ? <><Loader2 className="mr-2 size-4 animate-spin" />Aceptando…</> : "Aceptar invitación"}</Button>
-                    </form>
-                </>}
-            </section>
-        </main>
-    );
+    return <AuthShell title={complete ? "Invitación aceptada" : "Únete a tu equipo"}
+        description={complete ? `Ya formas parte de ${complete.displayName}.` : "Acepta la invitación para entrar al negocio."}>
+        {complete ? <>
+            <div className={styles.notice} role="status"><p>Inicia sesión para entrar a tu espacio. Si ya tenías cuenta, usa tu contraseña habitual.</p></div>
+            <div className={styles.links}><Link className={styles.submit} href={complete.signInPath}>Iniciar sesión</Link></div>
+        </> : <>
+            <div className={styles.notice}><p><strong>¿Ya tienes cuenta?</strong> Deja los campos vacíos y acepta la invitación.</p><p>Para una cuenta nueva, escribe tu nombre y crea una contraseña.</p></div>
+            <form className={`${styles.form} mt-6`} onSubmit={accept} aria-busy={submitting}>
+                <fieldset className={styles.fields} disabled={submitting}>
+                    <legend className="sr-only">Datos para una cuenta nueva</legend>
+                    <div className={styles.field}><label htmlFor="invitation-name">Nombre</label><input id="invitation-name" name="name" value={name} onChange={event => setName(event.target.value)} maxLength={160} autoComplete="name" aria-describedby="invitation-name-hint" /><p id="invitation-name-hint" className={styles.hint}>Solo si aún no tienes cuenta.</p></div>
+                    <div className={styles.field}>
+                        <label htmlFor="invitation-password">Contraseña nueva</label>
+                        <div className={styles.password}>
+                            <input id="invitation-password" name="password" value={password} onChange={event => setPassword(event.target.value)} type={visible ? "text" : "password"} minLength={12} maxLength={128} autoComplete="new-password" aria-describedby="invitation-password-hint" />
+                            <button type="button" className={styles.passwordToggle} onClick={() => setVisible(current => !current)} aria-label={`${visible ? "Ocultar" : "Mostrar"} contraseña nueva`} aria-pressed={visible} aria-controls="invitation-password">{visible ? <EyeOff className="size-5" aria-hidden="true" /> : <Eye className="size-5" aria-hidden="true" />}</button>
+                        </div>
+                        <p id="invitation-password-hint" className={styles.hint}>Al menos 12 caracteres. Déjala vacía si ya tienes cuenta.</p>
+                    </div>
+                </fieldset>
+                {error && <p role="alert" className={styles.error}>{error}</p>}
+                <button type="submit" disabled={submitting} className={styles.submit}>{submitting ? <><Loader2 className="size-4 animate-spin" aria-hidden="true" />Aceptando…</> : "Aceptar invitación"}</button>
+            </form>
+            <div className={styles.links}><Link href="/login">Volver a iniciar sesión</Link><p>Si el enlace venció, pide otra invitación al administrador.</p></div>
+        </>}
+    </AuthShell>;
 }

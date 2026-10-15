@@ -1,10 +1,14 @@
-import { GoogleOAuthPublicShell } from "@/components/public/google-oauth-public-shell";
+import { DocumentShell } from "@/components/public/document-shell";
+
+export const metadata = { title: "Privacidad de Google Calendar | SynapseLogik CRM" };
 
 export default function PrivacyPage() {
     const supportEmail = process.env.PUBLIC_SUPPORT_EMAIL?.trim();
 
     return (
-        <GoogleOAuthPublicShell
+        <DocumentShell
+            integration
+            active="privacy"
             title="Aviso de privacidad"
             description="Este aviso explica cómo Zen CRM recopila, protege y utiliza la información cuando un negocio conecta su cuenta de Google Calendar. Última actualización: 17 de agosto de 2026."
         >
@@ -85,6 +89,6 @@ export default function PrivacyPage() {
                     {supportEmail ? <> o al correo: <a className="font-medium text-primary hover:underline" href={`mailto:${supportEmail}`}>{supportEmail}</a></> : null}.
                 </p>
             </section>
-        </GoogleOAuthPublicShell>
+        </DocumentShell>
     );
 }

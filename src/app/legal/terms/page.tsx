@@ -1,8 +1,12 @@
-import { GoogleOAuthPublicShell } from "@/components/public/google-oauth-public-shell";
+import { DocumentShell } from "@/components/public/document-shell";
+
+export const metadata = { title: "Términos de Google Calendar | SynapseLogik CRM" };
 
 export default function TermsPage() {
     return (
-        <GoogleOAuthPublicShell
+        <DocumentShell
+            integration
+            active="terms"
             title="Terminos del servicio"
             description="Condiciones aplicables al uso de Zen CRM y su integracion con Google Calendar. Ultima actualizacion: 16 de agosto de 2026."
         >
@@ -33,6 +37,6 @@ export default function TermsPage() {
                     El acceso puede suspenderse ante uso abusivo, riesgo de seguridad o incumplimiento de estas condiciones. Al terminar el servicio, el cliente debe desconectar las integraciones y solicitar la eliminacion o exportacion de sus datos conforme a su contrato.
                 </p>
             </section>
-        </GoogleOAuthPublicShell>
+        </DocumentShell>
     );
 }
