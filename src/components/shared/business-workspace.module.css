@@ -1,0 +1,323 @@
+.catalog {
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+}
+.catalogHeader {
+  padding: 18px 20px 12px;
+  flex-shrink: 0;
+}
+.catalogHeader h1 {
+  font-size: 28px;
+  font-weight: 650;
+  letter-spacing: -0.035em;
+}
+.catalogTabs {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0 20px;
+}
+.catalogTabs > :global([role="tabpanel"]) {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  margin-top: 12px;
+  padding-bottom: 20px;
+  overscroll-behavior: contain;
+}
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 14px;
+}
+.toolbar input {
+  flex: 1;
+  min-width: 140px;
+  max-width: 500px;
+  min-height: 44px;
+  font-size: 16px;
+}
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 275px), 1fr));
+  gap: 14px;
+}
+.serviceCard {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  background: var(--card);
+  min-width: 0;
+}
+.serviceCard h3 {
+  font-size: 16px;
+  line-height: 1.4;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.serviceCard p {
+  overflow-wrap: anywhere;
+}
+.serviceMetrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  align-items: center;
+  padding-block: 14px;
+}
+.serviceActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+.serviceActions button:not(:global([role="switch"])) {
+  min-width: 44px;
+  min-height: 44px;
+}
+.serviceActions label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.specialistGrid {
+  display: grid;
+  gap: 20px;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+}
+.specialistGrid > * {
+  min-width: 0;
+}
+.specialistCard {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  min-width: 0;
+}
+.specialistCard h3,
+.specialistCard p {
+  overflow-wrap: anywhere;
+}
+.specialistHeader {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.specialistHeader > div:first-child {
+  min-width: 0;
+  flex: 1;
+}
+.specialistHeader > div:last-child {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: start;
+}
+.specialistHeader button {
+  min-height: 44px;
+}
+.blockDates {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+}
+.form {
+  min-width: 0;
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 20px;
+}
+.form > *,
+.form :global(.grid) > * {
+  min-width: 0;
+}
+.form input,
+.form textarea,
+.form :global([data-slot="select-trigger"]) {
+  min-width: 0;
+  max-width: 100%;
+  min-height: 44px;
+  font-size: 16px;
+}
+.form input[type="time"],
+.form input[type="datetime-local"] {
+  width: 100%;
+}
+.form p,
+.form label {
+  overflow-wrap: anywhere;
+}
+.form :global([data-slot="select-trigger"]) {
+  height: auto;
+  white-space: normal;
+  text-align: left;
+}
+.form button:not(:global([role="switch"])) {
+  min-height: 44px;
+}
+.business {
+  min-width: 0;
+  padding-bottom: 100px;
+}
+.business fieldset {
+  min-width: 0;
+  max-width: 100%;
+}
+.business :global([data-business-panel]) {
+  border: 0;
+  padding: 0;
+}
+.business :global([data-business-panel]) > div {
+  min-width: 0;
+  max-width: none;
+}
+.section {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--card);
+  min-width: 0;
+}
+.section > summary {
+  padding: 18px 20px;
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 600;
+}
+.section[open] > summary {
+  border-bottom: 1px solid var(--border);
+  color: var(--primary);
+}
+.sectionBody {
+  padding: 20px;
+  min-width: 0;
+}
+.policy {
+  min-height: 0;
+  border: 0;
+  padding: 24px 4px;
+  margin: 0;
+  min-width: 0;
+}
+.policy input,
+.policy :global([data-slot="select-trigger"]) {
+  min-width: 0;
+  max-width: 100%;
+  min-height: 44px;
+}
+.policy p,
+.policy label {
+  overflow-wrap: anywhere;
+}
+.policyTabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 20px;
+  border-bottom: 1px solid var(--border);
+}
+.policyTabs button {
+  min-height: 44px;
+  white-space: normal;
+}
+.policyTabs span {
+  white-space: normal;
+}
+.confirmation {
+  max-height: calc(100dvh - 24px);
+  overflow: auto;
+}
+.confirmation p {
+  overflow-wrap: anywhere;
+}
+.confirmation button {
+  min-height: 44px;
+  height: auto;
+  white-space: normal;
+}
+@container (min-width:1000px) {
+  .specialistGrid {
+    grid-template-columns: minmax(0, 1fr) 330px;
+  }
+  .policyTabs {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+}
+@media (max-width: 639px) {
+  .catalogHeader {
+    padding: 16px 16px 12px;
+  }
+  .catalogHeader h1 {
+    font-size: 24px;
+  }
+  .catalogHeader p {
+    font-size: 13px;
+  }
+  .catalogTabs {
+    padding-inline: 16px;
+  }
+  .sectionBody {
+    padding: 16px;
+  }
+  .specialistHeader > div:last-child {
+    width: 100%;
+  }
+  .specialistHeader > div:last-child button {
+    flex: 1;
+  }
+}
+@media (max-height: 600px) {
+  .catalog {
+    display: block;
+    overflow: auto;
+    overscroll-behavior: contain;
+  }
+  .catalogTabs {
+    display: block;
+    overflow: visible;
+  }
+  .catalogTabs > :global([role="tabpanel"]) {
+    height: auto;
+    min-height: 0;
+    overflow: visible;
+  }
+}
+
+.brandGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 20px;
+}
+.brandGrid > *,
+.brandGrid :global(.grid) > * {
+  min-width: 0;
+}
+@container (min-width:1000px) {
+  .brandGrid {
+    grid-template-columns: minmax(0, 1fr) 300px;
+  }
+}
+
+.businessSections {
+  display: grid;
+  gap: 20px;
+  min-width: 0;
+}

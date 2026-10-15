@@ -1,6 +1,11 @@
 "use client";
 
-import { useMemo, useState, useTransition, type ChangeEvent } from "react";
+import { useWorkspaceAccess } from "@/components/layout/workspace-access-context";
+import { useSession } from "next-auth/react";
+import { hasPermission, type AccessSubject } from "@/lib/permissions";
+import layout from "@/components/shared/management-workspace.module.css";
+import styles from "@/components/shared/business-workspace.module.css";
+import { cloneElement, isValidElement, useId, useEffect, useMemo, useState, useTransition, type ChangeEvent } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import {
@@ -35,6 +40,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/use-toast";
 import { tenantApi, tenantApiBase } from "@/components/tenant/tenant-api-client";
+import { matchesWorkspaceSearch } from "@/lib/workspace-search";
 import { cn } from "@/lib/utils";
 import {
     EMPTY_SERVICE_PREPARATION,
@@ -144,6 +150,11 @@ export function ServicesCatalog({
     initialData: CatalogPayload;
     tenantSlug?: string;
 }) {
+    const { readOnly } = useWorkspaceAccess();
+    const { data: session } = useSession();
+    const canWrite = !readOnly && hasPermission(session?.user as AccessSubject | undefined, "services.manage");
+    const [query, setQuery] = useState("");
+    const [deleting, setDeleting] = useState<{ kind: "service"; item: Service } | { kind: "category"; item: Category } | null>(null);
     const router = useRouter();
     const { toast } = useToast();
     const [isPending, startTransition] = useTransition();
@@ -153,8 +164,15 @@ export function ServicesCatalog({
     const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
     const [serviceForm, setServiceForm] = useState<ServiceForm>(EMPTY_SERVICE_FORM);
     const [categoryForm, setCategoryForm] = useState<CategoryForm>(EMPTY_CATEGORY_FORM);
+    const [serviceBaseline, setServiceBaseline] = useState(JSON.stringify(EMPTY_SERVICE_FORM));
+    const [categoryBaseline, setCategoryBaseline] = useState(JSON.stringify(EMPTY_CATEGORY_FORM));
+    const [discarding, setDiscarding] = useState<"service" | "category" | null>(null);
+    const serviceDirty=serviceDialogOpen && JSON.stringify(serviceForm)!==serviceBaseline;
+    const categoryDirty=categoryDialogOpen && JSON.stringify(categoryForm)!==categoryBaseline;
+    useEffect(()=>{if(!serviceDirty && !categoryDirty)return;const warn=(event:BeforeUnloadEvent)=>{event.preventDefault();event.returnValue="";};window.addEventListener("beforeunload",warn);return()=>window.removeEventListener("beforeunload",warn);},[serviceDirty,categoryDirty]);
 
     const catalog = tenantCatalog || initialData;
+    const matchedCount = catalog.categories.reduce((count,category)=>count+category.services.filter(service=>matchesWorkspaceSearch(query,category.name,service.name,service.description,...service.specialists.map(({specialist})=>specialist.displayName || specialist.name))).length,0);
     const tenantBase = tenantSlug ? tenantApiBase(tenantSlug) : null;
     const services = useMemo(() => catalog.categories.flatMap((category) => category.services), [catalog.categories]);
 
@@ -167,18 +185,20 @@ export function ServicesCatalog({
     });
 
     const openNewService = () => {
+        if (!canWrite || isPending) return;
         if (catalog.categories.length === 0) {
             setActiveTab("categories");
-            setCategoryForm(EMPTY_CATEGORY_FORM);
+            setCategoryBaseline(JSON.stringify(EMPTY_CATEGORY_FORM)); setCategoryForm(EMPTY_CATEGORY_FORM);
             setCategoryDialogOpen(true);
             toast({ title: "Primero crea una categoría", description: "Después podrás añadir servicios y asignar especialistas." });
             return;
         }
-        setServiceForm({ ...EMPTY_SERVICE_FORM, categoryId: catalog.categories[0].id });
+        const next={ ...EMPTY_SERVICE_FORM, categoryId: catalog.categories[0].id };
+        setServiceBaseline(JSON.stringify(next)); setServiceForm(next);
         setServiceDialogOpen(true);
     };
 
-    const submitService = () => startTransition(async () => {
+    const submitService = () => canWrite && !isPending && startTransition(async () => {
         const input = {
             ...serviceForm,
             price: Number(serviceForm.price || 0),
@@ -202,7 +222,7 @@ export function ServicesCatalog({
         refresh();
     });
 
-    const submitCategory = () => startTransition(async () => {
+    const submitCategory = () => canWrite && !isPending && startTransition(async () => {
         const result = tenantBase
             ? await tenantApi(`${tenantBase}/service-categories${categoryForm.id ? `/${categoryForm.id}` : ""}`, {
                 method: categoryForm.id ? "PATCH" : "POST",
@@ -222,7 +242,7 @@ export function ServicesCatalog({
     });
 
     const removeService = (service: Service) => {
-        if (!confirm(`¿Eliminar el servicio "${service.name}"? Las citas anteriores conservarán su descripción.`)) return;
+        if (!canWrite || isPending) return;
         startTransition(async () => {
             const result = tenantBase
                 ? await tenantApi(`${tenantBase}/services/${service.id}`, { method: "DELETE" })
@@ -233,13 +253,14 @@ export function ServicesCatalog({
                 toast({ title: "No se pudo eliminar", description: result.error, variant: "destructive" });
                 return;
             }
+            setDeleting(null);
             toast({ title: "Servicio eliminado" });
             refresh();
         });
     };
 
     const removeCategory = (category: Category) => {
-        if (!confirm(`¿Eliminar la categoría "${category.name}"?`)) return;
+        if (!canWrite || isPending) return;
         startTransition(async () => {
             const result = tenantBase
                 ? await tenantApi(`${tenantBase}/service-categories/${category.id}`, { method: "DELETE" })
@@ -250,12 +271,14 @@ export function ServicesCatalog({
                 toast({ title: "No se pudo eliminar", description: result.error, variant: "destructive" });
                 return;
             }
+            setDeleting(null);
             toast({ title: "Categoría eliminada" });
             refresh();
         });
     };
 
     const updateFlags = (service: Service, flags: { isFeatured?: boolean; isActive?: boolean }) => {
+        if (!canWrite || isPending) return;
         startTransition(async () => {
             const result = tenantBase
                 ? await tenantApi(`${tenantBase}/services/${service.id}`, { method: "PATCH", body: JSON.stringify(flags) })
@@ -271,8 +294,8 @@ export function ServicesCatalog({
     };
 
     return (
-        <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
-            <div className="shrink-0 border-b border-border px-5 py-4">
+        <div className={styles.catalog} data-catalog-workspace>
+            <div className={styles.catalogHeader}>
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                     <div>
                         <div className="flex items-center gap-2">
@@ -281,41 +304,46 @@ export function ServicesCatalog({
                         </div>
                         <p className="mt-1 text-sm text-muted-foreground">Catálogo, precios, tiempos y profesionales que pueden realizar cada servicio.</p>
                     </div>
-                    <Button className="h-10 rounded-xl" onClick={openNewService} disabled={isPending}>
+                    <Button className="min-h-11 rounded-xl" onClick={openNewService} disabled={isPending || !canWrite}>
                         <Plus className="mr-2 h-4 w-4" /> Añadir servicio
                     </Button>
                 </div>
             </div>
 
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="min-h-0 flex-1 overflow-hidden px-5 pt-4">
-                <TabsList>
+            <Tabs value={activeTab} onValueChange={setActiveTab} className={styles.catalogTabs}>
+                <div className={styles.toolbar}><Input aria-label="Buscar servicios y categorías" placeholder="Buscar servicio, categoría o profesional…" value={query} onChange={(event) => setQuery(event.target.value)} />{readOnly && <p className="text-xs text-muted-foreground">Solo lectura</p>}</div>
+                <TabsList className={`${layout.tabs} mb-0`}>
                     <TabsTrigger value="services">Servicios ({services.length})</TabsTrigger>
                     <TabsTrigger value="categories">Categorías ({catalog.categories.length})</TabsTrigger>
                 </TabsList>
 
-                <TabsContent value="services" className="mt-3 h-[calc(100%-3.25rem)] overflow-y-auto pb-6">
+                <TabsContent value="services" className="mt-3">
+                    {query && matchedCount===0 && <p className="rounded-xl border border-dashed p-6 text-sm text-muted-foreground">No hay servicios que coincidan con tu búsqueda.</p>}
                     {services.length === 0 ? (
                         <EmptyState title="Todavía no hay servicios" description="Crea el primero con precio, duración y profesionales asignados." actionLabel="Añadir servicio" onAction={openNewService} />
                     ) : (
                         <div className="space-y-4">
-                            {catalog.categories.map((category) => category.services.length > 0 ? (
+                            {catalog.categories.map((category) => category.services.some((service) => matchesWorkspaceSearch(query,category.name,service.name,service.description,...service.specialists.map(({specialist})=>specialist.displayName || specialist.name))) ? (
                                 <section key={category.id}>
                                     <div className="mb-2 flex items-center gap-2">
                                         <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: category.color || "#B7923A" }} />
                                         <h2 className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">{category.name}</h2>
                                         {!category.isActive ? <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">Oculta</span> : null}
                                     </div>
-                                    <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-                                        {category.services.map((service) => (
+                                    <div className={styles.grid}>
+                                        {category.services.filter((service) => matchesWorkspaceSearch(query,category.name,service.name,service.description,...service.specialists.map(({specialist})=>specialist.displayName || specialist.name))).map((service) => (
                                             <ServiceCard
                                                 key={service.id}
                                                 service={service}
-                                                pending={isPending}
+                                                pending={isPending || !canWrite}
+                                                busy={isPending}
                                                 onEdit={() => {
+                                                    if (isPending) return;
+                                                    setServiceBaseline(JSON.stringify(serviceToForm(service)));
                                                     setServiceForm(serviceToForm(service));
                                                     setServiceDialogOpen(true);
                                                 }}
-                                                onDelete={() => removeService(service)}
+                                                onDelete={() => setDeleting({kind:"service",item:service})}
                                                 onActiveChange={(value) => updateFlags(service, { isActive: value })}
                                             />
                                         ))}
@@ -326,23 +354,23 @@ export function ServicesCatalog({
                     )}
                 </TabsContent>
 
-                <TabsContent value="categories" className="mt-3 h-[calc(100%-3.25rem)] overflow-y-auto pb-6">
+                <TabsContent value="categories" className="mt-3">
                     <div className="mb-3 flex justify-end">
-                        <Button variant="outline" onClick={() => { setCategoryForm(EMPTY_CATEGORY_FORM); setCategoryDialogOpen(true); }}>
+                        <Button disabled={!canWrite || isPending} variant="outline" onClick={() => { setCategoryBaseline(JSON.stringify(EMPTY_CATEGORY_FORM)); setCategoryForm(EMPTY_CATEGORY_FORM); setCategoryDialogOpen(true); }}>
                             <FolderPlus className="mr-2 h-4 w-4" /> Nueva categoría
                         </Button>
                     </div>
                     {catalog.categories.length === 0 ? (
                         <EmptyState title="Sin categorías" description="Organiza los servicios por familias como Cabello, Uñas, Facial o Paquetes." actionLabel="Crear categoría" onAction={() => setCategoryDialogOpen(true)} />
                     ) : (
-                        <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
-                            {catalog.categories.map((category) => (
+                        <div className={styles.grid}>
+                            {catalog.categories.filter(category => matchesWorkspaceSearch(query,category.name,category.description)).map((category) => (
                                 <div key={category.id} className="rounded-xl border border-border bg-background p-4">
                                     <div className="flex items-start justify-between gap-3">
                                         <div className="min-w-0">
                                             <div className="flex items-center gap-2">
                                                 <span className="h-3 w-3 rounded-full" style={{ backgroundColor: category.color || "#B7923A" }} />
-                                                <h3 className="truncate font-semibold">{category.name}</h3>
+                                                <h3 className="break-words font-semibold">{category.name}</h3>
                                             </div>
                                             <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{category.description || "Sin descripción"}</p>
                                         </div>
@@ -351,8 +379,8 @@ export function ServicesCatalog({
                                     <div className="mt-4 flex items-center justify-between border-t border-border pt-3">
                                         <span className="text-sm text-muted-foreground">{category.services.length} servicio(s)</span>
                                         <div className="flex gap-1">
-                                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { setCategoryForm({ id: category.id, name: category.name, description: category.description || "", color: category.color || "#B7923A", isActive: category.isActive }); setCategoryDialogOpen(true); }} aria-label={`Editar categoría ${category.name}`}><Pencil className="h-4 w-4" /></Button>
-                                            <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => removeCategory(category)} aria-label={`Eliminar categoría ${category.name}`}><Trash2 className="h-4 w-4" /></Button>
+                                            <Button variant="ghost" size="icon" disabled={isPending} className="h-11 w-11" onClick={() => { const next={ id: category.id, name: category.name, description: category.description || "", color: category.color || "#B7923A", isActive: category.isActive }; setCategoryBaseline(JSON.stringify(next)); setCategoryForm(next); setCategoryDialogOpen(true); }} aria-label={`Editar categoría ${category.name}`}><Pencil className="h-4 w-4" /></Button>
+                                            <Button variant="ghost" size="icon" disabled={!canWrite || isPending} className="h-11 w-11 text-destructive" onClick={() => setDeleting({kind:"category",item:category})} aria-label={`Eliminar categoría ${category.name}`}><Trash2 className="h-4 w-4" /></Button>
                                         </div>
                                     </div>
                                 </div>
@@ -362,9 +390,12 @@ export function ServicesCatalog({
                 </TabsContent>
             </Tabs>
 
+            {query && <p className="shrink-0 px-5 pb-3 text-xs text-muted-foreground">Filtrando por «{query}». <button className="underline min-h-11" onClick={() => setQuery("")}>Limpiar búsqueda</button></p>}
+            <Dialog open={Boolean(deleting)} onOpenChange={(open) => { if (!open && !isPending) setDeleting(null); }}><DialogContent className={styles.confirmation}><DialogHeader><DialogTitle>Eliminar {deleting?.kind === "service" ? "servicio" : "categoría"}</DialogTitle><DialogDescription>¿Quieres eliminar «{deleting?.item.name}»? Se conservarán las referencias del historial según las validaciones del CRM.</DialogDescription></DialogHeader><DialogFooter><Button variant="outline" disabled={isPending} onClick={() => setDeleting(null)}>Cancelar</Button><Button variant="destructive" disabled={!canWrite || isPending} onClick={() => { if (deleting?.kind === "service") removeService(deleting.item); else if (deleting) removeCategory(deleting.item); }}>Eliminar</Button></DialogFooter></DialogContent></Dialog>
+            <Dialog open={Boolean(discarding)} onOpenChange={(open)=>{if(!open)setDiscarding(null);}}><DialogContent className={styles.confirmation}><DialogHeader><DialogTitle>¿Descartar los cambios?</DialogTitle><DialogDescription>Hay información sin guardar en este formulario.</DialogDescription></DialogHeader><DialogFooter><Button variant="outline" onClick={()=>setDiscarding(null)}>Conservar</Button><Button onClick={()=>{if(discarding==="service")setServiceDialogOpen(false);else setCategoryDialogOpen(false);setDiscarding(null);}}>Descartar</Button></DialogFooter></DialogContent></Dialog>
             <ServiceDialog
                 open={serviceDialogOpen}
-                onOpenChange={setServiceDialogOpen}
+                onOpenChange={(open) => { if (isPending) return; if (!open && serviceDirty) setDiscarding("service"); else setServiceDialogOpen(open); }}
                 form={serviceForm}
                 setForm={setServiceForm}
                 categories={catalog.categories}
@@ -372,56 +403,31 @@ export function ServicesCatalog({
                 pending={isPending}
                 onSubmit={submitService}
             />
-            <CategoryDialog open={categoryDialogOpen} onOpenChange={setCategoryDialogOpen} form={categoryForm} setForm={setCategoryForm} pending={isPending} onSubmit={submitCategory} />
+            <CategoryDialog open={categoryDialogOpen} onOpenChange={(open) => { if (isPending) return; if (!open && categoryDirty) setDiscarding("category"); else setCategoryDialogOpen(open); }} form={categoryForm} setForm={setCategoryForm} pending={isPending} onSubmit={submitCategory} />
         </div>
     );
 }
 
-function ServiceCard({ service, pending, onEdit, onDelete, onActiveChange }: { service: Service; pending: boolean; onEdit: () => void; onDelete: () => void; onActiveChange: (value: boolean) => void }) {
+function ServiceCard({ service, pending, busy, onEdit, onDelete, onActiveChange }: { service: Service; pending: boolean; busy: boolean; onEdit: () => void; onDelete: () => void; onActiveChange: (value: boolean) => void }) {
     const assignedSpecialist = service.specialists[0]?.specialist;
     const remainingSpecialists = Math.max(0, service.specialists.length - 1);
     const specialistNames = service.specialists
         .map(({ specialist }) => specialist.displayName || specialist.name)
         .join(", ");
 
-    return (
-        <article className={cn("rounded-xl border bg-card p-2.5 shadow-sm transition-[border-color,box-shadow] hover:border-primary/30 hover:shadow-md", !service.isActive && "border-dashed opacity-70")}>
-            <div className="flex min-w-0 items-start gap-2.5">
-                {service.imageUrl ? (
-                    <Image src={service.imageUrl} alt="" width={40} height={40} unoptimized className="h-10 w-10 shrink-0 rounded-lg border object-cover" />
-                ) : (
-                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-primary/15 bg-primary/5 text-primary">
-                        <ImageIcon className="h-4 w-4" />
-                    </span>
-                )}
-                <div className="min-w-0 flex-1">
-                    <h3 className="truncate text-sm font-semibold leading-5 text-foreground">{service.name}</h3>
-                    <p className="truncate text-xs leading-4 text-muted-foreground" title={service.description || "Sin descripción"}>{service.description || "Sin descripción"}</p>
-                </div>
-            </div>
-            <div className="mt-2 flex min-w-0 items-center gap-2 border-t border-border pt-2">
-                <span className="inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground"><Clock3 className="h-3.5 w-3.5" /> {service.durationMinutes} min</span>
-                {service.showPrice ? (
-                    <span className="shrink-0 text-sm font-bold text-foreground">{formatMoney(service.price, service.currency)}</span>
-                ) : (
-                    <span className="shrink-0 rounded-full border border-primary/15 bg-primary/5 px-1.5 py-0.5 text-[10px] font-medium text-primary">Precio oculto</span>
-                )}
-                <span
-                    className="ml-auto inline-flex min-w-0 items-center gap-1 rounded-full bg-primary/8 px-1.5 py-0.5 text-[10px] font-medium text-primary"
-                    title={specialistNames || "Cualquier profesional"}
-                >
-                    <UserRound className="h-3 w-3 shrink-0" />
-                    <span className="max-w-28 truncate">{assignedSpecialist ? (assignedSpecialist.displayName || assignedSpecialist.name) : "Cualquier profesional"}</span>
-                    {remainingSpecialists > 0 ? <span className="shrink-0">+{remainingSpecialists}</span> : null}
-                </span>
-                <label className="ml-0.5 flex shrink-0 items-center" title={service.isActive ? "Servicio activo" : "Servicio oculto"}><Switch size="sm" checked={service.isActive} onCheckedChange={onActiveChange} disabled={pending} /><span className="sr-only">{service.isActive ? "Activo" : "Oculto"}</span></label>
-                <div className="flex shrink-0 gap-0.5"><Button variant="ghost" size="icon" className="h-7 w-7" onClick={onEdit} aria-label={`Editar servicio ${service.name}`}><Pencil className="h-3.5 w-3.5" /></Button><Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={onDelete} aria-label={`Eliminar servicio ${service.name}`}><Trash2 className="h-3.5 w-3.5" /></Button></div>
-            </div>
-        </article>
-    );
+    return <article className={`${styles.serviceCard} ${!service.isActive ? "opacity-65" : ""}`}>
+        <div className="flex items-start gap-3">
+            {service.imageUrl ? <Image src={service.imageUrl} alt="" width={44} height={44} unoptimized className="size-11 shrink-0 rounded-lg border object-cover" /> : <span className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><ImageIcon className="size-5" /></span>}
+            <div className="min-w-0"><h3>{service.name}</h3><p className="mt-1 text-sm text-muted-foreground line-clamp-2">{service.description || "Sin descripción"}</p></div>
+        </div>
+        <div className={styles.serviceMetrics}><span className="text-sm font-semibold">{service.showPrice ? formatMoney(service.price, service.currency) : "Precio oculto"}</span><span className="inline-flex gap-1 items-center text-sm text-muted-foreground"><Clock3 className="size-4" />{service.durationMinutes} min</span></div>
+        <p className="mb-3 text-xs text-muted-foreground" title={specialistNames}><UserRound className="mr-1 inline size-3.5" />{assignedSpecialist ? (assignedSpecialist.displayName || assignedSpecialist.name) : "Cualquier profesional"}{remainingSpecialists > 0 ? ` +${remainingSpecialists}` : ""}</p>
+        <div className={styles.serviceActions}><label><Switch checked={service.isActive} onCheckedChange={onActiveChange} disabled={pending} aria-label={`Servicio activo: ${service.name}`} />{service.isActive ? "Activo" : "Oculto"}</label><div className="flex gap-1"><Button disabled={busy} variant="ghost" size="icon" onClick={onEdit} aria-label={`Editar servicio ${service.name}`}><Pencil className="size-4" /></Button><Button disabled={pending} variant="ghost" size="icon" className="text-destructive" onClick={onDelete} aria-label={`Eliminar servicio ${service.name}`}><Trash2 className="size-4" /></Button></div></div>
+    </article>;
 }
 
 function ServiceDialog({ open, onOpenChange, form, setForm, categories, specialists, pending, onSubmit }: { open: boolean; onOpenChange: (open: boolean) => void; form: ServiceForm; setForm: React.Dispatch<React.SetStateAction<ServiceForm>>; categories: Category[]; specialists: Specialist[]; pending: boolean; onSubmit: () => void }) {
+    const { readOnly } = useWorkspaceAccess();
     const { toast } = useToast();
     const [isUploadingImage, setIsUploadingImage] = useState(false);
     const toggleSpecialist = (id: string) => setForm((current) => ({ ...current, specialistIds: current.specialistIds.includes(id) ? current.specialistIds.filter((entry) => entry !== id) : [...current.specialistIds, id] }));
@@ -453,6 +459,7 @@ function ServiceDialog({ open, onOpenChange, form, setForm, categories, speciali
         },
     }));
     const uploadImage = async (event: ChangeEvent<HTMLInputElement>) => {
+        if (readOnly || pending || isUploadingImage) return;
         const file = event.target.files?.[0];
         if (!file) return;
         setIsUploadingImage(true);
@@ -474,16 +481,16 @@ function ServiceDialog({ open, onOpenChange, form, setForm, categories, speciali
         }
     };
     return (
-        <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
-                <DialogHeader>
+        <Dialog open={open} onOpenChange={(value) => { if (!pending && !isUploadingImage) onOpenChange(value); }}>
+            <DialogContent className={layout.dialog}>
+                <DialogHeader className={layout.dialogHeader}>
                     <DialogTitle>{form.id ? "Editar servicio" : "Nuevo servicio"}</DialogTitle>
                     <DialogDescription>
                         Configura los datos, disponibilidad e indicaciones del servicio.
                     </DialogDescription>
                 </DialogHeader>
-                <div className="grid gap-4 py-2">
-                    <div className="rounded-xl border border-border p-3">
+                <div className={layout.dialogBody}><fieldset disabled={readOnly || pending || isUploadingImage} className={styles.form}>
+                    <details className={styles.section}><summary>Foto y visibilidad del precio</summary><div className="p-4">
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                             <div className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-primary/15 bg-primary/5">
                                 {form.imageUrl ? <Image src={form.imageUrl} alt="Vista previa del servicio" width={96} height={96} unoptimized className="h-full w-full object-cover" /> : <ImageIcon className="h-7 w-7 text-muted-foreground" />}
@@ -505,16 +512,16 @@ function ServiceDialog({ open, onOpenChange, form, setForm, categories, speciali
                             <Checkbox checked={form.showPrice} onCheckedChange={(checked) => setForm((current) => ({ ...current, showPrice: Boolean(checked) }))} className="mt-0.5" />
                             <span><span className="block text-sm font-medium">Mostrar precio en el portal</span><span className="text-xs text-muted-foreground">Desmárcalo para conservar el precio interno sin publicarlo.</span></span>
                         </label>
-                    </div>
+                    </div></details>
                     <div className="grid gap-4 sm:grid-cols-2"><Field label="Nombre *"><Input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} placeholder="Ej. Corte y peinado" /></Field><Field label="Categoría *"><Select value={form.categoryId} onValueChange={(categoryId) => setForm((current) => ({ ...current, categoryId }))}><SelectTrigger><SelectValue placeholder="Selecciona categoría" /></SelectTrigger><SelectContent>{categories.map((category) => <SelectItem key={category.id} value={category.id}>{category.name}</SelectItem>)}</SelectContent></Select></Field></div>
                     <Field label="Descripción"><Textarea value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} placeholder="Qué incluye el servicio..." rows={3} /></Field>
                     <div className="grid gap-4 sm:grid-cols-3"><Field label="Precio"><Input type="number" min="0" step="0.01" value={form.price} onChange={(event) => setForm((current) => ({ ...current, price: event.target.value }))} /></Field><Field label="Moneda"><Select value={form.currency} onValueChange={(currency) => setForm((current) => ({ ...current, currency }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="MXN">MXN</SelectItem><SelectItem value="USD">USD</SelectItem></SelectContent></Select></Field><Field label="Duración (min)"><Input type="number" min="5" max="480" step="5" value={form.durationMinutes} onChange={(event) => setForm((current) => ({ ...current, durationMinutes: event.target.value }))} /></Field></div>
-                    <div className="space-y-3 rounded-xl border border-border p-3">
+                    <details className={styles.section}><summary>Preguntas antes de reservar</summary><div className="p-4">
                         <div><Label>Preguntas antes de reservar</Label><p className="mt-1 text-xs text-muted-foreground">El asistente preguntará sólo lo marcado y únicamente cuando falte esa información.</p></div>
                         <div className="grid gap-2 sm:grid-cols-2">{SERVICE_BOOKING_QUESTIONS.map((option) => <label key={option} className="flex cursor-pointer items-start gap-2 rounded-lg border bg-background p-2.5 text-sm"><Checkbox checked={form.preparationRequirements.bookingQuestions.includes(option)} onCheckedChange={() => toggleBookingQuestion(option)} className="mt-0.5" /><span>{SERVICE_BOOKING_QUESTION_LABELS[option]}</span></label>)}</div>
                         <Field label="Pregunta adicional (opcional)"><Input maxLength={140} value={form.preparationRequirements.customBookingQuestion} onChange={(event) => setForm((current) => ({ ...current, preparationRequirements: { ...current.preparationRequirements, customBookingQuestion: event.target.value } }))} placeholder="Ej. ¿Qué tono desea aplicar?" /></Field>
-                    </div>
-                    <div className="space-y-3 rounded-xl border border-border p-3">
+                    </div></details>
+                    <details className={styles.section}><summary>Preparación antes del servicio</summary><div className="p-4">
                         <div>
                             <Label>Preparación antes del servicio</Label>
                             <p className="mt-1 text-xs text-muted-foreground">Marca sólo las indicaciones que realmente aplican a este servicio.</p>
@@ -541,12 +548,12 @@ function ServiceDialog({ open, onOpenChange, form, setForm, categories, speciali
                                 placeholder="Ej. Traer una foto de referencia"
                             />
                         </Field>
-                    </div>
-                    <div className="space-y-3 rounded-xl border border-border p-3">
+                    </div></details>
+                    <details className={styles.section}><summary>Cuidados posteriores</summary><div className="p-4">
                         <div><Label>Cuidados posteriores</Label><p className="mt-1 text-xs text-muted-foreground">Recomendaciones que el asistente puede dar al finalizar o cuando el cliente pregunte.</p></div>
                         <div className="grid gap-2 sm:grid-cols-2">{SERVICE_AFTERCARE_OPTIONS.map((option) => <label key={option} className="flex cursor-pointer items-start gap-2 rounded-lg border bg-background p-2.5 text-sm"><Checkbox checked={form.preparationRequirements.aftercareOptions.includes(option)} onCheckedChange={() => toggleAftercare(option)} className="mt-0.5" /><span>{SERVICE_AFTERCARE_LABELS[option]}</span></label>)}</div>
                         <Field label="Cuidado adicional (opcional)"><Input maxLength={180} value={form.preparationRequirements.additionalAftercareInstruction} onChange={(event) => setForm((current) => ({ ...current, preparationRequirements: { ...current.preparationRequirements, additionalAftercareInstruction: event.target.value } }))} placeholder="Ej. Aplicar el producto recomendado por el especialista" /></Field>
-                    </div>
+                    </div></details>
                     <div className="space-y-2">
                         <div>
                             <Label>Especialistas que realizan este servicio</Label>
@@ -568,17 +575,18 @@ function ServiceDialog({ open, onOpenChange, form, setForm, categories, speciali
                         </div>
                     </div>
                     <div className="grid gap-2 sm:grid-cols-2"><label className="flex items-center justify-between rounded-xl border border-border p-3"><span><span className="block text-sm font-medium">Servicio activo</span><span className="text-xs text-muted-foreground">Visible para nuevas citas</span></span><Switch checked={form.isActive} onCheckedChange={(isActive) => setForm((current) => ({ ...current, isActive }))} /></label><label className="flex items-center justify-between rounded-xl border border-border p-3"><span><span className="block text-sm font-medium">Destacado</span><span className="text-xs text-muted-foreground">Aparece primero en el catálogo</span></span><Switch checked={form.isFeatured} onCheckedChange={(isFeatured) => setForm((current) => ({ ...current, isFeatured }))} /></label></div>
-                </div>
-                <DialogFooter><Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button><Button onClick={onSubmit} disabled={pending || !form.name.trim() || !form.categoryId}>{pending ? "Guardando..." : "Guardar servicio"}</Button></DialogFooter>
+                </fieldset></div>
+                <DialogFooter className={layout.dialogFooter}><Button variant="outline" disabled={pending || isUploadingImage} onClick={() => onOpenChange(false)}>Cancelar</Button><Button onClick={onSubmit} disabled={readOnly || pending || isUploadingImage || !form.name.trim() || !form.categoryId}>{pending ? "Guardando..." : "Guardar servicio"}</Button></DialogFooter>
             </DialogContent>
         </Dialog>
     );
 }
 
 function CategoryDialog({ open, onOpenChange, form, setForm, pending, onSubmit }: { open: boolean; onOpenChange: (open: boolean) => void; form: CategoryForm; setForm: React.Dispatch<React.SetStateAction<CategoryForm>>; pending: boolean; onSubmit: () => void }) {
-    return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent><DialogHeader><DialogTitle>{form.id ? "Editar categoría" : "Nueva categoría"}</DialogTitle><DialogDescription>Organiza el catálogo en una categoría identificable.</DialogDescription></DialogHeader><div className="grid gap-4 py-2"><Field label="Nombre *"><Input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} placeholder="Ej. Cabello" /></Field><Field label="Descripción"><Textarea value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} rows={3} /></Field><Field label="Color"><div className="flex gap-2"><Input type="color" className="w-14 p-1" value={form.color} onChange={(event) => setForm((current) => ({ ...current, color: event.target.value }))} /><Input value={form.color} onChange={(event) => setForm((current) => ({ ...current, color: event.target.value }))} /></div></Field><label className="flex items-center justify-between rounded-xl border border-border p-3"><span><span className="block text-sm font-medium">Categoría activa</span><span className="text-xs text-muted-foreground">Sus servicios podrán mostrarse al agendar</span></span><Switch checked={form.isActive} onCheckedChange={(isActive) => setForm((current) => ({ ...current, isActive }))} /></label></div><DialogFooter><Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button><Button onClick={onSubmit} disabled={pending || !form.name.trim()}>{pending ? "Guardando..." : "Guardar categoría"}</Button></DialogFooter></DialogContent></Dialog>;
+    const { readOnly } = useWorkspaceAccess();
+    return <Dialog open={open} onOpenChange={(value) => { if (!pending) onOpenChange(value); }}><DialogContent className={layout.dialog}><DialogHeader className={layout.dialogHeader}><DialogTitle>{form.id ? "Editar categoría" : "Nueva categoría"}</DialogTitle><DialogDescription>Organiza el catálogo en una categoría identificable.</DialogDescription></DialogHeader><div className={layout.dialogBody}><fieldset disabled={readOnly || pending} className={styles.form}><Field label="Nombre *"><Input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} placeholder="Ej. Cabello" /></Field><Field label="Descripción"><Textarea value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} rows={3} /></Field><Field label="Color"><div className="flex gap-2"><Input type="color" className="w-14 p-1" value={form.color} onChange={(event) => setForm((current) => ({ ...current, color: event.target.value }))} /><Input value={form.color} onChange={(event) => setForm((current) => ({ ...current, color: event.target.value }))} /></div></Field><label className="flex items-center justify-between rounded-xl border border-border p-3"><span><span className="block text-sm font-medium">Categoría activa</span><span className="text-xs text-muted-foreground">Sus servicios podrán mostrarse al agendar</span></span><Switch checked={form.isActive} onCheckedChange={(isActive) => setForm((current) => ({ ...current, isActive }))} /></label></fieldset></div><DialogFooter className={layout.dialogFooter}><Button variant="outline" disabled={pending} onClick={() => onOpenChange(false)}>Cancelar</Button><Button onClick={onSubmit} disabled={readOnly || pending || !form.name.trim()}>{pending ? "Guardando..." : "Guardar categoría"}</Button></DialogFooter></DialogContent></Dialog>;
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) { return <div className="space-y-2"><Label>{label}</Label>{children}</div>; }
+function Field({ label, children }: { label: string; children: React.ReactNode }) { const id=useId(); const nativeField=isValidElement<{id?:string}>(children) && (children.type===Input || children.type===Textarea); return <div className="space-y-2"><Label htmlFor={nativeField ? id : undefined}>{label}</Label>{nativeField ? cloneElement(children,{id}) : children}</div>; }
 
-function EmptyState({ title, description, actionLabel, onAction }: { title: string; description: string; actionLabel: string; onAction: () => void }) { return <div className="flex min-h-64 flex-col items-center justify-center rounded-2xl border border-dashed border-primary/25 bg-card p-8 text-center"><span className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary"><Scissors className="h-6 w-6" /></span><h3 className="font-semibold">{title}</h3><p className="mt-1 max-w-md text-sm text-muted-foreground">{description}</p><Button className="mt-4" onClick={onAction}><Plus className="mr-2 h-4 w-4" />{actionLabel}</Button></div>; }
+function EmptyState({ title, description, actionLabel, onAction }: { title: string; description: string; actionLabel: string; onAction: () => void }) { const { readOnly }=useWorkspaceAccess(); return <div className="flex min-h-64 flex-col items-center justify-center rounded-2xl border border-dashed border-primary/25 bg-card p-8 text-center"><span className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary"><Scissors className="h-6 w-6" /></span><h3 className="font-semibold">{title}</h3><p className="mt-1 max-w-md text-sm text-muted-foreground">{description}</p><Button disabled={readOnly} className="mt-4" onClick={onAction}><Plus className="mr-2 h-4 w-4" />{actionLabel}</Button></div>; }

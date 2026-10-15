@@ -1,5 +1,8 @@
 "use client";
 
+import { useWorkspaceAccess } from "@/components/layout/workspace-access-context";
+import layout from "@/components/shared/management-workspace.module.css";
+import styles from "@/components/shared/business-workspace.module.css";
 import { useEffect, useState, type ChangeEvent, type ComponentType } from "react";
 import { useSession } from "next-auth/react";
 import Image from "next/image";
@@ -98,6 +101,11 @@ export function SettingsWorkspace({
     billingHref?: string;
     channelsEnabled?: boolean;
 }) {
+    const { readOnly } = useWorkspaceAccess();
+    const [settingsLoaded, setSettingsLoaded] = useState(false);
+    const [loadError, setLoadError] = useState("");
+    const [loadAttempt, setLoadAttempt] = useState(0);
+    const [businessBaseline, setBusinessBaseline] = useState<{operation:string;brand:string} | null>(null);
     const pathname = usePathname();
     const tenantSlug = tenantSlugFromPath(pathname);
     const isTenantWorkspace = /^\/t\/[^/]+(?:\/|$)/.test(pathname);
@@ -161,13 +169,16 @@ export function SettingsWorkspace({
     const sessionUser = session?.user as { id?: string; role?: string; permissions?: unknown } | undefined;
     const currentUserId = sessionUser?.id;
     const canAccess = (permission: PermissionKey) => status !== "loading" && hasPermission(sessionUser, permission);
+    const canManageBusiness = canAccess("settings.manage");
+    const canManagePortal = canAccess("portal.manage");
 
     useEffect(() => {
         const load = async () => {
             try {
                 const response = await fetch("/api/settings", { cache: "no-store" });
+                if (!response.ok) throw new Error("No se pudo cargar la configuración.");
                 const settings = await response.json();
-                if (!settings) return;
+                if (!settings || typeof settings !== "object") throw new Error("La configuración no está disponible.");
                 setOpenaiKey(settings.openaiApiKey || "");
                 setGeminiKey(settings.geminiApiKey || "");
                 setWhatsappBaseUrl(settings.whatsappBaseUrl || "");
@@ -214,7 +225,9 @@ export function SettingsWorkspace({
                 setAppointmentReminderMetaTemplate24h(settings.appointmentReminderMetaTemplate24h || "");
                 setAppointmentReminderMetaTemplate4h(settings.appointmentReminderMetaTemplate4h || "");
                 setAppointmentReminderMetaLanguage(settings.appointmentReminderMetaLanguage || "es");
+                setSettingsLoaded(true); setLoadError("");
             } catch (error) {
+                setLoadError(error instanceof Error ? error.message : "No se pudo cargar la configuración.");
                 console.error("Failed to load settings:", error);
             }
         };
@@ -223,7 +236,7 @@ export function SettingsWorkspace({
         const prefs = getNotificationPrefs();
         setNotifPrefs(prefs);
         setSavedNotifPrefs(prefs);
-    }, []);
+    }, [loadAttempt]);
 
     useEffect(() => {
         const requestedSection = searchParams.get("section");
@@ -231,9 +244,9 @@ export function SettingsWorkspace({
         if (businessOnly) {
             setActiveSection("operation");
             setOperationTab(
-                ["brand", "operation", "portal"].includes(requestedOperationTab || "")
-                    ? requestedOperationTab as "brand" | "operation" | "portal"
-                    : "operation",
+                requestedOperationTab === "portal" && canManagePortal ? "portal"
+                    : requestedOperationTab === "brand" && canManageBusiness ? "brand"
+                    : canManageBusiness ? "operation" : canManagePortal ? "portal" : "operation",
             );
             return;
         }
@@ -271,7 +284,7 @@ export function SettingsWorkspace({
                 variant: "destructive",
             });
         }
-    }, [businessOnly, isTenantWorkspace, router, searchParams, toast]);
+    }, [businessOnly, isTenantWorkspace, router, searchParams, toast, canManageBusiness, canManagePortal]);
 
     const updateBusinessDay = (day: BusinessDayKey, patch: Partial<BusinessWeeklySchedule[BusinessDayKey]>) => {
         setBusinessWeeklySchedule((current) => ({
@@ -280,7 +293,14 @@ export function SettingsWorkspace({
         }));
     };
 
+    const operationSnapshot = JSON.stringify({ operationCountry, phoneDefaultCountry, paymentDefaultCurrency, paymentEnabledCurrencies, businessTimeZone, businessWeeklySchedule, businessPolicies, agentName, escalationPhone, clinicName, clinicSubtitle, clinicAddress, clinicLogoUrl, clinicLogoScale });
+    const brandSnapshot = JSON.stringify({ brandName, brandLogoUrl, brandFaviconUrl });
+    useEffect(() => { if (settingsLoaded && businessBaseline === null) setBusinessBaseline({operation:operationSnapshot,brand:brandSnapshot}); }, [settingsLoaded,businessBaseline,operationSnapshot,brandSnapshot]);
+    const businessDirty = businessOnly && businessBaseline !== null && (businessBaseline.operation !== operationSnapshot || businessBaseline.brand !== brandSnapshot);
+    const currentBusinessDirty = businessBaseline !== null && (operationTab === "brand" ? businessBaseline.brand !== brandSnapshot : businessBaseline.operation !== operationSnapshot);
+    useEffect(() => { if (!businessDirty) return; const warn=(event:BeforeUnloadEvent)=>{event.preventDefault();event.returnValue="";}; window.addEventListener("beforeunload",warn); return ()=>window.removeEventListener("beforeunload",warn); },[businessDirty]);
     const handleSave = async () => {
+        if (readOnly || !settingsLoaded || isSaving || (businessOnly && !canManageBusiness)) return false;
         const normalizedHours = normalizeBusinessHours({ businessTimeZone, businessWeeklySchedule });
         setIsSaving(true);
         try {
@@ -345,7 +365,8 @@ export function SettingsWorkspace({
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(settingsPayload),
             });
-            if (!response.ok) throw new Error("No se pudo guardar la configuracion");
+            if (!response.ok) { const result=await response.json().catch(()=>null); throw new Error(result?.error || "No se pudo guardar la configuración."); }
+            if (saveSection === "operation" || saveSection === "brand") setBusinessBaseline(current => ({ operation: current?.operation || operationSnapshot, brand: current?.brand || brandSnapshot, [saveSection]: saveSection === "operation" ? operationSnapshot : brandSnapshot }));
             router.refresh();
             toast({ title: "Configuracion guardada" });
             return true;
@@ -362,6 +383,7 @@ export function SettingsWorkspace({
     };
 
     const uploadImageAsset = async (file: File) => {
+        if (readOnly || !settingsLoaded) throw new Error("Tu cuenta está en modo de solo lectura.");
         const formData = new FormData();
         formData.append("file", file);
         const response = await fetch("/api/upload", { method: "POST", body: formData });
@@ -373,6 +395,7 @@ export function SettingsWorkspace({
     };
 
     const handleLogoFileSelected = (target: LogoCropTarget, event: ChangeEvent<HTMLInputElement>) => {
+        if (readOnly || !settingsLoaded) return;
         const file = event.target.files?.[0];
         event.target.value = "";
         if (!file) return;
@@ -469,7 +492,7 @@ export function SettingsWorkspace({
     );
 
     return (
-        <div className="mx-auto max-w-6xl space-y-6">
+        <div className={businessOnly ? `${layout.workspace} ${styles.business}` : "mx-auto max-w-6xl space-y-6"} data-business-workspace={businessOnly || undefined}>
             <LogoCropDialog
                 file={logoCrop?.file || null}
                 open={Boolean(logoCrop)}
@@ -478,8 +501,8 @@ export function SettingsWorkspace({
                 onOpenChange={(open) => !open && setLogoCrop(null)}
                 onApply={handleCroppedLogoApply}
             />
-            <div>
-                <h1 className="flex items-center gap-2 text-2xl font-bold">
+            <div className={businessOnly ? layout.heading : undefined}>
+                <div><h1 className="flex items-center gap-2 text-2xl font-bold">
                     {businessOnly ? <Store className="h-6 w-6 text-primary" /> : <Settings className="h-6 w-6 text-primary" />}
                     {businessOnly ? "Mi Negocio" : "Configuración"}
                 </h1>
@@ -490,8 +513,11 @@ export function SettingsWorkspace({
                             ? "Administra la apariencia, los usuarios, el calendario y las notificaciones del negocio."
                             : "Ajusta la apariencia, los canales y las integraciones del CRM sin tocar la operación diaria del equipo."}
                 </p>
-            </div>
+            </div></div>
 
+            {loadError && <p role="alert" className="rounded-xl border p-4 text-sm text-destructive">{loadError} <Button variant="outline" onClick={() => setLoadAttempt(value => value+1)}>Reintentar</Button></p>}
+            {businessOnly && !settingsLoaded && !loadError && <p role="status" className="text-sm text-muted-foreground">Cargando información del negocio…</p>}
+            {businessOnly && readOnly && <p className={layout.readonly}>Solo lectura. Puedes consultar tu configuración y tu portal.</p>}
             {!businessOnly ? <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 {visibleSections.map((section) => {
                     const Icon = section.icon;
@@ -540,18 +566,18 @@ export function SettingsWorkspace({
                 ) : null}
             </div> : null}
 
-            <div className="rounded-2xl border bg-card p-4 sm:p-5 md:p-7">
+            <div data-business-panel className="rounded-2xl border bg-card p-4 sm:p-5 md:p-7">
                 {activeSection === "operation" && (
-                    <div className="mb-6 flex w-full max-w-xl border-b">
+                    <div role="tablist" aria-label="Secciones del negocio" className={businessOnly ? layout.tabs : "mb-6 flex w-full max-w-xl border-b"}>
                         {([
-                            { id: "operation", label: "Operación" },
+                            { id: "operation", label: "Negocio" },
                             { id: "portal", label: "Portal" },
-                            { id: "brand", label: "Marca blanca" },
-                        ] as const).map((tab) => (
+                            { id: "brand", label: "Marca" },
+                        ] as const).filter(tab => tab.id === "portal" ? canManagePortal : canManageBusiness).map((tab) => (
                             <button
                                 key={tab.id}
                                 type="button"
-                                onClick={() => setOperationTab(tab.id)}
+                                role="tab" aria-selected={operationTab === tab.id} onClick={() => { setOperationTab(tab.id); if (businessOnly) { const params=new URLSearchParams(searchParams.toString()); params.set("tab",tab.id); router.replace(`${pathname}?${params}`,{scroll:false}); } }}
                                 className={`relative flex-1 px-3 py-3 text-sm font-medium transition ${
                                     operationTab === tab.id
                                         ? "text-primary after:absolute after:inset-x-4 after:bottom-0 after:h-0.5 after:rounded-full after:bg-primary"
@@ -584,7 +610,7 @@ export function SettingsWorkspace({
                 )}
 
                 {activeSection === "operation" && operationTab === "brand" && canAccess("settings.manage") && (
-                    <div className="max-w-5xl space-y-5">
+                    <fieldset disabled={readOnly || isSaving || !settingsLoaded} className="max-w-5xl space-y-5">
                         <div>
                             <h2 className="font-semibold">Marca blanca del CRM</h2>
                             <p className="text-sm text-muted-foreground">
@@ -592,13 +618,13 @@ export function SettingsWorkspace({
                             </p>
                         </div>
 
-                        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
+                        <div className={styles.brandGrid}>
                             <div className="space-y-5">
                                 <div className="rounded-2xl border bg-muted/10 p-4">
                                     <div className="space-y-2">
-                                        <Label>Nombre del CRM</Label>
+                                        <Label htmlFor="business-brandName">Nombre del CRM</Label>
                                         <Input
-                                            value={brandName}
+                                            id="business-brandName" value={brandName}
                                             onChange={(event) => setBrandName(event.target.value)}
                                             placeholder={DEFAULT_BRAND_NAME}
                                         />
@@ -695,7 +721,7 @@ export function SettingsWorkspace({
                                     </div>
                                 </div>
 
-                                <Button onClick={handleSave} disabled={isSaving}>
+                                <Button className={businessOnly ? "hidden" : undefined} onClick={handleSave} disabled={readOnly || isSaving || !settingsLoaded}>
                                     {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
                                     Guardar marca blanca
                                 </Button>
@@ -744,83 +770,12 @@ export function SettingsWorkspace({
                                 </div>
                             </div>
                         </div>
-                    </div>
+                    </fieldset>
                 )}
 
                 {activeSection === "operation" && operationTab === "operation" && canAccess("settings.manage") && (
-                    <div className="max-w-4xl space-y-5">
-                        <div>
-                            <h2 className="font-semibold">Pais de operacion</h2>
-                            <p className="text-sm text-muted-foreground">
-                                Define defaults de telefono, moneda, zona horaria, calendario y recordatorios automaticos.
-                            </p>
-                        </div>
-
-                        <div className="grid gap-4 md:grid-cols-2">
-                            <div className="space-y-2">
-                                <Label>Pais principal</Label>
-                                <Select value={operationCountry} onValueChange={handleOperationCountryChange}>
-                                    <SelectTrigger className="h-11 bg-background">
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {OPERATION_COUNTRIES.map((country) => (
-                                            <SelectItem key={country.code} value={country.code}>
-                                                {country.name} ({country.code})
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-
-                            <div className="space-y-2">
-                                <Label>Prefijo telefonico default</Label>
-                                <Select value={phoneDefaultCountry} onValueChange={setPhoneDefaultCountry}>
-                                    <SelectTrigger className="h-11 bg-background">
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {[selectedOperationCountry, ...OPERATION_COUNTRIES.filter((country) => country.code !== selectedOperationCountry.code)].map((country) => (
-                                            <SelectItem key={country.code} value={country.code}>
-                                                {country.name} {country.callingCode}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                                <p className="text-xs text-muted-foreground">
-                                    En telefonos nuevos aparecera primero {phoneCountry.name} {phoneCountry.callingCode}.
-                                </p>
-                            </div>
-
-                            <div className="space-y-2">
-                                <Label>Zona horaria</Label>
-                                <Input value={businessTimeZone} onChange={(event) => setBusinessTimeZone(event.target.value)} />
-                                <p className="text-xs text-muted-foreground">
-                                    Se usa en calendario, disponibilidad del portal, IA de agenda y recordatorios.
-                                </p>
-                            </div>
-
-                            <div className="space-y-2">
-                                <Label>Moneda default</Label>
-                                <Select value={paymentDefaultCurrency} onValueChange={setPaymentDefaultCurrency}>
-                                    <SelectTrigger className="h-11 bg-background">
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {paymentEnabledCurrencies.map((currency) => (
-                                            <SelectItem key={currency} value={currency}>
-                                                {currency}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                                <p className="text-xs text-muted-foreground">
-                                    Monedas habilitadas: {paymentEnabledCurrencies.join(", ")}.
-                                </p>
-                            </div>
-                        </div>
-
-                        <div className="rounded-2xl border bg-background p-4">
+                    <div className={styles.businessSections}>
+                        <fieldset className={styles.form} disabled={readOnly || isSaving || !settingsLoaded}>                        <div className="rounded-2xl border bg-background p-4">
                             <div>
                                 <h2 className="font-semibold">Datos del negocio</h2>
                                 <p className="text-sm text-muted-foreground">
@@ -829,7 +784,7 @@ export function SettingsWorkspace({
                             </div>
 
                             <div className="mt-4 grid gap-5 lg:grid-cols-[220px_minmax(0,1fr)]">
-                                <div className="rounded-2xl border bg-background p-4">
+                                <details className={styles.section}><summary>Logotipo y tamaño</summary><div className="p-4">
                                     <Label>Logotipo</Label>
                                     <div className="mt-3 flex flex-col items-center gap-3">
                                         <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-2xl border bg-muted/35">
@@ -876,35 +831,27 @@ export function SettingsWorkspace({
                                             />
                                         </div>
                                     </div>
-                                </div>
+                                </div></details>
 
                                 <div className="grid gap-4 md:grid-cols-2">
                                     <div className="space-y-2">
-                                        <Label>Nombre comercial</Label>
-                                        <Input value={clinicName} onChange={(event) => setClinicName(event.target.value)} placeholder="Nombre del negocio" />
+                                        <Label htmlFor="business-clinicName">Nombre comercial</Label>
+                                        <Input id="business-clinicName" value={clinicName} onChange={(event) => setClinicName(event.target.value)} placeholder="Nombre del negocio" />
                                     </div>
                                     <div className="space-y-2">
-                                        <Label>Subtítulo / giro</Label>
-                                        <Input value={clinicSubtitle} onChange={(event) => setClinicSubtitle(event.target.value)} placeholder="Salón, barbería, spa..." />
+                                        <Label htmlFor="business-clinicSubtitle">Subtítulo / giro</Label>
+                                        <Input id="business-clinicSubtitle" value={clinicSubtitle} onChange={(event) => setClinicSubtitle(event.target.value)} placeholder="Salón, barbería, spa..." />
                                     </div>
                                     <div className="space-y-2 md:col-span-2">
-                                        <Label>Dirección del negocio</Label>
-                                        <Input value={clinicAddress} onChange={(event) => setClinicAddress(event.target.value)} placeholder="Dirección, teléfono, ciudad..." />
+                                        <Label htmlFor="business-clinicAddress">Dirección del negocio</Label>
+                                        <Input id="business-clinicAddress" value={clinicAddress} onChange={(event) => setClinicAddress(event.target.value)} placeholder="Dirección, teléfono, ciudad..." />
                                     </div>
                                 </div>
                             </div>
 
-                            <BusinessPolicyConfigurator
-                                value={businessPolicies}
-                                onChange={setBusinessPolicies}
-                                agentName={agentName}
-                                onAgentNameChange={setAgentName}
-                                escalationPhone={escalationPhone}
-                                onEscalationPhoneChange={setEscalationPhone}
-                                canManageAi={canAccess("ai.manage")}
-                            />
+                        </div></fieldset>
 
-                            <div className="mt-5 rounded-2xl border bg-background p-4">
+                        <details className={styles.section}><summary>Horarios de atención</summary><fieldset className={`${styles.form} ${styles.sectionBody}`} disabled={readOnly || isSaving || !settingsLoaded}>                            <div className="mt-5 rounded-2xl border bg-background p-4">
                                 <h3 className="font-semibold">Horario de atención del negocio</h3>
                                 <div className="mt-4 divide-y rounded-xl border">
                                     {BUSINESS_DAY_KEYS.map((day) => {
@@ -929,12 +876,94 @@ export function SettingsWorkspace({
                                     })}
                                 </div>
                             </div>
+
+
+</fieldset></details>
+                        <details className={styles.section}><summary>País, moneda y zona horaria</summary><fieldset className={`${styles.form} ${styles.sectionBody}`} disabled={readOnly || isSaving || !settingsLoaded}>                        <div>
+                            <h2 className="font-semibold">Pais de operacion</h2>
+                            <p className="text-sm text-muted-foreground">
+                                Define defaults de telefono, moneda, zona horaria, calendario y recordatorios automaticos.
+                            </p>
                         </div>
 
-                        <Button onClick={handleSave} disabled={isSaving}>
-                            {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                            Guardar operacion
-                        </Button>
+                        <div className="grid gap-4 md:grid-cols-2">
+                            <div className="space-y-2">
+                                <Label>Pais principal</Label>
+                                <Select value={operationCountry} onValueChange={handleOperationCountryChange}>
+                                    <SelectTrigger className="h-11 bg-background">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {OPERATION_COUNTRIES.map((country) => (
+                                            <SelectItem key={country.code} value={country.code}>
+                                                {country.name} ({country.code})
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label>Prefijo telefonico default</Label>
+                                <Select value={phoneDefaultCountry} onValueChange={setPhoneDefaultCountry}>
+                                    <SelectTrigger className="h-11 bg-background">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {[selectedOperationCountry, ...OPERATION_COUNTRIES.filter((country) => country.code !== selectedOperationCountry.code)].map((country) => (
+                                            <SelectItem key={country.code} value={country.code}>
+                                                {country.name} {country.callingCode}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                <p className="text-xs text-muted-foreground">
+                                    En telefonos nuevos aparecera primero {phoneCountry.name} {phoneCountry.callingCode}.
+                                </p>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label htmlFor="business-businessTimeZone">Zona horaria</Label>
+                                <Input id="business-businessTimeZone" value={businessTimeZone} onChange={(event) => setBusinessTimeZone(event.target.value)} />
+                                <p className="text-xs text-muted-foreground">
+                                    Se usa en calendario, disponibilidad del portal, IA de agenda y recordatorios.
+                                </p>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label>Moneda default</Label>
+                                <Select value={paymentDefaultCurrency} onValueChange={setPaymentDefaultCurrency}>
+                                    <SelectTrigger className="h-11 bg-background">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {paymentEnabledCurrencies.map((currency) => (
+                                            <SelectItem key={currency} value={currency}>
+                                                {currency}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                <p className="text-xs text-muted-foreground">
+                                    Monedas habilitadas: {paymentEnabledCurrencies.join(", ")}.
+                                </p>
+                            </div>
+                        </div>
+
+</fieldset></details>
+                        <details className={styles.section}><summary>Políticas y atención del asistente</summary><div className={styles.sectionBody}>                            <BusinessPolicyConfigurator
+                                readOnly={readOnly || isSaving || !settingsLoaded}
+                                value={businessPolicies}
+                                onChange={setBusinessPolicies}
+                                agentName={agentName}
+                                onAgentNameChange={setAgentName}
+                                escalationPhone={escalationPhone}
+                                onEscalationPhoneChange={setEscalationPhone}
+                                canManageAi={canAccess("ai.manage")}
+                            />
+
+</div></details>
+                        {!businessOnly && <Button onClick={handleSave} disabled={readOnly || isSaving || !settingsLoaded}>Guardar operación</Button>}
                     </div>
                 )}
 
@@ -952,7 +981,7 @@ export function SettingsWorkspace({
                             <Label htmlFor="gemini">Gemini API key</Label>
                             <Input id="gemini" type="password" value={geminiKey} onChange={(event) => setGeminiKey(event.target.value)} />
                         </div>
-                        <Button onClick={handleSave} disabled={isSaving}>
+                        <Button onClick={handleSave} disabled={readOnly || isSaving || !settingsLoaded}>
                             {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                             Guardar cambios
                         </Button>
@@ -1184,6 +1213,7 @@ export function SettingsWorkspace({
                     </div>
                 )}
             </div>
+            {businessOnly && operationTab !== "portal" && <div className={layout.saveBar} role="region" aria-label="Guardar información del negocio"><p className="hidden sm:block text-sm text-muted-foreground">{currentBusinessDirty ? "Cambios sin guardar" : "Información del negocio"}</p><div><Button onClick={handleSave} disabled={!canManageBusiness || readOnly || isSaving || !settingsLoaded || isUploadingClinicLogo || isUploadingBrandLogo || isUploadingBrandFavicon}>{isSaving && <Loader2 className="size-4 animate-spin" />}Guardar {operationTab === "brand" ? "marca" : "negocio"}</Button></div></div>}
         </div>
     );
 }

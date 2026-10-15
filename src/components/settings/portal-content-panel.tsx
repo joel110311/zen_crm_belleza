@@ -1,5 +1,7 @@
 "use client";
 
+import { useWorkspaceAccess } from "@/components/layout/workspace-access-context";
+import styles from "@/components/shared/business-workspace.module.css";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import Image from "next/image";
 import QRCode from "qrcode";
@@ -34,6 +36,8 @@ const DEFAULT_PORTAL_SETTINGS: PortalSettings = {
 };
 
 export function PortalContentPanel() {
+    const { readOnly } = useWorkspaceAccess();
+    const [loaded, setLoaded] = useState(false);
     const { toast } = useToast();
     const [isPending, startTransition] = useTransition();
     const [origin, setOrigin] = useState("");
@@ -53,7 +57,7 @@ export function PortalContentPanel() {
         queueMicrotask(() => setOrigin(window.location.origin));
         let active = true;
         fetch("/api/settings", { cache: "no-store" })
-            .then(async (response) => (response.ok ? response.json() : null))
+            .then(async (response) => { if (!response.ok) throw new Error("No se pudo cargar el portal."); return response.json(); })
             .then((settings) => {
                 if (!active || !settings) return;
                 const storedPortalName = settings.portalClinicName || settings.clinicName || "";
@@ -70,6 +74,7 @@ export function PortalContentPanel() {
                         ? "#4B5F25"
                         : settings.portalPrimaryColor,
                 });
+                setLoaded(true);
             })
             .catch(() => {
                 toast({ title: "No se pudo cargar el portal", variant: "destructive" });
@@ -103,6 +108,7 @@ export function PortalContentPanel() {
     }, [portalUrl]);
 
     const savePortalSettings = () => {
+        if (readOnly || isPending || !loaded) return;
         let socialLinks: PortalSocialLink[];
         try {
             socialLinks = normalizePortalSocialLinks(portalSettings.portalSocialLinks, true);
@@ -130,6 +136,7 @@ export function PortalContentPanel() {
     };
 
     const togglePortalAvailability = () => {
+        if (readOnly || isPending || !loaded) return;
         const nextEnabled = !portalSettings.portalEnabled;
         if (!nextEnabled && !window.confirm("¿Desactivar el portal público? Nadie podrá apartar horarios hasta que vuelvas a activarlo.")) {
             return;
@@ -177,12 +184,12 @@ export function PortalContentPanel() {
                         variant={portalSettings.portalEnabled ? "outline" : "default"}
                         className={portalSettings.portalEnabled ? "border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive" : ""}
                         onClick={togglePortalAvailability}
-                        disabled={isPending}
+                        disabled={readOnly || isPending || !loaded}
                     >
                         <Power className="mr-2 h-4 w-4" />
                         {portalSettings.portalEnabled ? "Desactivar portal" : "Activar portal"}
                     </Button>
-                    <Button type="button" onClick={savePortalSettings} disabled={isPending}>
+                    <Button type="button" onClick={savePortalSettings} disabled={readOnly || isPending || !loaded}>
                         {isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
                         Guardar portal
                     </Button>
@@ -207,7 +214,7 @@ export function PortalContentPanel() {
                                 />
                             </div>
                             <div className="min-w-0">
-                                <p className="truncate text-lg font-semibold">
+                                <p className="break-words text-lg font-semibold">
                                     {portalSettings.portalClinicName || brandName}
                                 </p>
                                 <p className="mt-1 text-sm text-muted-foreground">Portal público de reservas</p>
@@ -273,22 +280,22 @@ export function PortalContentPanel() {
                 <CardHeader>
                     <CardTitle className="text-base">Configuración del portal</CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-4">
+                <CardContent><fieldset disabled={readOnly || isPending || !loaded} className={styles.form}>
                     <div className="grid gap-4 md:grid-cols-2">
                         <div className="space-y-2">
-                            <Label>Nombre del negocio</Label>
+                            <Label htmlFor="portal-portalClinicName">Nombre del negocio</Label>
                             <Input
-                                value={portalSettings.portalClinicName}
+                                id="portal-portalClinicName" value={portalSettings.portalClinicName}
                                 onChange={(event) => setPortalSettings((current) => ({ ...current, portalClinicName: event.target.value }))}
                                 placeholder="Nombre del salón o negocio"
                             />
                         </div>
                         <div className="space-y-2">
-                            <Label>Dirección del enlace</Label>
+                            <Label htmlFor="portal-portalSlug">Dirección del enlace</Label>
                             <div className="flex h-11 overflow-hidden rounded-xl border bg-background focus-within:ring-2 focus-within:ring-ring">
                                 <span className="flex items-center border-r bg-muted/40 px-3 text-sm text-muted-foreground">/portal/</span>
                                 <Input
-                                    value={portalSettings.portalSlug}
+                                    id="portal-portalSlug" value={portalSettings.portalSlug}
                                     onChange={(event) => setPortalSettings((current) => ({
                                         ...current,
                                         portalSlug: event.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""),
@@ -323,7 +330,7 @@ export function PortalContentPanel() {
                         </div>
                         <p className="self-end pb-2 text-sm text-muted-foreground">Este color identifica botones y elementos destacados del portal.</p>
                     </div>
-                    <fieldset className="space-y-4 rounded-xl border p-4" disabled={isPending}>
+                    <fieldset className="space-y-4 rounded-xl border p-4" disabled={readOnly || isPending || !loaded}>
                         <legend className="px-2 text-base font-semibold">Redes sociales y enlaces</legend>
                         <p className="text-sm text-muted-foreground">Agrega las redes del negocio o de su propietario. Marca solo los enlaces que quieras compartir con tus clientes.</p>
                         {SOCIAL_NETWORKS.map((network) => {
@@ -355,7 +362,7 @@ export function PortalContentPanel() {
                             aria-hidden="true"
                         />
                     </div>
-                </CardContent>
+                </fieldset></CardContent>
             </Card>
         </div>
     );

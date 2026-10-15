@@ -1,5 +1,7 @@
 "use client";
 
+import layout from "@/components/shared/management-workspace.module.css";
+
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { Loader2, Minus, Move, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -165,15 +167,15 @@ export function LogoCropDialog({
 
     return (
         <Dialog open={open} onOpenChange={(nextOpen) => !busy && onOpenChange(nextOpen)}>
-            <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto p-0 sm:max-w-[650px]" showCloseButton={!busy}>
-                <DialogHeader className="border-b px-5 py-4 pr-14 sm:px-6">
+            <DialogContent className={layout.dialog} showCloseButton={!busy}>
+                <DialogHeader className={layout.dialogHeader}>
                     <DialogTitle>{title}</DialogTitle>
                     <DialogDescription>
                         Arrastra la imagen para centrarla y usa el zoom hasta que se vea como deseas.
                     </DialogDescription>
                 </DialogHeader>
 
-                <div className="space-y-5 px-5 py-2 sm:px-6">
+                <div className={`${layout.dialogBody} space-y-5`}>
                     <div className="flex justify-center">
                         <div
                             ref={stageRef}
@@ -229,7 +231,7 @@ export function LogoCropDialog({
                     </div>
                 </div>
 
-                <DialogFooter className="border-t px-5 py-4 sm:px-6">
+                <DialogFooter className={layout.dialogFooter}>
                     <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>
                         Cancelar
                     </Button>

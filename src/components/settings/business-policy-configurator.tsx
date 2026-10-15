@@ -1,5 +1,6 @@
 "use client";
 
+import styles from "@/components/shared/business-workspace.module.css";
 import { useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, ArrowRight, CalendarClock, Scissors, ShieldCheck, Store, UserRound, UserRoundCheck } from "lucide-react";
@@ -38,9 +39,10 @@ type ConfiguratorProps = {
     escalationPhone?: string;
     onEscalationPhoneChange?: (value: string) => void;
     canManageAi?: boolean;
+    readOnly?: boolean;
 };
 
-export function BusinessPolicyConfigurator({ value, onChange, agentName, onAgentNameChange, escalationPhone, onEscalationPhoneChange, canManageAi = false }: ConfiguratorProps) {
+export function BusinessPolicyConfigurator({ value, onChange, agentName, onAgentNameChange, escalationPhone, onEscalationPhoneChange, canManageAi = false, readOnly = false }: ConfiguratorProps) {
     const [step, setStep] = useState(0);
     const [closedDate, setClosedDate] = useState("");
     const hasLegacyNotes = Object.values(value.legacyNotes).some(Boolean);
@@ -54,9 +56,9 @@ export function BusinessPolicyConfigurator({ value, onChange, agentName, onAgent
 
     return <div className="mt-5 rounded-2xl border bg-background p-4 sm:p-6">
         <div><h3 className="text-lg font-semibold">Configura tu asistente</h3></div>
-        {hasLegacyNotes ? <div className="mt-4 flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950 sm:flex-row sm:items-center sm:justify-between"><p>Hay textos de la configuración anterior. Completa la guía y descártalos para evitar contradicciones.</p><Button type="button" variant="outline" size="sm" onClick={() => update({ legacyNotes: { cancellationAndRescheduling: "", depositsAndPayments: "", preparationInstructions: "", customQuotes: "", humanEscalation: "" } })}>Descartar textos anteriores</Button></div> : null}
-        <div className="mt-5 grid grid-cols-2 border-b sm:grid-cols-3 lg:grid-cols-6">{STEPS.map((item, index) => { const Icon = item.icon; return <button key={item.title} type="button" onClick={() => setStep(index)} className={cn("relative flex min-w-0 items-center justify-center gap-2 px-2 py-3 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground", step === index && "text-primary after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full after:bg-primary")}><Icon className="h-4 w-4 shrink-0" /><span className="truncate">{item.title}</span></button>; })}</div>
-        <div className="min-h-[390px] border-b px-1 py-6 sm:px-2">
+        {hasLegacyNotes ? <div className="mt-4 flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950 sm:flex-row sm:items-center sm:justify-between"><p>Hay textos de la configuración anterior. Completa la guía y descártalos para evitar contradicciones.</p><Button type="button" variant="outline" size="sm" disabled={readOnly} onClick={() => update({ legacyNotes: { cancellationAndRescheduling: "", depositsAndPayments: "", preparationInstructions: "", customQuotes: "", humanEscalation: "" } })}>Descartar textos anteriores</Button></div> : null}
+        <div className={styles.policyTabs}>{STEPS.map((item, index) => { const Icon = item.icon; return <button key={item.title} type="button" onClick={() => setStep(index)} className={cn("relative flex min-w-0 items-center justify-center gap-2 px-2 py-3 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground", step === index && "text-primary after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full after:bg-primary")}><Icon className="h-4 w-4 shrink-0" /><span >{item.title}</span></button>; })}</div>
+        <fieldset disabled={readOnly} className={styles.policy}>
             <div className="mb-5"><p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">Paso {step + 1} de {STEPS.length}</p><h4 className="mt-1 text-lg font-semibold">{STEPS[step].title}</h4></div>
             {step === 0 ? <IdentityStep value={value} update={update} agentName={agentName} onAgentNameChange={onAgentNameChange} canManageAi={canManageAi} /> : null}
             {step === 1 ? <BusinessStep value={value} update={update} /> : null}
@@ -64,7 +66,7 @@ export function BusinessPolicyConfigurator({ value, onChange, agentName, onAgent
             {step === 3 ? <ServicesStep /> : null}
             {step === 4 ? <PoliciesStep value={value} update={update} /> : null}
             {step === 5 ? <EscalationStep value={value} toggleTrigger={toggleTrigger} escalationPhone={escalationPhone} onEscalationPhoneChange={onEscalationPhoneChange} canManageAi={canManageAi} /> : null}
-        </div>
+        </fieldset>
         <div className="mt-4 flex items-center justify-between gap-3"><Button type="button" variant="outline" disabled={step === 0} onClick={() => setStep((current) => Math.max(0, current - 1))}><ArrowLeft className="mr-2 h-4 w-4" />Anterior</Button><Button type="button" disabled={step === STEPS.length - 1} onClick={() => setStep((current) => Math.min(STEPS.length - 1, current + 1))}>Siguiente<ArrowRight className="ml-2 h-4 w-4" /></Button></div>
     </div>;
 }
