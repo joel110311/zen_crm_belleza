@@ -260,7 +260,7 @@ test("hosted API creates a pending authorization, never an immediate card charge
 });
 
 test("subscription UI starts unchecked and separates renewal management from payment", () => {
-    const controls = loadTsModule("src/app/billing/[tenantSlug]/recurring-controls.tsx", { "next/navigation": { useRouter: () => ({ refresh: () => {} }) }, "@/lib/billing/recurring-policy": policy }) as Row;
+    const controls = loadTsModule("src/app/billing/[tenantSlug]/recurring-controls.tsx", { "./billing.module.css": {}, "next/navigation": { useRouter: () => ({ refresh: () => {} }) }, "@/lib/billing/recurring-policy": policy }) as Row;
     const html = renderToStaticMarkup(createElement(controls.RecurringCheckout as ComponentType<Row>, { tenantSlug: "salon", planSlug: "esencial", price: "$200.00", amountCents: 20000, currency: "MXN", disabled: false }));
     assert.match(html, /type="checkbox"/); assert.doesNotMatch(html, /checked=""/); assert.match(html, /disabled=""/); assert.match(html, /renovación automática hasta que cancele/);
     const management = renderToStaticMarkup(createElement(controls.RecurringManagement as ComponentType<Row>, { tenantSlug: "salon", canCancel: true }));

@@ -5,10 +5,11 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { hasActiveTrial, shouldOfferBillingPortal } from "../src/lib/billing/provider-policy.ts";
 import { RECURRING_CONSENT_VERSION } from "../src/lib/billing/recurring-policy.ts";
 import { loadTsModule } from "./helpers/load-ts-module.mts";
+import * as billingPresentation from "../src/lib/billing/presentation.ts";
 import * as planCatalog from "../src/lib/plan-catalog.ts";
 
 const controls = loadTsModule("src/app/billing/[tenantSlug]/recurring-controls.tsx", {
-    "next/navigation": { useRouter: () => ({ refresh() {} }) },
+    "./billing.module.css": {}, "next/navigation": { useRouter: () => ({ refresh() {} }) },
     "@/lib/billing/recurring-policy": { RECURRING_CONSENT_VERSION },
 });
 const checkoutProps = { tenantSlug: "logicapp", planSlug: "esencial", price: "$299.00", amountCents: 29900, currency: "MXN", disabled: false };
@@ -18,6 +19,8 @@ async function page(recurringEnabled: boolean) {
     const mod = loadTsModule("src/app/billing/[tenantSlug]/page.tsx", {
         "next/navigation": { notFound() { throw new Error("not found"); }, redirect() { throw new Error("redirect"); } },
         "next/link": (props: React.ComponentProps<"a">) => React.createElement("a", props),
+        "./billing.module.css": {},
+        "@/lib/billing/presentation": billingPresentation,
         "./billing-actions": { BillingActions: ({ planSlug }: { planSlug?: string }) => planSlug ? React.createElement("button", {}, "Pagar solo un mes") : null },
         "./billing-status-refresh": { BillingStatusRefresh: () => null },
         "./recurring-controls": controls,
@@ -67,7 +70,7 @@ for (const consent of [false, true]) {
         const navigations: string[] = [];
         const mod = loadTsModule("src/app/billing/[tenantSlug]/recurring-controls.tsx", {
             react: { useState: () => [[consent, false, null][hook++], () => {}] },
-            "next/navigation": { useRouter: () => ({ refresh() {} }) },
+            "./billing.module.css": {}, "next/navigation": { useRouter: () => ({ refresh() {} }) },
             "@/lib/billing/recurring-policy": { RECURRING_CONSENT_VERSION },
         }, { fetch: async (url: string, options: RequestInit) => {
             requests.push({ url, body: JSON.parse(String(options.body)) });

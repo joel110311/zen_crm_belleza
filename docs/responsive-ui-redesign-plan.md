@@ -1,6 +1,6 @@
 # Rediseño adaptable del CRM — propuesta para revisión
 
-Fecha inicial: 13 de octubre de 2026. Actualización: 15 de octubre. Estado: diseño aprobado; implementadas navegación/Hoy, Agenda/citas, Clientes/ficha, Chats/mensajes/entrenamiento, Plantillas/Asistente IA, Mi negocio/Servicios/Especialistas y Recepción. El resto de las fases sigue pendiente. Seguimiento: [primera entrega](responsive-ui-stage-1.md), [Agenda y citas](responsive-ui-stage-2.md), [Clientes y ficha](responsive-ui-stage-3.md), [Chats y entrenamiento](responsive-ui-stage-4.md), [Plantillas y Asistente IA](responsive-ui-stage-5.md), [Mi negocio, Servicios y Especialistas](responsive-ui-stage-6.md) y [Recepción](responsive-ui-stage-7.md). El siguiente bloque es reportes y Plan/facturación. Pipeline está fuera del alcance por decisión de Joel.
+Fecha inicial: 13 de octubre de 2026. Actualización: 15 de octubre. Estado: diseño aprobado; implementadas navegación/Hoy, Agenda/citas, Clientes/ficha, Chats/mensajes/entrenamiento, Plantillas/Asistente IA, Mi negocio/Servicios/Especialistas, Recepción y Plan/facturación. El resto de las fases sigue pendiente. Seguimiento: [primera entrega](responsive-ui-stage-1.md), [Agenda y citas](responsive-ui-stage-2.md), [Clientes y ficha](responsive-ui-stage-3.md), [Chats y entrenamiento](responsive-ui-stage-4.md), [Plantillas y Asistente IA](responsive-ui-stage-5.md), [Mi negocio, Servicios y Especialistas](responsive-ui-stage-6.md), [Recepción](responsive-ui-stage-7.md) y [Plan y facturación](responsive-ui-stage-8.md). Siguiente bloque: configuración e integraciones, accesos y pantallas públicas, seguido de revisión integral. Pipeline, Reportes y la antigua Caja están retirados y fuera del alcance.
 
 ## Objetivo y criterio de diseño
 
@@ -37,7 +37,7 @@ La inspección del código actual encontró tarjetas del dashboard con alturas m
 | Especialistas / equipo | Personas y ficha de disponibilidad/servicios | Personas, asignaciones y horarios comparables |
 | Mi negocio | Perfil, ubicación, horarios y políticas en secciones | Formulario organizado con vista previa cuando sea útil |
 | Plantillas | Lista, buscar, editar y previsualizar | Biblioteca y editor en paralelo |
-| Reportes / caja | Resumen por periodo y desglose progresivo; oculto sin permiso | Comparaciones, tablas y filtros de periodo |
+| Reportes / antigua Caja | Retirados; no forman parte del rediseño | Sus rutas mantienen la redirección al dashboard |
 | Plan y facturación | Plan actual → elegir plan → condiciones; 299/499/799 MXN y cupos existentes | Comparación de planes y movimientos en una misma vista |
 | Cuenta vencida | Aviso compacto persistente; ventana inicial breve; consulta/exportación y fecha de retención | Mismos estados y plazos con presentación horizontal |
 | Configuración e integraciones | Índice de secciones y formularios independientes | Navegación lateral por categorías y contenido amplio |
@@ -52,7 +52,7 @@ La inspección del código actual encontró tarjetas del dashboard con alturas m
 | 2. Sistema visual y prototipo | Tokens, navegación, densidad, campos, formularios y estados; validar Hoy/Agenda/Chats/Clientes | Prototipo aprobado en móvil y web antes de conectar pantallas | 3–5 días |
 | 3. Base y primera entrega | Nuevo shell adaptable; Hoy, Agenda y creación/edición de cita | Primer conjunto usable con las acciones y permisos actuales | 5–7 días |
 | 4. Atención al cliente | Clientes, ficha, Chats, mensajes, plantillas y entrenamiento | Recorrido completo de buscar cliente, conversar y corregir IA | 5–7 días |
-| 5. Administración | Asistente IA, negocio, servicios, equipo, recepción, reportes y facturación | Cobertura de todos los módulos internos y estados de suscripción | 7–10 días |
+| 5. Administración | Asistente IA, negocio, servicios, equipo, recepción y facturación | Cobertura de todos los módulos internos y estados de suscripción | 7–10 días |
 | 6. Accesos y cierre | Pantallas públicas, reservas, acceso y configuración; revisión integral y regresiones | Lista de aceptación cumplida y material para redespliegue | 4–6 días |
 
 Total orientativo: **26–38 días laborables (aproximadamente 5–8 semanas)** para implementación, revisiones y comprobaciones, sujeto a la auditoría inicial. No es una fecha garantizada ni una estimación de la app nativa. Las entregas se revisan por conjunto de pantallas, sin esperar al final para validar el diseño.
