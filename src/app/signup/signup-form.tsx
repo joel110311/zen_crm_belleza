@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
+import { PasswordField } from "@/components/public/password-field";
+import styles from "@/components/public/auth-workspace.module.css";
 import { TurnstileWidget } from "@/components/public/turnstile-widget";
 
 function slugify(value: string): string {
@@ -48,6 +50,7 @@ export function SignupForm({ turnstileSiteKey }: SignupFormProps) {
 
     async function onSubmit(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
+        if (isSubmitting) return;
         setError(null);
         if (!captchaToken) {
             setError("Completa la verificación de seguridad para continuar.");
@@ -88,23 +91,21 @@ export function SignupForm({ turnstileSiteKey }: SignupFormProps) {
     }
 
     if (message) {
-        return <div className="rounded-xl border border-primary/20 bg-primary/5 p-5 text-sm leading-6"><p className="font-semibold text-foreground">Revisa tu correo</p><p className="mt-1 text-muted-foreground">{message}</p><p className="mt-4 text-muted-foreground">El enlace vence pronto. Si ya tienes una cuenta, puedes <Link href="/login" className="font-medium text-primary hover:underline">iniciar sesión</Link>.</p></div>;
+        return <div className={styles.notice} role="status"><strong>Revisa tu correo</strong><p>{message}</p><p>El enlace vence pronto. Si ya tienes cuenta, puedes iniciar sesión abajo.</p></div>;
     }
 
-    return (
-        <form className="space-y-4" onSubmit={onSubmit}>
-            <div className="grid gap-4 sm:grid-cols-2">
-                <label className="space-y-1.5 text-sm font-medium"><span>Tu nombre</span><input name="name" required maxLength={160} autoComplete="name" className="h-11 w-full rounded-md border bg-background px-3" placeholder="Tu nombre" /></label>
-                <label className="space-y-1.5 text-sm font-medium"><span>Nombre del negocio</span><input value={businessName} onChange={(event) => setBusinessName(event.target.value)} required maxLength={160} className="h-11 w-full rounded-md border bg-background px-3" placeholder="Salón Luna" /></label>
+    return <form className={styles.form} onSubmit={onSubmit} aria-busy={isSubmitting}>
+        <fieldset disabled={isSubmitting} className={styles.fields}>
+            <div className={styles.row}>
+                <div className={styles.field}><label htmlFor="signup-name">Tu nombre</label><input id="signup-name" name="name" required maxLength={160} autoComplete="name" /></div>
+                <div className={styles.field}><label htmlFor="signup-business">Nombre del negocio</label><input id="signup-business" value={businessName} onChange={event => setBusinessName(event.target.value)} required maxLength={160} autoComplete="organization" /></div>
             </div>
-            <label className="block space-y-1.5 text-sm font-medium"><span>Correo electrónico</span><input name="email" required type="email" autoComplete="email" className="h-11 w-full rounded-md border bg-background px-3" placeholder="Tu correo electrónico" /><span className="block text-xs font-normal text-muted-foreground">Puedes usar Gmail, Outlook o cualquier otro correo.</span></label>
-            <label className="block space-y-1.5 text-sm font-medium"><span>Contraseña</span><input name="password" required minLength={12} maxLength={128} type="password" autoComplete="new-password" className="h-11 w-full rounded-md border bg-background px-3" placeholder="Mínimo 12 caracteres" /></label>
-            <label className="flex items-start gap-3 rounded-lg border bg-muted/30 p-3 text-sm leading-5"><input name="legalAccepted" required type="checkbox" className="mt-0.5 size-4" /><span>Acepto los <Link href="/terms" target="_blank" className="font-medium text-primary hover:underline">Términos de servicio</Link> y el <Link href="/privacy" target="_blank" className="font-medium text-primary hover:underline">Aviso de privacidad</Link>.</span></label>
+            <div className={styles.field}><label htmlFor="signup-email">Correo electrónico</label><input id="signup-email" name="email" required type="email" autoComplete="email" aria-describedby="signup-email-hint" /><p id="signup-email-hint" className={styles.hint}>Te enviaremos un enlace para confirmar tu cuenta.</p></div>
+            <PasswordField id="signup-password" name="password" label="Contraseña" autoComplete="new-password" minLength={12} maxLength={128} hint="Usa al menos 12 caracteres." />
+            <label className={styles.legalConsent}><input name="legalAccepted" required type="checkbox" /><span>Acepto los <Link href="/terms" target="_blank" rel="noopener noreferrer">Términos de servicio</Link> y el <Link href="/privacy" target="_blank" rel="noopener noreferrer">Aviso de privacidad</Link>.</span></label>
             <TurnstileWidget action="signup" onToken={handleCaptcha} siteKey={turnstileSiteKey} />
-            {error ? <p role="alert" className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p> : null}
-            <button disabled={isSubmitting} className="inline-flex h-11 w-full items-center justify-center rounded-md bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60" type="submit">
-                {isSubmitting ? <><Loader2 className="mr-2 size-4 animate-spin" />Enviando verificación...</> : "Crear mi espacio de prueba"}
-            </button>
-        </form>
-    );
+            {error && <p role="alert" className={styles.error}>{error}</p>}
+            <button disabled={isSubmitting} className={styles.submit} type="submit">{isSubmitting ? <><Loader2 className="size-5 animate-spin" aria-hidden="true" />Enviando verificación…</> : "Crear mi espacio de prueba"}</button>
+        </fieldset>
+    </form>;
 }

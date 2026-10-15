@@ -1,0 +1,74 @@
+.workspace { min-height: 100dvh; display: flex; flex-direction: column; background: var(--background); color: var(--foreground); }
+.header, .footer { width: min(100%, 1280px); margin-inline: auto; padding: 24px 32px; display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+.brand { min-width: 0; display: flex; align-items: center; gap: 12px; font-size: 15px; font-weight: 600; line-height: 1.4; }
+.brand span { overflow-wrap: anywhere; max-width: 35ch; }
+.logo { width: 40px; height: 40px; flex-shrink: 0; color: var(--primary); }
+.home { font-size: 14px; flex-shrink: 0; }
+.main { width: min(100%, 1120px); margin: auto; padding: 40px 32px 56px; display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: clamp(48px, 7vw, 104px); align-items: center; }
+.intro { min-width: 0; }
+.statement { font-size: clamp(48px, 5vw, 68px); font-weight: 600; line-height: 1.08; letter-spacing: -.045em; margin-bottom: 24px; }
+.intro > p:last-child { max-width: 33ch; font-size: 18px; line-height: 1.65; color: var(--muted-foreground); }
+.panel { min-width: 0; background: var(--card); padding: 32px; border-radius: 20px; }
+.heading { margin-bottom: 28px; }
+.heading h1 { font-size: clamp(26px, 2.8vw, 32px); font-weight: 650; letter-spacing: -.035em; line-height: 1.2; text-wrap: balance; overflow-wrap: anywhere; }
+.heading p { margin-top: 12px; font-size: 16px; line-height: 1.6; color: var(--muted-foreground); text-wrap: pretty; }
+.form { display: grid; gap: 20px; }
+.fields { display: grid; gap: 20px; min-width: 0; border: 0; padding: 0; margin: 0; }
+.row { display: grid; gap: 20px; grid-template-columns: minmax(0, 1fr); }
+.field { display: grid; gap: 8px; min-width: 0; }
+.field > label { font-size: 14px; font-weight: 600; line-height: 1.5; }
+.workspace input:not([type="checkbox"]):not([type="hidden"]) { width: 100%; min-width: 0; min-height: 48px; border: 1px solid var(--border); border-radius: 10px; background: var(--background); padding: 12px; font-size: 16px; line-height: 1.4; box-shadow: none; }
+.workspace input::placeholder { color: var(--muted-foreground); opacity: .75; }
+.password { position: relative; min-width: 0; }
+.password input { padding-right: 56px !important; }
+.passwordToggle { position: absolute; right: 2px; top: 50%; transform: translateY(-50%); width: 44px; min-height: 44px; display: flex; align-items: center; justify-content: center; color: var(--muted-foreground); border-radius: 8px; }
+.passwordToggle:hover { background: var(--secondary); color: var(--foreground); }
+.hint { font-size: 13px; line-height: 1.6; color: var(--muted-foreground); overflow-wrap: anywhere; }
+.submit, .secondary { display: inline-flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 48px; height: auto; padding: 12px 16px; border-radius: 10px; background: var(--primary); color: var(--primary-foreground); font-size: 16px; font-weight: 600; line-height: 1.5; text-align: center; white-space: normal; overflow-wrap: anywhere; box-shadow: none; }
+.secondary { background: var(--secondary); color: var(--secondary-foreground); }
+.submit:hover { filter: brightness(.94); }
+.submit:active, .secondary:active { translate: 0 1px; }
+.workspace :is(button, a, input) { transition: background-color 160ms ease, color 160ms ease; }
+.workspace :is(button, a, input):focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
+.workspace button:disabled { cursor: not-allowed; opacity: .55; }
+.workspace svg { flex-shrink: 0; }
+.links { display: grid; gap: 4px; text-align: center; font-size: 14px; line-height: 1.6; }
+.links a { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; color: var(--primary); font-weight: 550; padding: 8px 4px; }
+.links a.submit { color: var(--primary-foreground); }
+.links a:hover, .home:hover, .footer a:hover { text-decoration: underline; text-underline-offset: 4px; }
+.links p { color: var(--muted-foreground); }
+.error, .notice { padding: 16px; border-radius: 10px; background: var(--secondary); font-size: 14px; line-height: 1.65; overflow-wrap: anywhere; }
+.error { color: var(--destructive); background: color-mix(in srgb, var(--destructive) 7%, var(--background)); }
+.notice p + p { margin-top: 8px; }
+.notice strong { font-weight: 600; }
+.notice + .links, .form + .links { margin-top: 16px; }
+.note { margin-top: 24px; color: var(--muted-foreground); font-size: 13px; line-height: 1.7; }
+.legalConsent { display: flex; align-items: flex-start; gap: 12px; padding-block: 8px; font-size: 14px; line-height: 1.7; }
+.legalConsent input { margin-top: 6px; width: 18px; height: 18px; flex-shrink: 0; accent-color: var(--primary); }
+.legalConsent a { color: var(--primary); text-decoration: underline; text-underline-offset: 3px; }
+.divider { text-align: center; color: var(--muted-foreground); font-size: 13px; margin: 20px 0; }
+.footer { padding-top: 16px; padding-bottom: max(16px, env(safe-area-inset-bottom)); font-size: 12px; color: var(--muted-foreground); flex-wrap: wrap; }
+.footer nav { display: flex; flex-wrap: wrap; gap: 20px; }
+.footer a, .home { display: inline-flex; align-items: center; min-height: 44px; }
+.skip { position: fixed; left: 16px; top: -100px; padding: 12px 20px; border-radius: 8px; background: var(--primary); color: var(--primary-foreground); z-index: 50; }
+.skip:focus { top: 16px; }
+@media (min-width: 1200px) { .row { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 900px) {
+ .intro { display: none; }
+ .main { grid-template-columns: minmax(0, 1fr); max-width: 560px; padding: 24px 24px 40px; }
+ .header { padding: 20px 24px; }
+ .panel { padding: 28px; }
+}
+@media (max-width: 480px) {
+ .header { padding: 16px 20px 8px; }
+ .brand { font-size: 14px; gap: 10px; }
+ .logo { width: 32px; height: 32px; }
+ .home { display: none; }
+ .main { padding: 28px 20px 32px; margin-block: 0 auto; }
+ .panel { padding: 0; background: transparent; border-radius: 0; }
+ .heading { margin-bottom: 24px; }
+ .heading h1 { font-size: 28px; }
+ .footer { padding-inline: 20px; gap: 4px; }
+ .footer > span { width: 100%; overflow-wrap: anywhere; }
+}
+@media (prefers-reduced-motion: reduce) { .workspace :is(button, a, input) { transition: none; translate: none; } }

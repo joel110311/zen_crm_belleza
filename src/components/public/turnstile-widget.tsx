@@ -24,46 +24,60 @@ export function TurnstileWidget({ action, onToken, siteKey }: TurnstileWidgetPro
     const containerRef = useRef<HTMLDivElement>(null);
     const widgetIdRef = useRef<string | null>(null);
     const [failed, setFailed] = useState(false);
+    const [rendered, setRendered] = useState(false);
     useEffect(() => {
         if (!siteKey || !containerRef.current) return;
         let active = true;
         const render = () => {
             if (!active || !containerRef.current || !window.turnstile || widgetIdRef.current) return;
-            widgetIdRef.current = window.turnstile.render(containerRef.current, {
+            try {
+                widgetIdRef.current = window.turnstile.render(containerRef.current, {
                 sitekey: siteKey,
                 action,
                 theme: "auto",
+                size: "compact",
                 callback: (token: string) => onToken(token),
                 "expired-callback": () => onToken(null),
                 "error-callback": () => { setFailed(true); onToken(null); },
-            });
+                });
+                setRendered(true);
+                setFailed(false);
+            } catch {
+                setFailed(true);
+                onToken(null);
+            }
         };
-        const existing = document.getElementById(scriptId) as HTMLScriptElement | null;
-        if (existing) {
-            existing.addEventListener("load", render);
-            render();
-        } else {
-            const script = document.createElement("script");
+        const fail = () => { if (active) { setFailed(true); onToken(null); } };
+        const timeout = window.setTimeout(() => { if (!widgetIdRef.current) fail(); }, 15000);
+        let script = document.getElementById(scriptId) as HTMLScriptElement | null;
+        const isNew = !script;
+        if (!script) {
+            script = document.createElement("script");
             script.id = scriptId;
             script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
             script.async = true;
             script.defer = true;
-            script.addEventListener("load", render);
-            script.addEventListener("error", () => setFailed(true));
-            document.head.appendChild(script);
         }
+        script.addEventListener("load", render);
+        script.addEventListener("error", fail);
+        if (isNew) document.head.appendChild(script);
+        render();
         return () => {
             active = false;
+            window.clearTimeout(timeout);
+            script.removeEventListener("load", render);
+            script.removeEventListener("error", fail);
             if (widgetIdRef.current && window.turnstile) window.turnstile.remove(widgetIdRef.current);
             widgetIdRef.current = null;
         };
     }, [action, onToken, siteKey]);
 
-    if (!siteKey) return <p className="text-sm text-destructive">La verificación de seguridad no está configurada.</p>;
+    if (!siteKey) return <p role="alert" className="text-sm text-destructive">La verificación de seguridad no está configurada.</p>;
     return (
         <div className="space-y-2">
-            <div ref={containerRef} />
-            {failed ? <p className="text-sm text-destructive">No se pudo cargar la verificación. Recarga la página e inténtalo de nuevo.</p> : null}
+            {!rendered && !failed && <p role="status" className="text-sm text-muted-foreground">Cargando verificación de seguridad…</p>}
+            <div ref={containerRef} className="min-h-[140px]" />
+            {failed ? <p role="alert" className="text-sm text-destructive">No se pudo cargar la verificación. Recarga la página e inténtalo de nuevo.</p> : null}
         </div>
     );
 }

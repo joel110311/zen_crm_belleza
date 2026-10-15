@@ -1,5 +1,6 @@
 "use client";
 
+import styles from "@/components/public/auth-workspace.module.css";
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
@@ -22,7 +23,9 @@ export function ForgotPasswordForm({ turnstileSiteKey }: ForgotPasswordFormProps
     }, []);
     const handleCaptcha = useCallback((token: string | null) => setCaptchaToken(token), []);
     async function submit(event: FormEvent<HTMLFormElement>) {
-        event.preventDefault(); setError(null);
+        event.preventDefault();
+        if (pending) return;
+        setError(null);
         if (!captchaToken) { setError("Completa la verificación de seguridad para continuar."); return; }
         setPending(true);
         const email = String(new FormData(event.currentTarget).get("email") || "");
@@ -34,5 +37,15 @@ export function ForgotPasswordForm({ turnstileSiteKey }: ForgotPasswordFormProps
         } catch (requestError) { setCaptchaToken(null); setError(requestError instanceof Error ? requestError.message : "Ocurrió un error inesperado."); }
         finally { setPending(false); }
     }
-    return <section className="w-full rounded-2xl border bg-card p-6 shadow-sm sm:p-8"><h1 className="text-2xl font-semibold">Restablece tu contraseña</h1><p className="mt-2 text-sm leading-6 text-muted-foreground">Te enviaremos un enlace si existe una cuenta asociada al correo.</p>{message ? <p className="mt-6 rounded-lg border border-primary/20 bg-primary/5 p-4 text-sm leading-6">{message}</p> : <form className="mt-6 space-y-4" onSubmit={submit}><label className="block space-y-1.5 text-sm font-medium">Correo electrónico<input name="email" type="email" required autoComplete="email" className="mt-1 h-11 w-full rounded-md border bg-background px-3" /></label><TurnstileWidget action="password_reset" onToken={handleCaptcha} siteKey={turnstileSiteKey} />{error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}<button disabled={pending} className="inline-flex h-11 w-full items-center justify-center rounded-md bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:opacity-60">{pending ? <><Loader2 className="mr-2 size-4 animate-spin" />Enviando...</> : "Enviar enlace"}</button></form>}<p className="mt-5 text-center text-sm text-muted-foreground"><Link href="/login" className="font-medium text-primary hover:underline">Volver a iniciar sesión</Link></p></section>;
+    return <>
+        {message ? <div role="status" className={styles.notice}><strong>Revisa tu correo</strong><p>{message}</p><p>Si no lo encuentras, revisa la carpeta de spam.</p></div> : <form className={styles.form} onSubmit={submit} aria-busy={pending}>
+            <fieldset disabled={pending} className={styles.fields}>
+                <div className={styles.field}><label htmlFor="recovery-email">Correo electrónico</label><input id="recovery-email" name="email" type="email" required autoComplete="email" /></div>
+                <TurnstileWidget action="password_reset" onToken={handleCaptcha} siteKey={turnstileSiteKey} />
+                {error && <p role="alert" className={styles.error}>{error}</p>}
+                <button disabled={pending} className={styles.submit}>{pending ? <><Loader2 className="size-5 animate-spin" aria-hidden="true" />Enviando…</> : "Enviar enlace"}</button>
+            </fieldset>
+        </form>}
+        <div className={styles.links}><Link href="/login">Volver a iniciar sesión</Link></div>
+    </>;
 }
