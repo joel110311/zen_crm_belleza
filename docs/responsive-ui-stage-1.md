@@ -24,7 +24,7 @@ Inicio autorizado el 13 de octubre de 2026. Diseño aprobado a partir del protot
 | Chats y mensajes | Se conserva; comprobado el acceso con la nueva navegación | Lista/conversación/detalle y teclado en teléfonos reales |
 | Asistente IA / FAQs | Se conserva configuración y entrenamiento; resumen y consumo en Hoy | Reorganización de secciones y editor móvil |
 | Recepción, negocio, servicios, especialistas y plantillas | Accesibles desde el menú según permiso | Adaptación específica de cada tarea |
-| Pipeline y reportes | Rutas existentes inventariadas; sin cambios de contenido ni nuevas entradas de menú | Validar vigencia, permisos y recorrido antes de diseñar |
+| Reportes | Rutas existentes inventariadas; sin cambios de contenido ni nuevas entradas de menú | Validar vigencia, permisos y recorrido antes de diseñar. Pipeline queda excluido por decisión de Joel |
 | Plan y facturación | Enlace del propietario conservado; contratación continúa web | Revisión completa de estados y comparación móvil |
 | Ajustes, acceso, reservas públicas e invitaciones | Sin cambios de contenido | Fase final de diseño, estados y revisión integral |
 

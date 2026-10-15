@@ -73,3 +73,19 @@ test("loading does not briefly expose modules and nested routes keep the right s
     false,
   );
 });
+
+test("Pipeline remains excluded from the CRM navigation", () => {
+  for (const tenantSlug of [undefined, "salon-a"]) {
+    const items = getWorkspaceDestinations({
+      subject: { role: "ADMINISTRADOR" },
+      tenantSlug,
+      canManageBilling: true,
+    });
+    assert.ok(
+      !items.some(
+        (item) =>
+          /pipeline/i.test(item.title) || item.href.includes("/pipeline"),
+      ),
+    );
+  }
+});

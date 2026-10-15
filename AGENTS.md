@@ -12,3 +12,4 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 - Para cambios de interfaz, comprobar en el navegador anchos efectivos de 320, 375, 390, 768, 1024 y 1440 píxeles CSS. Revisar texto, botones, ventanas y desbordamiento horizontal; guardar evidencia visual. En pantallas de poca altura, verificar que el contenido del diálogo siga accesible con desplazamiento vertical.
 - Joel redespliega los cambios que no requieren migraciones de base de datos ni creación de tablas. En esos casos, verificar, hacer commit y subir a Git, pero no redesplegar automáticamente. Informar el commit y cualquier compilación pendiente.
+- Pipeline fue retirado por decisión de Joel: no restaurarlo en el menú ni incluirlo en el plan de rediseño, salvo una nueva petición explícita.

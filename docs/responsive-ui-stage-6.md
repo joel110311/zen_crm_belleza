@@ -44,4 +44,4 @@ Evidencia local: `output/responsive-ui-stage-6/qa-layout.json`, capturas y regis
 
 Pendiente la revisión en teléfonos físicos Android/Chrome e iPhone/Safari, incluyendo teclado, gestos y áreas seguras. Google no está conectado en el entorno de pruebas: no se verificó una sincronización real ni se enviaron mensajes o datos a proveedores. Se probó abrir/cancelar el recortador; no se verificó una subida real de imagen en esta entrega.
 
-Siguiente bloque: **Recepción y Pipeline**, después reportes y Plan/facturación. Finalmente configuración, accesos y pantallas públicas, con regresión integral.
+Siguiente bloque: **Recepción**, después reportes y Plan/facturación. Finalmente configuración, accesos y pantallas públicas, con regresión integral.

@@ -42,4 +42,4 @@ Evidencia: `output/responsive-ui-stage-5/qa-layout.json`, capturas y registros d
 
 La configuración local del modelo impidió generar la respuesta del simulador. Se verificaron su presentación y recuperación del error; **no se verificó una respuesta real nueva del modelo en esta entrega**. Tampoco se enviaron plantillas a Meta, mensajes de WhatsApp ni campañas. Revisar esos recorridos con canales autorizados y conectados antes de una aceptación completa. El motor de FAQs no se modificó en esta fase.
 
-Pendiente la revisión en teléfonos físicos Android/Chrome e iPhone/Safari, incluyendo teclado, gestos y áreas seguras. El siguiente bloque del plan es **Mi negocio, Servicios y Especialistas**, seguido de Recepción, Pipeline, reportes y facturación; luego configuración y pantallas públicas.
+Pendiente la revisión en teléfonos físicos Android/Chrome e iPhone/Safari, incluyendo teclado, gestos y áreas seguras. El siguiente bloque del plan es **Mi negocio, Servicios y Especialistas**, seguido de Recepción, reportes y facturación; luego configuración y pantallas públicas.

@@ -1,0 +1,421 @@
+.workspace {
+  min-width: 0;
+  padding-bottom: 16px;
+}
+.workspace button,
+.dialog button,
+.finishDialog button {
+  min-height: 44px;
+  white-space: normal;
+  height: auto;
+}
+.workspace input,
+.workspace select,
+.dialog input,
+.dialog select {
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  min-height: 44px;
+  font-size: 16px;
+}
+.workspace select,
+.dialog select {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: var(--background);
+}
+.workspace h3,
+.workspace p,
+.dialog h3,
+.dialog p,
+.finishDialog h3,
+.finishDialog p {
+  overflow-wrap: anywhere;
+}
+.headerActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.dateBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.dateBar > p {
+  color: var(--muted-foreground);
+  font-size: 14px;
+}
+.dayControls {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 170px) 44px auto;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+.dayControls > button {
+  flex-shrink: 0;
+}
+.stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.stats button,
+.reminderStats button {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  text-align: left;
+}
+.stats button[aria-pressed="true"],
+.reminderStats button[aria-pressed="true"] {
+  border-color: var(--primary);
+  background: var(--accent);
+}
+.stats strong {
+  font-size: 26px;
+  line-height: 1.1;
+}
+.stats span {
+  font-size: 13px;
+  color: var(--muted-foreground);
+}
+.agenda {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--card);
+  min-width: 0;
+}
+.filters {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+  padding: 16px;
+  border-bottom: 1px solid var(--border);
+  align-items: end;
+}
+.filters > div {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+.filters > div:first-child {
+  grid-column: 1/-1;
+}
+.filters label,
+.reminderFilters label {
+  font-size: 13px;
+}
+.listHeading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 16px;
+}
+.listHeading h2 {
+  font-weight: 600;
+}
+.listHeading span {
+  font-size: 13px;
+  color: var(--muted-foreground);
+}
+.list {
+  border-top: 1px solid var(--border);
+}
+.appointment {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  gap: 12px;
+  padding: 16px;
+  min-width: 0;
+}
+.appointment + .appointment {
+  border-top: 1px solid var(--border);
+}
+.time {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: start;
+}
+.time strong {
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+}
+.time span {
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+.appointmentInfo {
+  min-width: 0;
+}
+.appointmentInfo h3 {
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.appointmentInfo p {
+  margin-top: 4px;
+}
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+  min-width: 0;
+}
+.badges :global([data-slot="badge"]) {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  max-width: 100%;
+}
+.appointmentActions {
+  grid-column: 1/-1;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  min-width: 0;
+}
+.primaryActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.primaryActions > button,
+.primaryActions > a {
+  flex: 1;
+  min-height: 44px;
+}
+.primaryActions:empty {
+  display: none;
+}
+.moreActions {
+  min-width: 0;
+}
+.moreActions summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 12px 8px;
+  min-height: 44px;
+}
+.moreActions > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-block: 8px;
+}
+.moreActions > div > button {
+  flex: 1 1 110px;
+}
+.moreActions > p {
+  padding: 4px 8px;
+}
+.empty {
+  min-height: 160px;
+  padding: 24px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 12px;
+  text-align: center;
+}
+.dialog {
+  max-width: 900px;
+}
+.reminderFilters {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  align-items: end;
+}
+.reminderFilters > div {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+.reminderStats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-block: 20px;
+}
+.reminderStats button {
+  padding: 12px 8px;
+}
+.reminderStats strong {
+  font-size: 22px;
+}
+.reminderStats span {
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.reminderList {
+  display: grid;
+  gap: 12px;
+}
+.reminder {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.reminder > div {
+  min-width: 0;
+}
+.reminder h3 {
+  font-weight: 600;
+}
+.reminder p {
+  margin-top: 8px;
+}
+.retryActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+.reminderError {
+  display: flex;
+  align-items: start;
+  gap: 8px;
+  padding: 12px;
+  color: var(--destructive);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 13px;
+}
+.finishDialog {
+  max-width: 560px;
+}
+.finishSummary {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.finishSummary h3 {
+  font-size: 20px;
+  font-weight: 600;
+}
+@container (min-width:640px) {
+  .stats {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .filters {
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .filters > div:first-child {
+    grid-column: auto;
+  }
+  .appointment {
+    grid-template-columns: 80px minmax(0, 1fr);
+  }
+  .appointmentActions {
+    grid-column: 2;
+  }
+  .primaryActions > button,
+  .primaryActions > a {
+    flex: 0 1 auto;
+  }
+}
+@container (min-width:1050px) {
+  .appointment {
+    grid-template-columns: 80px minmax(0, 1fr) minmax(220px, 300px);
+    align-items: start;
+  }
+  .appointmentActions {
+    grid-column: 3;
+  }
+}
+@media (min-width: 640px) {
+  .reminderFilters {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  }
+}
+@media (max-width: 420px) {
+  .headerActions {
+    width: 100%;
+  }
+  .headerActions > button {
+    flex: 1;
+  }
+  .dayControls {
+    width: 100%;
+    grid-template-columns: 40px minmax(0, 1fr) 40px 48px;
+    gap: 6px;
+  }
+  .dayControls > button {
+    min-width: 0;
+    width: 100%;
+  }
+}
+
+.filters {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+.filters > div:first-child {
+  grid-column: auto;
+}
+.extraFilters {
+  display: none !important;
+  grid-column: 1/-1;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.extraFilters[data-expanded="true"] {
+  display: grid !important;
+}
+.extraFilters > div {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+.toggleFilters {
+  align-self: end;
+}
+@container (min-width:640px) {
+  .filters {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .extraFilters {
+    display: grid !important;
+    grid-column: auto;
+  }
+  .toggleFilters {
+    display: none;
+  }
+}
+@container (max-width:639px) {
+  .stats button {
+    flex-direction: row;
+    align-items: center;
+    padding: 12px;
+    gap: 10px;
+  }
+  .stats strong {
+    font-size: 24px;
+  }
+  .stats span {
+    font-size: 12px;
+  }
+}

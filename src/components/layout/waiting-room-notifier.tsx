@@ -49,6 +49,7 @@ function writeDismissed(values: Set<string>) {
 
 export function WaitingRoomNotifier() {
     const pathname = usePathname();
+    const isReception = pathname === "/dashboard/reception" || /^\/t\/[^/]+\/reception\/?$/.test(pathname);
     const pollInFlightRef = useRef(false);
     const [items, setItems] = useState<WaitingRoomNotification[]>([]);
     const [locale, setLocale] = useState("es-MX");
@@ -69,7 +70,7 @@ export function WaitingRoomNotifier() {
     }, []);
 
     useEffect(() => {
-        if (pathname === "/dashboard/reception") return;
+        if (isReception) return;
         let disposed = false;
 
         const poll = async () => {
@@ -99,14 +100,14 @@ export function WaitingRoomNotifier() {
             disposed = true;
             window.clearInterval(interval);
         };
-    }, [pathname]);
+    }, [pathname, isReception]);
 
     const visibleItems = useMemo(
         () => items.filter((item) => !dismissed.has(`${item.type || "waiting_room"}:${item.id}`)).slice(0, 3),
         [dismissed, items],
     );
 
-    if (visibleItems.length === 0) return null;
+    if (isReception || visibleItems.length === 0) return null;
 
     return (
         <div className="pointer-events-none fixed bottom-5 right-5 z-50 flex w-[min(380px,calc(100vw-2rem))] flex-col gap-3">
