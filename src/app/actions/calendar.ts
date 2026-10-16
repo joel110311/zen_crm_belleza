@@ -26,6 +26,8 @@ import { getActiveTenantRuntimeContext } from "@/lib/active-tenant-context";
 import { buildOperationContext } from "@/lib/operation-context";
 import { businessDayBounds } from "@/lib/calendar/business-hours";
 import { resolveCalendarClient } from "@/lib/calendar/client-selection";
+import { validCalendarDateKey } from "@/lib/calendar/draft";
+import { operationDateReference } from "@/lib/operation-dates";
 
 const APPOINTMENT_INCLUDE = {
   user: true,
@@ -46,7 +48,7 @@ function makePublicToken() {
   return crypto.randomUUID().replace(/-/g, "");
 }
 
-export async function getAppointments(options?: { throwOnError?: boolean }) {
+export async function getAppointments(options?: { throwOnError?: boolean; rangeStart?: string; rangeEnd?: string; appointmentId?: string }) {
   await requirePermission("calendar.manage");
 
   try {
@@ -71,9 +73,23 @@ export async function getAppointments(options?: { throwOnError?: boolean }) {
         .filter((source) => source.isSelected)
         .map((source) => source.calendarId) || [];
 
+    const zone = settings?.businessTimeZone || "America/Mexico_City";
+    const ranged = Boolean(options?.rangeStart || options?.rangeEnd);
+    // Adjacent weeks at the supported UI year boundaries can fall in 1999/2101.
+    if (ranged && (!validCalendarDateKey(options?.rangeStart || "", 1999, 2101) || !validCalendarDateKey(options?.rangeEnd || "", 1999, 2101))) {
+      throw new Error("El periodo de agenda no es válido.");
+    }
+    const start = ranged ? businessDayBounds(operationDateReference(options!.rangeStart!, zone), zone).start : null;
+    const end = ranged ? businessDayBounds(operationDateReference(options!.rangeEnd!, zone), zone).start : null;
+    if (start && end && (end <= start || end.getTime() - start.getTime() > 100 * 86_400_000)) throw new Error("El periodo de agenda es demasiado amplio.");
+
     return await prisma.appointment.findMany({
       where: {
         status: { not: "cancelled" },
+        ...(start && end ? { AND: [{ OR: [
+          { startTime: { lt: end }, endTime: { gt: start } },
+          ...(options?.appointmentId ? [{ id: options.appointmentId }] : []),
+        ] }] } : {}),
         OR: [
           { googleCalendarId: null },
           ...(visibleCalendarIds.length > 0

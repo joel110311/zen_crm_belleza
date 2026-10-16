@@ -9,7 +9,7 @@ function fields<T>(...names: (keyof T)[]): Record<string, true> {
 // raw webhooks or platform billing secrets. New fields are not included automatically.
 const DATASETS = {
     user: fields<Prisma.UserSelect>("id", "name", "email", "role", "createdAt", "updatedAt"),
-    contact: fields<Prisma.ContactSelect>("id", "name", "lastName", "phone", "email", "company", "role", "tags", "status", "sourceType", "createdAt", "updatedAt"),
+    contact: fields<Prisma.ContactSelect>("id", "name", "lastName", "phone", "email", "company", "role", "tags", "status", "sourceType", "aiState", "createdAt", "updatedAt"),
     conversation: fields<Prisma.ConversationSelect>("id", "contactId", "assignedUserId", "status", "sourceType", "botActive", "createdAt", "updatedAt"),
     message: fields<Prisma.MessageSelect>("id", "conversationId", "content", "type", "direction", "status", "senderType", "mediaType", "mediaFileName", "providerRevokedAt", "createdAt"),
     appointment: fields<Prisma.AppointmentSelect>("id", "title", "startTime", "endTime", "status", "notes", "contactId", "specialistId", "serviceId", "specialistName", "confirmationStatus", "paymentStatus", "paymentAmount", "paymentCurrency", "paymentMethod", "cancellationReason", "createdAt", "updatedAt"),

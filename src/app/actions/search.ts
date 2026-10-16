@@ -29,7 +29,7 @@ export async function searchGlobal(term: string): Promise<SearchResult> {
     const normalizedTerm = term.trim();
 
     try {
-        const [contacts, deals] = await Promise.all([
+        const contacts = await
             prisma.contact.findMany({
                 where: {
                     OR: [
@@ -49,36 +49,15 @@ export async function searchGlobal(term: string): Promise<SearchResult> {
                     whatsappAvatarUrl: true,
                 },
                 take: 5,
-            }),
-            prisma.deal.findMany({
-                where: {
-                    title: { contains: normalizedTerm, mode: "insensitive" },
-                },
-                select: {
-                    id: true,
-                    title: true,
-                    value: true,
-                    stage: {
-                        select: {
-                            name: true,
-                        },
-                    },
-                },
-                take: 5,
-            }),
-        ]);
+            });
+
 
         return {
             contacts: contacts.map((contact) => ({
                 ...contact,
                 avatar: contact.whatsappAvatarUrl || undefined,
             })),
-            deals: deals.map((deal) => ({
-                id: deal.id,
-                title: deal.title,
-                value: deal.value,
-                stageName: deal.stage.name,
-            })),
+            deals: [],
         };
     } catch (error) {
         console.error("Search error:", error);

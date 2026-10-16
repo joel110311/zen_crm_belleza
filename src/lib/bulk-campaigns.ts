@@ -1399,91 +1399,6 @@ async function resolveNextCampaignRunAt(campaign: Pick<BulkCampaign, "respectBus
     return now;
 }
 
-async function moveContactDealsToClosedLostStage(contactId: string) {
-    const closedLostStage = await prisma.pipelineStage.findFirst({
-        where: { isClosedLost: true },
-        select: { id: true },
-    });
-
-    if (!closedLostStage) {
-        return false;
-    }
-
-    const openDeals = await prisma.deal.findMany({
-        where: {
-            contactId,
-            stage: {
-                isClosedWon: false,
-                isClosedLost: false,
-            },
-        },
-        select: { id: true },
-    });
-
-    if (openDeals.length === 0) {
-        return false;
-    }
-
-    await prisma.deal.updateMany({
-        where: {
-            id: {
-                in: openDeals.map((deal) => deal.id),
-            },
-        },
-        data: {
-            stageId: closedLostStage.id,
-        },
-    });
-
-    return true;
-}
-
-async function moveContactIncomingDealsToThirdStage(contactId: string) {
-    const pipelineStages = await prisma.pipelineStage.findMany({
-        where: {
-            isClosedWon: false,
-            isClosedLost: false,
-        },
-        orderBy: { order: "asc" },
-        select: {
-            id: true,
-            isIncoming: true,
-        },
-    });
-
-    const thirdStage = pipelineStages[2];
-    if (!thirdStage || thirdStage.isIncoming) {
-        return false;
-    }
-
-    const incomingDeals = await prisma.deal.findMany({
-        where: {
-            contactId,
-            stage: {
-                isIncoming: true,
-            },
-        },
-        select: { id: true },
-    });
-
-    if (incomingDeals.length === 0) {
-        return false;
-    }
-
-    await prisma.deal.updateMany({
-        where: {
-            id: {
-                in: incomingDeals.map((deal) => deal.id),
-            },
-        },
-        data: {
-            stageId: thirdStage.id,
-        },
-    });
-
-    return true;
-}
-
 async function getNextQueuedRecipientForCampaign(campaignId: string) {
     return prisma.bulkCampaignRecipient.findFirst({
         where: {
@@ -1794,17 +1709,6 @@ async function processClaimedCampaign(campaignId: string, lockId: string) {
                         },
                     });
 
-                    if (recipient.attemptNumber === 0) {
-                        try {
-                            await moveContactIncomingDealsToThirdStage(recipient.contactId);
-                        } catch (stageMoveError) {
-                            console.warn(
-                                "[BulkCampaigns] Failed to move incoming deals to third stage after initial bulk template send",
-                                stageMoveError,
-                            );
-                        }
-                    }
-
                     await refreshBulkCampaignStats(campaignId);
                     await releaseCampaignLockForNextRecipient(
                         campaign,
@@ -1872,17 +1776,6 @@ async function processClaimedCampaign(campaignId: string, lockId: string) {
                         lastError: null,
                     },
                 });
-
-                if (recipient.attemptNumber === 0) {
-                    try {
-                        await moveContactIncomingDealsToThirdStage(recipient.contactId);
-                    } catch (stageMoveError) {
-                        console.warn(
-                            "[BulkCampaigns] Failed to move incoming deals to third stage after initial bulk send",
-                            stageMoveError,
-                        );
-                    }
-                }
             } catch (error) {
                 await prisma.bulkCampaignRecipient.update({
                     where: { id: recipient.id },
@@ -2060,8 +1953,7 @@ export async function markBulkCampaignReplyForContact(
     });
 
     if (intent === "stop") {
-        await moveContactDealsToClosedLostStage(contactId);
-        console.warn("[BulkCampaigns] Contact moved to closed-lost by explicit STOP", {
+        console.warn("[BulkCampaigns] Contact opted out by explicit STOP", {
             contactId,
             reason: rawText.trim().slice(0, 160),
             sentRecipients: sentRecipients.length,

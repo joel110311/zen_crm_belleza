@@ -332,10 +332,6 @@ function hasFacebookAdsAttribution(attribution?: InboundAttribution) {
     );
 }
 
-function resolveInboundDealSource(attribution?: InboundAttribution) {
-    return hasFacebookAdsAttribution(attribution) ? "facebook_ads" : "whatsapp";
-}
-
 function buildInboundAttributionTags(attribution?: InboundAttribution) {
     if (!attribution) return [] as string[];
 
@@ -2599,7 +2595,6 @@ export async function processInboundMessage(
             }
         }
 
-        const inboundDealSource = resolveInboundDealSource(attribution);
 
         const shouldAwaitInitialAvatarRefresh = !contact.whatsappAvatarCheckedAt;
         if (shouldAwaitInitialAvatarRefresh) {
@@ -2710,47 +2705,6 @@ export async function processInboundMessage(
             });
         }
 
-        // â”€â”€ Ensure the contact already exists in the pipeline before evaluating stop rules â”€â”€
-        try {
-            const existingDeal = await prisma.deal.findFirst({
-                where: { contactId: contact.id },
-            });
-
-            if (existingDeal) {
-                if (inboundDealSource !== "whatsapp" && existingDeal.source !== inboundDealSource) {
-                    await prisma.deal.update({
-                        where: { id: existingDeal.id },
-                        data: { source: inboundDealSource },
-                    });
-                }
-            } else {
-                const incomingStage = await prisma.pipelineStage.findFirst({
-                    where: { isIncoming: true },
-                });
-
-                if (incomingStage) {
-                    const displayName = normalizeContactName(contact.name) || normalizedCustomerName;
-                    const dealTitle = displayName
-                        ? `Lead - ${displayName}`
-                        : `Lead WhatsApp - ${from}`;
-
-                    await prisma.deal.create({
-                        data: {
-                            title: dealTitle,
-                            value: 0,
-                            stageId: incomingStage.id,
-                            contactId: contact.id,
-                            source: inboundDealSource,
-                            priority: "medium",
-                        },
-                    });
-                    revalidatePath("/dashboard/pipeline");
-                }
-            }
-        } catch (dealError) {
-            console.error("[Pipeline] Failed to auto-create deal:", dealError);
-        }
-
         const botInputText = await buildInboundMediaContext({
             text,
             type: media?.type,
@@ -2789,7 +2743,7 @@ export async function processInboundMessage(
                 },
             });
             shouldScheduleAutomatedReply = false;
-            revalidatePath("/dashboard/pipeline");
+            revalidatePath("/dashboard/contacts");
         } else if (bulkReplyResult.activatedBot && conversationWasBotActive) {
             await prisma.conversation.update({
                 where: { id: conversation.id },

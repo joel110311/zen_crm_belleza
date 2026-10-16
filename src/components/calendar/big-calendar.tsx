@@ -48,6 +48,8 @@ interface BigCalendarProps {
     initialEvents: CalendarEvent[];
     initialDate?: Date;
     onDateChange?: (date: Date) => void;
+    initialView?: "month" | "week" | "day";
+    onViewChange?: (view: "month" | "week" | "day") => void;
     readOnly?: boolean;
     businessHours: BusinessHoursConfig;
     onSelectSlot: (slot: { start: Date; end: Date }) => void;
@@ -68,6 +70,8 @@ export function BigCalendar({
     initialEvents,
     initialDate,
     onDateChange,
+    initialView = "week",
+    onViewChange,
     readOnly = false,
     businessHours,
     onSelectSlot,
@@ -76,7 +80,7 @@ export function BigCalendar({
     onMutationSettled,
 }: BigCalendarProps) {
     const [events, setEvents] = useState<CalendarEvent[]>(() => normalizeEvents(initialEvents, businessHours.timeZone));
-    const [view, setView] = useState<View>(Views.WEEK);
+    const [view, setView] = useState<View>(initialView);
     const [date, setDate] = useState(() => initialDate || new Date());
     const { toast } = useToast();
 
@@ -294,7 +298,7 @@ export function BigCalendar({
                 style={{ height: "100%" }}
                 views={[Views.MONTH, Views.WEEK, Views.DAY]}
                 view={view}
-                onView={setView}
+                onView={(next) => { setView(next); if (next === "month" || next === "week" || next === "day") onViewChange?.(next); }}
                 date={date}
                 onNavigate={(next) => { setDate(next); onDateChange?.(next); }}
                 selectable={!readOnly}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import {
     buildOperationContext,
     buildOperationPhoneExample,
@@ -9,13 +9,17 @@ import {
 } from "@/lib/operation-context";
 
 export type ClientOperationContext = ReturnType<typeof buildOperationContext>;
+export const OperationContext = createContext<ClientOperationContext | null>(null);
 
 const FALLBACK_OPERATION_CONTEXT = buildOperationContext();
 
 export function useOperationContext() {
-    const [context, setContext] = useState<ClientOperationContext>(FALLBACK_OPERATION_CONTEXT);
+    const provided = useContext(OperationContext);
+    const [loadedContext, setContext] = useState<ClientOperationContext>(FALLBACK_OPERATION_CONTEXT);
+    const context = provided || loadedContext;
 
     useEffect(() => {
+        if (provided) return;
         let active = true;
         fetch("/api/operation-context", { cache: "no-store" })
             .then(async (response) => (response.ok ? response.json() : null))
@@ -37,7 +41,7 @@ export function useOperationContext() {
         return () => {
             active = false;
         };
-    }, []);
+    }, [provided]);
 
     const formatMoney = useCallback(
         (amount?: number | null, currency = context.defaultCurrency, options?: Intl.NumberFormatOptions) =>

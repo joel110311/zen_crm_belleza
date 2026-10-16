@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
@@ -25,7 +26,6 @@ import {
   updateAppointmentStatus,
 } from "@/app/actions/calendar";
 import { getSystemSettings } from "@/app/actions/settings";
-import { AppointmentDialog } from "@/components/calendar/appointment-dialog";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -66,6 +66,8 @@ import {
 import { useWorkspaceAccess } from "@/components/layout/workspace-access-context";
 import { formatDateInOperationZone } from "@/lib/operation-dates";
 import styles from "./contacts.module.css";
+
+const AppointmentDialog = dynamic(() => import("@/components/calendar/appointment-dialog").then((module) => module.AppointmentDialog));
 
 interface ContactsPageProps {
   contacts: ContactTableItem[];
@@ -208,6 +210,15 @@ export function ContactsTable({ contacts }: ContactsPageProps) {
   useEffect(() => {
     setCurrentPage(1);
   }, [searchTerm]);
+
+  useEffect(() => {
+    const next = contacts.map((contact) => contact.listMetrics?.nextAppointment?.startTime)
+      .filter((value): value is string | Date => Boolean(value))
+      .map((value) => new Date(value).getTime()).sort((a, b) => a - b)[0];
+    if (!next) return;
+    const timer = window.setTimeout(() => router.refresh(), Math.min(2_147_000_000, Math.max(1000, next - Date.now() + 1000)));
+    return () => window.clearTimeout(timer);
+  }, [contacts, router]);
 
   const handleRefresh = () => startTransition(() => router.refresh());
   const clearSelection = () => setRawSelectedContactIds([]);
@@ -771,7 +782,7 @@ export function ContactsTable({ contacts }: ContactsPageProps) {
         </div>
       </div>
 
-      <AppointmentDialog
+      {appointmentDialogOpen && <AppointmentDialog
         defaultContact={appointmentClient}
         open={appointmentDialogOpen}
         onOpenChange={(open) => {
@@ -817,7 +828,7 @@ export function ContactsTable({ contacts }: ContactsPageProps) {
           startTransition(() => router.refresh());
         }}
         businessHours={businessHours}
-      />
+      />}
     </div>
   );
 }

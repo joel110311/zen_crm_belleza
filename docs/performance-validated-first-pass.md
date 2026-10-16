@@ -52,6 +52,8 @@ No es una certificación de ausencia de errores futuros, ni una prueba física e
 
 ## Lo que sigue bajo evaluación
 
+**Actualización posterior:** la segunda entrega, sus mediciones y el orden de migración están en [performance-final-pass.md](performance-final-pass.md). Lo siguiente describe el alcance que quedaba pendiente al cerrar esta primera entrega.
+
 La virtualización del listado, separación del editor, reducción de cargas de Clientes/Agenda, medios bajo demanda y retirada completa de Pipeline requieren sus propias comparaciones y regresiones. En especial, Pipeline comparte lógica con captura de datos de IA, campañas y fichas: borrar sus dependencias sin separarlas incumpliría la condición de conservar las funciones. Borrar solamente sus componentes sin uso no demuestra una mejora de la carga de Chats.
 
 No se cambian esas rutas en esta primera entrega ni se promete que los tres cambios resuelvan toda la pesadez percibida. La evaluación siguiente debe medir escritura, desplazamiento y navegación con volúmenes representativos, manteniendo los límites actuales.

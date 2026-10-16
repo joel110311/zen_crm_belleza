@@ -33,6 +33,16 @@ export type ContactTableItem = {
     id: string;
     appointments: ClientAppointment[];
   }>;
+  listMetrics?: ClientMetrics;
+};
+
+export type ClientMetrics = {
+  attendedCount: number;
+  favoriteService: string;
+  actionAppointment: ClientAppointment | null;
+  nextAppointment: ClientAppointment | null;
+  lastVisit: ClientAppointment | null;
+  tags: string[];
 };
 
 const CLOSED_APPOINTMENT_STATUSES = new Set([
@@ -58,36 +68,31 @@ export function serviceLabel(appointment: ClientAppointment) {
   return appointment.title?.trim() || "Servicio";
 }
 
-export function getClientMetrics(contact: ContactTableItem, now = new Date()) {
+export function getClientMetrics(contact: ContactTableItem, now = new Date()): ClientMetrics {
+  if (contact.listMetrics) return contact.listMetrics;
   const appointments = uniqueAppointments(contact);
-  const attendedCount = appointments.filter(
-    (appointment) => appointment.status === "completed",
-  ).length;
+  let attendedCount = 0;
   const serviceFrequency = new Map<string, number>();
-
-  for (const appointment of appointments.filter(
-    (entry) => entry.status === "completed",
-  )) {
-    const label = serviceLabel(appointment);
-    serviceFrequency.set(label, (serviceFrequency.get(label) || 0) + 1);
+  let nextAppointment: ClientAppointment | null = null;
+  let latestAction: ClientAppointment | null = null;
+  let lastVisit: ClientAppointment | null = null;
+  for (const appointment of appointments) {
+    const time = new Date(appointment.startTime).getTime();
+    if (appointment.status === "completed") {
+      attendedCount++;
+      const label = serviceLabel(appointment);
+      serviceFrequency.set(label, (serviceFrequency.get(label) || 0) + 1);
+      if (!lastVisit || time > new Date(lastVisit.startTime).getTime()) lastVisit = appointment;
+    }
+    if (time >= now.getTime() && !CLOSED_APPOINTMENT_STATUSES.has(appointment.status) &&
+        (!nextAppointment || time < new Date(nextAppointment.startTime).getTime())) nextAppointment = appointment;
+    if (!["cancelled", "no_show"].includes(appointment.status) &&
+        (!latestAction || time > new Date(latestAction.startTime).getTime())) latestAction = appointment;
   }
-
-  const favoriteService =
-    Array.from(serviceFrequency.entries()).sort(
-      (left, right) => right[1] - left[1],
-    )[0]?.[0] || "Sin servicios todavía";
-  const nextAppointment =
-    appointments
-      .filter(
-        (appointment) =>
-          new Date(appointment.startTime) >= now &&
-          !CLOSED_APPOINTMENT_STATUSES.has(appointment.status),
-      )
-      .sort(
-        (left, right) =>
-          new Date(left.startTime).getTime() -
-          new Date(right.startTime).getTime(),
-      )[0] || null;
+  let favoriteService = "Sin servicios todavía", favoriteCount = 0;
+  for (const [label, count] of serviceFrequency) {
+    if (count > favoriteCount) { favoriteService = label; favoriteCount = count; }
+  }
   const tags = contact.tags.filter((tag) => {
     const normalized = tag.toLocaleLowerCase("es-MX");
     return (
@@ -106,26 +111,7 @@ export function getClientMetrics(contact: ContactTableItem, now = new Date()) {
   )
     tags.push("vip");
 
-  const actionAppointment =
-    nextAppointment ||
-    appointments
-      .filter(
-        (appointment) => !["cancelled", "no_show"].includes(appointment.status),
-      )
-      .sort(
-        (left, right) =>
-          new Date(right.startTime).getTime() -
-          new Date(left.startTime).getTime(),
-      )[0] ||
-    null;
-
-  const lastVisit =
-    appointments
-      .filter((entry) => entry.status === "completed")
-      .sort(
-        (a, b) =>
-          new Date(b.startTime).getTime() - new Date(a.startTime).getTime(),
-      )[0] || null;
+  const actionAppointment = nextAppointment || latestAction;
   return {
     attendedCount,
     favoriteService,
@@ -133,5 +119,17 @@ export function getClientMetrics(contact: ContactTableItem, now = new Date()) {
     nextAppointment,
     lastVisit,
     tags,
+  };
+}
+
+/** The list needs metrics and its action appointments, not the whole visit history. */
+export function contactListSnapshot(contact: ContactTableItem, now = new Date()): ContactTableItem {
+  const listMetrics = getClientMetrics(contact, now);
+  return {
+    id: contact.id, name: contact.name, lastName: contact.lastName, phone: contact.phone,
+    sourceType: contact.sourceType, tags: contact.tags, createdAt: contact.createdAt,
+    whatsappAvatarUrl: contact.whatsappAvatarUrl,
+    appointments: [], patients: contact.patients.map((patient) => ({ id: patient.id, appointments: [] })),
+    listMetrics,
   };
 }

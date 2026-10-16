@@ -16,33 +16,6 @@ async function main() {
         || await prisma.systemSettings.create({ data: { id: "default" } });
     console.log("Created settings:", settings.id);
 
-    // Create Pipeline Stages (Kommo-style)
-    const stages = [
-        { name: "Leads Entrantes", color: "#2563EB", order: 0, isIncoming: true, isClosedWon: false, isClosedLost: false },
-        { name: "Nuevo Lead", color: "#3B82F6", order: 1, isIncoming: false, isClosedWon: false, isClosedLost: false },
-        { name: "Calificado", color: "#EAB308", order: 2, isIncoming: false, isClosedWon: false, isClosedLost: false },
-        { name: "Propuesta", color: "#8B5CF6", order: 3, isIncoming: false, isClosedWon: false, isClosedLost: false },
-        { name: "Negociación", color: "#F97316", order: 4, isIncoming: false, isClosedWon: false, isClosedLost: false },
-        { name: "Cerrado Ganado", color: "#22C55E", order: 5, isIncoming: false, isClosedWon: true, isClosedLost: false },
-        { name: "Cerrado Perdido", color: "#EF4444", order: 6, isIncoming: false, isClosedWon: false, isClosedLost: true },
-    ];
-
-    for (const stage of stages) {
-        // Check if stage already exists by name
-        const existing = await prisma.pipelineStage.findFirst({ where: { name: stage.name } });
-        if (!existing) {
-            const created = await prisma.pipelineStage.create({ data: stage });
-            console.log(`Created stage: ${created.name} (order: ${created.order})`);
-        } else {
-            // Update order and flags
-            await prisma.pipelineStage.update({
-                where: { id: existing.id },
-                data: { order: stage.order, color: stage.color, isIncoming: stage.isIncoming, isClosedWon: stage.isClosedWon, isClosedLost: stage.isClosedLost },
-            });
-            console.log(`Updated stage: ${existing.name}`);
-        }
-    }
-
     // Create a test contact (Joel Venegas)
     const contact = await prisma.contact.upsert({
         where: { phone_sourceType: { phone: "524772683928", sourceType: "wuzapi" } },

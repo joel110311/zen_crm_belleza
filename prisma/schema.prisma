@@ -46,6 +46,7 @@ model Contact {
   bulkCampaignOptOutReason String?
   tags                     String[]
   status                   String    @default("lead") // lead, qualified, customer
+  aiState                  Json? // Capture/scoring state independent from retired Pipeline
   createdAt                DateTime  @default(now())
   updatedAt                DateTime  @updatedAt
 

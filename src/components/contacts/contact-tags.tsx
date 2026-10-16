@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Plus, X, Tag as TagIcon } from "lucide-react";
+import { Plus, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { addContactTag, removeContactTag } from "@/app/actions/contacts";
 import { useSession } from "next-auth/react";
@@ -19,13 +19,11 @@ import {
 interface ContactTagsProps {
   contactId: string;
   contactTags: string[];
-  dealTags: { name: string; color: string; dealTitle: string }[];
 }
 
 export function ContactTags({
   contactId,
   contactTags,
-  dealTags,
 }: ContactTagsProps) {
   const [isPending, startTransition] = useTransition();
   const [newTag, setNewTag] = useState("");
@@ -144,27 +142,7 @@ export function ContactTags({
         </div>
       </div>
 
-      {/* Pipeline Tags Group (if any) */}
-      {dealTags.length > 0 && (
-        <div>
-          <label className="text-xs font-semibold text-muted-foreground uppercase mb-2 block flex items-center gap-1">
-            <TagIcon className="h-3 w-3" />
-            Etiquetas de Negocios
-          </label>
-          <div className="flex flex-wrap gap-2">
-            {dealTags.map((dt, i) => (
-              <Badge
-                key={i}
-                className="max-w-full whitespace-normal break-all px-2.5 py-0.5 text-white flex items-center gap-1 shadow-sm"
-                style={{ backgroundColor: dt.color }}
-                title={`Negocio: ${dt.dealTitle}`}
-              >
-                {dt.name}
-              </Badge>
-            ))}
-          </div>
-        </div>
-      )}
+
     </div>
   );
 }

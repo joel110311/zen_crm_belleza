@@ -7,6 +7,7 @@ import type { Prisma } from "@prisma/client";
 import { auth } from "@/lib/auth";
 import { ensurePermissionResponse } from "@/lib/authz";
 import { getActiveTenantRuntimeContext } from "@/lib/active-tenant-context";
+import { readContactAiState } from "@/lib/ai/contact-state";
 import { consolidateConversationsList } from "@/lib/contact-deduplication";
 
 let lastAvatarRefreshKickAt = 0;
@@ -130,18 +131,7 @@ export async function GET(request: NextRequest) {
             }
 
             const conversationInclude = {
-                contact: {
-                    include: {
-                        deals: {
-                            orderBy: { updatedAt: "desc" as const },
-                            take: 1,
-                            include: {
-                                stage: true,
-                                intelligence: true,
-                            },
-                        },
-                    },
-                },
+                contact: true,
                 assignedUser: {
                     select: {
                         id: true,
@@ -185,12 +175,6 @@ export async function GET(request: NextRequest) {
 
             // Transform for frontend
             const result = conversations.map((conv) => ({
-                currentDeal: conv.contact?.deals?.[0]
-                    ? {
-                        id: conv.contact.deals[0].id,
-                        stageName: conv.contact.deals[0].stage?.name || null,
-                    }
-                    : null,
                 id: conv.id,
                 contactId: conv.contact?.id || null,
                 contactName: getConversationContactName(conv.contact),
@@ -217,17 +201,12 @@ export async function GET(request: NextRequest) {
                 botActive: conv.botActive,
                 assignedUserId: conv.assignedUserId,
                 assignedUser: conv.assignedUser,
-                leadIntelligence: conv.contact?.deals?.[0]?.intelligence
-                    ? {
-                        score: conv.contact.deals[0].intelligence.score,
-                        interestStatus: conv.contact.deals[0].intelligence.interestStatus,
-                        currentStep: conv.contact.deals[0].intelligence.currentStep,
-                        stepProgress: conv.contact.deals[0].intelligence.stepProgress,
-                        capturedName: conv.contact.deals[0].intelligence.capturedName,
-                        capturedEmail: conv.contact.deals[0].intelligence.capturedEmail,
-                        sameDayInboundCount: conv.contact.deals[0].intelligence.sameDayInboundCount,
-                    }
-                    : null,
+                leadIntelligence: conv.contact?.aiState ? (() => {
+                    const state = readContactAiState(conv.contact.aiState, conv.contact.email);
+                    return { score: state.score, interestStatus: state.interestStatus, currentStep: state.currentStep,
+                        stepProgress: state.stepProgress, capturedName: state.capturedName, capturedEmail: state.capturedEmail,
+                        sameDayInboundCount: state.sameDayInboundCount };
+                })() : null,
             }));
 
             const contactIds = conversations

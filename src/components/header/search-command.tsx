@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Briefcase, Loader2, Search, User } from "lucide-react";
+import { Loader2, Search, User } from "lucide-react";
 import { useDebounce } from "use-debounce";
 import {
     CommandDialog,
@@ -11,16 +11,13 @@ import {
     CommandInput,
     CommandItem,
     CommandList,
-    CommandSeparator,
 } from "@/components/ui/command";
 import { Button } from "@/components/ui/button";
 import { searchGlobal, type SearchResult } from "@/app/actions/search";
 import { cn } from "@/lib/utils";
 import { getContactFullName } from "@/lib/contact-name";
-import { useOperationContext } from "@/components/shared/use-operation-context";
 
 export function SearchCommand() {
-    const operationContext = useOperationContext();
     const router = useRouter();
     const [open, setOpen] = React.useState(false);
     const [query, setQuery] = React.useState("");
@@ -117,27 +114,7 @@ export function SearchCommand() {
                                 </CommandGroup>
                             ) : null}
 
-                            {data.contacts.length > 0 && data.deals.length > 0 ? <CommandSeparator /> : null}
 
-                            {data.deals.length > 0 ? (
-                                <CommandGroup heading="Deals">
-                                    {data.deals.map((deal) => (
-                                        <CommandItem
-                                            key={deal.id}
-                                            value={`deal-${deal.id}-${deal.title}`}
-                                            onSelect={() => handleSelect(() => router.push(`/dashboard/pipeline?deal=${deal.id}`))}
-                                        >
-                                            <Briefcase className="mr-2 h-4 w-4" />
-                                            <div className="flex flex-col">
-                                                <span>{deal.title}</span>
-                                                <span className="text-xs text-muted-foreground">
-                                                    {operationContext.formatMoney(deal.value, operationContext.defaultCurrency, { maximumFractionDigits: 0 })} - {deal.stageName}
-                                                </span>
-                                            </div>
-                                        </CommandItem>
-                                    ))}
-                                </CommandGroup>
-                            ) : null}
                         </>
                     ) : null}
                 </CommandList>

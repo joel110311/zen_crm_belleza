@@ -20,20 +20,12 @@ const CONTACT_LIST_INCLUDE = {
         take: 1,
         select: { id: true, botActive: true, status: true, updatedAt: true },
     },
-    deals: {
-        orderBy: { updatedAt: "desc" as const },
-        take: 1,
-        include: {
-            stage: { select: { id: true, name: true, color: true, isClosedWon: true, isClosedLost: true } },
-            intelligence: { select: { score: true, interestStatus: true, currentStep: true } },
-        },
-    },
     appointments: {
         orderBy: { startTime: "desc" as const },
         take: 3,
         select: { id: true, title: true, startTime: true, endTime: true, status: true, confirmationStatus: true },
     },
-    _count: { select: { appointments: true, conversations: true, deals: true } },
+    _count: { select: { appointments: true, conversations: true } },
 } satisfies Prisma.ContactInclude;
 
 function searchWhere(query: string): Prisma.ContactWhereInput {
@@ -65,10 +57,7 @@ export async function listContacts(context: TenantServiceContext, rawQuery?: str
         }),
         context.db.contact.count({ where }),
     ]);
-    const visibleItems = context.role === "PROFESSIONAL"
-        ? items.map((item) => ({ ...item, deals: [] }))
-        : items;
-    return { items: visibleItems, page, pageSize, total };
+    return { items, page, pageSize, total };
 }
 
 export async function getContact(context: TenantServiceContext, rawId: unknown) {
@@ -78,12 +67,11 @@ export async function getContact(context: TenantServiceContext, rawId: unknown) 
         where: { id },
         include: {
             ...CONTACT_LIST_INCLUDE,
-            deals: { orderBy: { updatedAt: "desc" }, include: { stage: true, dealTags: { include: { tag: true } } } },
             appointments: { orderBy: { startTime: "desc" }, include: { specialist: true, service: true } },
         },
     });
     if (!contact) throw new TenantServiceError("NOT_FOUND", "El contacto ya no existe.");
-    return context.role === "PROFESSIONAL" ? { ...contact, deals: [] } : contact;
+    return contact;
 }
 
 function contactData(rawInput: unknown, partial = false) {

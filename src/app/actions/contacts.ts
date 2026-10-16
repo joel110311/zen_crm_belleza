@@ -12,42 +12,9 @@ import { resolveMessageSourceId } from "@/lib/message-source";
 import { getSystemSettingsOrDefaults } from "@/lib/system-settings";
 import { requireAnyPermission } from "@/lib/authz";
 import { getActiveTenantRuntimeContext } from "@/lib/active-tenant-context";
+import { contactListSnapshot } from "@/lib/contacts-view";
 
 const CONTACT_LIST_INCLUDE = {
-    conversations: {
-        orderBy: { updatedAt: "desc" },
-        take: 1,
-        select: {
-            botActive: true,
-            assignedUser: {
-                select: {
-                    name: true,
-                },
-            },
-            updatedAt: true,
-        },
-    },
-    deals: {
-        orderBy: { updatedAt: "desc" },
-        take: 1,
-        include: {
-            stage: {
-                select: {
-                    name: true,
-                    color: true,
-                    isClosedWon: true,
-                    isClosedLost: true,
-                },
-            },
-            intelligence: {
-                select: {
-                    score: true,
-                    interestStatus: true,
-                    currentStep: true,
-                },
-            },
-        },
-    },
     appointments: {
         orderBy: { startTime: "desc" },
         select: {
@@ -106,10 +73,6 @@ const CONTACT_LIST_INCLUDE = {
         },
     },
 } satisfies Prisma.ContactInclude;
-
-export type ContactListItem = Prisma.ContactGetPayload<{
-    include: typeof CONTACT_LIST_INCLUDE;
-}>;
 
 function buildContactSearchWhere(query?: string): Prisma.ContactWhereInput {
     if (!query) {
@@ -212,7 +175,6 @@ function revalidateContactSurfaces(contactIds: string[] = []) {
     revalidatePath("/dashboard");
     revalidatePath("/dashboard/contacts");
     revalidatePath("/dashboard/inbox");
-    revalidatePath("/dashboard/pipeline");
 
     for (const contactId of contactIds) {
         revalidatePath(`/dashboard/contacts/${contactId}`);
@@ -348,7 +310,12 @@ export async function getContacts(query?: string) {
         const contacts = await prisma.contact.findMany({
             where: buildContactSearchWhere(query),
             orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
-            include: CONTACT_LIST_INCLUDE,
+            select: {
+                id: true, sourceType: true, name: true, lastName: true, phone: true,
+                tags: true, createdAt: true, whatsappAvatarUrl: true,
+                appointments: CONTACT_LIST_INCLUDE.appointments,
+                patients: CONTACT_LIST_INCLUDE.patients,
+            },
         });
 
         if (operational) refreshWhatsAppAvatarForContactsInBackground(
@@ -356,7 +323,8 @@ export async function getContacts(query?: string) {
             { limit: 6, concurrency: 2 },
         );
 
-        return contacts;
+        const now = new Date();
+        return contacts.map((contact) => contactListSnapshot(contact, now));
     } catch (error) {
         console.error("Failed to fetch contacts:", error);
         return [];
@@ -375,15 +343,6 @@ export async function getContact(id: string) {
         const contact = await prisma.contact.findUnique({
             where: { id },
             include: {
-                deals: {
-                    include: {
-                        dealTags: {
-                            include: {
-                                tag: true,
-                            },
-                        },
-                    },
-                },
                 appointments: CONTACT_LIST_INCLUDE.appointments,
                 patients: CONTACT_LIST_INCLUDE.patients,
                 conversations: {

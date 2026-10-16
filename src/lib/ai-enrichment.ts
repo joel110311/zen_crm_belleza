@@ -9,7 +9,7 @@ import { hasExplicitCompanyDisclosure } from "@/lib/contact-enrichment-guards";
 /**
  * AI Contact Enrichment Service
  * Analyzes incoming messages for contact data (full name, company, email)
- * and updates the Contact and Deal records accordingly.
+ * and updates the Contact record accordingly.
  * Uses Gemini API if available, otherwise silently skips.
  */
 
@@ -161,30 +161,6 @@ export async function enrichContactFromMessage(
                 data: contactUpdate,
             });
             console.log(`[AI Enrichment] Updated contact ${contactId}:`, contactUpdate);
-
-            // Also update any associated deals' titles if we got a better name
-            if (contactUpdate.name || contactUpdate.lastName) {
-                const fullName = [
-                    contactUpdate.name || contact.name,
-                    contactUpdate.lastName || contact.lastName,
-                ].filter(Boolean).join(" ");
-
-                // Update deal titles that were auto-generated from WhatsApp
-                const deals = await prisma.deal.findMany({
-                    where: { contactId: contactId, source: "whatsapp" },
-                });
-
-                for (const deal of deals) {
-                    // Only update if the title looks like it was auto-generated
-                    if (deal.title.startsWith("Lead WhatsApp") || deal.title.includes(contact.phone)) {
-                        await prisma.deal.update({
-                            where: { id: deal.id },
-                            data: { title: `Lead - ${fullName}` },
-                        });
-                        console.log(`[AI Enrichment] Updated deal ${deal.id} title to: Lead - ${fullName}`);
-                    }
-                }
-            }
         }
     } catch (error) {
         console.error("[AI Enrichment] Error enriching contact:", error);

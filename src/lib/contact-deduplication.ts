@@ -7,6 +7,7 @@ export type DeduplicationContact = {
     name?: string | null;
     lastName?: string | null;
     email?: string | null;
+    aiState?: unknown;
     company?: string | null;
     role?: string | null;
     whatsappAvatarUrl?: string | null;
@@ -180,6 +181,15 @@ async function mergeContactsInTransaction(primary: DeduplicationContact, duplica
 
         // Inherit fields if primary was missing them
         const updates: Record<string, unknown> = {};
+        if (!primary.aiState && dup.aiState) {
+            updates.aiState = dup.aiState;
+            primary.aiState = dup.aiState;
+        }
+        const tags = [...new Set([...(primary.tags || []), ...(dup.tags || [])])];
+        if (tags.length !== (primary.tags || []).length) {
+            updates.tags = tags;
+            primary.tags = tags;
+        }
         if (!primary.bulkCampaignOptOutAt && dup.bulkCampaignOptOutAt) {
             updates.bulkCampaignOptOutAt = dup.bulkCampaignOptOutAt;
             updates.bulkCampaignOptOutReason = dup.bulkCampaignOptOutReason;

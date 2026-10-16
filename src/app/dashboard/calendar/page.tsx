@@ -1,14 +1,13 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import dynamic from "next/dynamic";
 import { useSession } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
 import { deleteAppointment, getAppointments } from "@/app/actions/calendar";
 import { getSystemSettings } from "@/app/actions/settings";
 import { getSpecialists } from "@/app/actions/specialists";
-import { BigCalendar } from "@/components/calendar/big-calendar";
 import { AppointmentList } from "@/components/calendar/appointment-list";
-import { AppointmentDialog } from "@/components/calendar/appointment-dialog";
 import type { SelectedAppointmentEvent } from "@/components/calendar/appointment-dialog";
 import { Button } from "@/components/ui/button";
 import {
@@ -41,6 +40,11 @@ import {
   getOperationTodayKey,
 } from "@/lib/operation-dates";
 import { normalizeRole } from "@/lib/permissions";
+import { calendarQueryWindow } from "@/lib/calendar/query-window";
+import { useDesktopWorkspace } from "@/components/shared/use-desktop-workspace";
+
+const BigCalendar = dynamic(() => import("@/components/calendar/big-calendar").then((module) => module.BigCalendar));
+const AppointmentDialog = dynamic(() => import("@/components/calendar/appointment-dialog").then((module) => module.AppointmentDialog));
 
 type CalendarFilterOption = {
   id: string;
@@ -111,6 +115,8 @@ type CalendarSelectedEvent = SelectedAppointmentEvent;
 export default function CalendarPage() {
   const searchParams = useSearchParams();
   const { readOnly } = useWorkspaceAccess();
+  const desktop = useDesktopWorkspace();
+  const loadVersion = useRef(0);
   const [chosenDay, setChosenDay] = useState<string | null>(() =>
     validCalendarDateKey(searchParams.get("date")),
   );
@@ -140,6 +146,7 @@ export default function CalendarPage() {
   const [activeView, setActiveView] = useState<"auto" | "list" | "calendar">(
     "auto",
   );
+  const [calendarView, setCalendarView] = useState<"month" | "week" | "day">("week");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] =
     useState<CalendarSelectedEvent | null>(null);
@@ -150,32 +157,37 @@ export default function CalendarPage() {
   const [businessHours, setBusinessHours] = useState(() =>
     normalizeBusinessHours(),
   );
+  const selectedDay = chosenDay || getOperationTodayKey(businessHours.timeZone);
+  const queryWindow = useMemo(() => calendarQueryWindow(selectedDay), [selectedDay]);
+  const showCalendar = activeView === "calendar" || (activeView === "auto" && desktop);
 
   const applyAppointmentsState = useCallback((data: CalendarAppointment[]) => {
     setAppointments(data);
   }, []);
 
   const fetchAppointments = useCallback(async () => {
+    const version = ++loadVersion.current;
     setLoading(true);
     setLoadError("");
     try {
       const [data, settings, specialistsData] = await Promise.all([
-        getAppointments({ throwOnError: true }),
+        getAppointments({ throwOnError: true, rangeStart: queryWindow.start, rangeEnd: queryWindow.end, appointmentId: requestedAppointmentId || undefined }),
         getSystemSettings(),
         getSpecialists(),
       ]);
+      if (version !== loadVersion.current) return;
       applyAppointmentsState(data);
       setBusinessHours(normalizeBusinessHours(settings));
       setSpecialists(specialistsData);
     } catch {
+      if (version !== loadVersion.current) return;
       setLoadError(
         "No pudimos cargar la agenda. Tus citas no se han modificado.",
       );
     } finally {
-      setLoading(false);
+      if (version === loadVersion.current) setLoading(false);
     }
-  }, [applyAppointmentsState]);
-  const selectedDay = chosenDay || getOperationTodayKey(businessHours.timeZone);
+  }, [applyAppointmentsState, queryWindow.start, queryWindow.end, requestedAppointmentId]);
   const selectedDate = useMemo(
     () => dateKeyToLocalNoonDate(selectedDay),
     [selectedDay],
@@ -666,9 +678,11 @@ export default function CalendarPage() {
             />
           </section>
           <div className={styles.calendarCanvas}>
-            <BigCalendar
+            {showCalendar && <BigCalendar
               initialEvents={events}
               initialDate={selectedDate}
+              initialView={calendarView}
+              onViewChange={setCalendarView}
               onDateChange={(date) =>
                 setChosenDay(getLocalCalendarDateKey(date))
               }
@@ -678,11 +692,11 @@ export default function CalendarPage() {
               onAppointmentTimeChange={handleAppointmentTimeChange}
               onMutationSettled={fetchAppointments}
               businessHours={businessHours}
-            />
+            />}
           </div>
         </>
       )}
-      <AppointmentDialog
+      {isDialogOpen && <AppointmentDialog
         readOnly={readOnly}
         lockedSpecialistId={
           isProfessional ? currentUserSpecialist?.id || null : null
@@ -703,7 +717,7 @@ export default function CalendarPage() {
         }
         onSuccess={fetchAppointments}
         businessHours={businessHours}
-      />
+      />}
     </div>
   );
 }

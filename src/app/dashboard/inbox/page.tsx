@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import dynamic from "next/dynamic";
 import Image from "next/image";
 import Link from "next/link";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
@@ -8,6 +9,7 @@ import { useWorkspaceAccess } from "@/components/layout/workspace-access-context
 import { switchConversationDraft, forwardMessagePayload, isActiveConversationResult, recoverFailedConversationDraft, matchesConversationSearch } from "@/lib/inbox-workspace";
 import styles from "@/components/inbox/inbox.module.css";
 import { isTemporaryMessage, replaceOptimisticMessage, mergeFetchedMessages, collapseMessageDuplicates, type Message } from "@/lib/inbox-messages";
+import { mergeInboxSnapshots, sameInboxSnapshot } from "@/lib/inbox-snapshots";
 export type { Message } from "@/lib/inbox-messages";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
@@ -33,7 +35,6 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { maybePlayNotification } from "@/lib/notificationSounds";
-import { ImageViewer } from "@/components/inbox/image-viewer";
 import { TemplatePicker } from "@/components/inbox/template-picker";
 import { WhatsAppFormattedText } from "@/components/shared/whatsapp-formatted-text";
 import { getSafeMediaUrl } from "@/lib/media-url";
@@ -54,8 +55,10 @@ import {
 import { INBOX_DRAFT_STORAGE_KEY, type InboxDraftPayload } from "@/lib/inbox-drafts";
 import { tenantDashboardPath, tenantSlugFromPath } from "@/lib/tenant-request-routing";
 import { NewContactDialog } from "@/components/contacts/new-contact-dialog";
-import { AiTrainingDialog } from "@/components/brain/ai-training-dialog";
 import { canTrainAiMessage } from "@/lib/ai/trained-faq-policy";
+
+const ImageViewer = dynamic(() => import("@/components/inbox/image-viewer").then((module) => module.ImageViewer));
+const AiTrainingDialog = dynamic(() => import("@/components/brain/ai-training-dialog").then((module) => module.AiTrainingDialog));
 
 const REACTION_EMOJIS = [
     "👍", "👎", "❤️", "🩵", "🔥", "🎉", "👏",
@@ -151,10 +154,6 @@ export type Conversation = {
     lastMessageType: string;
     sessionExpiresAt?: string | null;
     leadIntelligence?: LeadIntelligenceSnapshot | null;
-    currentDeal?: {
-        id: string;
-        stageName: string | null;
-    } | null;
 };
 
 type TeamUser = {
@@ -298,7 +297,6 @@ type ConversationRecord = {
     assignedUserId?: string | null;
     assignedUser?: TeamUser | null;
     leadIntelligence?: LeadIntelligenceSnapshot | null;
-    currentDeal?: Conversation["currentDeal"];
     sessionExpiresAt?: string | null;
 };
 
@@ -341,7 +339,6 @@ function transformConversation(conv: ConversationRecord): Conversation {
         lastMessageType: conv.lastMessageType || "text",
         sessionExpiresAt: typeof conv.sessionExpiresAt === "string" ? conv.sessionExpiresAt : null,
         leadIntelligence: conv.leadIntelligence ?? null,
-        currentDeal: conv.currentDeal ?? null,
     };
 }
 
@@ -353,14 +350,7 @@ function mergeConversationSnapshots(
     existing: Conversation[],
     incoming: Conversation[],
 ) {
-    const mergedById = new Map(existing.map((conversation) => [conversation.id, conversation]));
-    for (const conversation of incoming) {
-        mergedById.set(conversation.id, conversation);
-    }
-
-    return Array.from(mergedById.values())
-        .sort((left, right) => getConversationSortTime(right) - getConversationSortTime(left))
-        .slice(0, INBOX_MAX_LOADED_CONVERSATIONS);
+    return mergeInboxSnapshots(existing, incoming, getConversationSortTime, INBOX_MAX_LOADED_CONVERSATIONS);
 }
 
 function getOldestConversationCursor(items: Conversation[]) {
@@ -654,7 +644,7 @@ function AudioPlayer({ src, isOutbound }: { src: string; isOutbound: boolean }) 
 
     return (
         <div className={`${styles.audio} flex items-center gap-2`}>
-            <audio ref={audioRef} src={src} preload="auto" />
+            <audio ref={audioRef} src={src} preload="metadata" />
             <button
                 onClick={togglePlay}
                 className={cn(
@@ -913,11 +903,6 @@ function ContactInfoPanel({ conversation, onClose, showClose = true }: { convers
                             </div>
 
                             <div className="rounded-2xl bg-card/70 px-3 py-3 dark:bg-card/55">
-                                <p className="text-xs text-muted-foreground">Etapa del embudo</p>
-                                <p className="mt-1 text-sm font-semibold">{conversation.currentDeal?.stageName || "-"}</p>
-                            </div>
-
-                            <div className="rounded-2xl bg-card/70 px-3 py-3 dark:bg-card/55">
                                 <div className="flex items-center justify-between gap-3">
                                     <p className="text-xs text-muted-foreground">Puntuacion</p>
                                     <span className="text-sm font-semibold">{intelligence.score}%</span>
@@ -1102,10 +1087,11 @@ export default function InboxPage() {
     const [highlightedSlashIndex, setHighlightedSlashIndex] = useState(0);
 
     // Build reactions map from loaded messages
-    const reactions: Record<string, string> = {};
-    for (const m of messages) {
-        if (m.reaction) reactions[m.id] = m.reaction;
-    }
+    const reactions = useMemo(() => {
+        const result: Record<string, string> = {};
+        for (const message of messages) if (message.reaction) result[message.id] = message.reaction;
+        return result;
+    }, [messages]);
 
     const reactionTargetMessage = useMemo(
         () => messages.find((message) => message.id === emojiPickerMsgId) || null,
@@ -1257,7 +1243,7 @@ export default function InboxPage() {
             .slice(0, 6);
     }, [slashQuery, templates]);
 
-    const setReaction = async (msgId: string, emoji: string | null) => {
+    const setReaction = useCallback(async (msgId: string, emoji: string | null) => {
         if (!canWrite) return;
         // Optimistic update
         setMessages(prev => prev.map(m => m.id === msgId ? { ...m, reaction: emoji } : m));
@@ -1279,7 +1265,7 @@ export default function InboxPage() {
         } catch (error) {
             console.error("Reaction error:", error);
         }
-    };
+    }, [canWrite]);
 
     const syncConversationPreview = useCallback((conversationId: string, nextMessages: Message[]) => {
         const lastVisibleMessage = [...nextMessages].reverse().find((message) => message.type !== "system") || null;
@@ -1620,7 +1606,7 @@ export default function InboxPage() {
                 if (!isFirstFetchRef.current) {
                     const prevTimestamps = prevConvTimestampsRef.current;
                     setUnreadCounts((prev) => {
-                        const next = { ...prev };
+                        let next = prev;
                         let playedSound = false;
                         for (const conv of transformed) {
                             if (conv.id === currentId) continue;
@@ -1628,6 +1614,7 @@ export default function InboxPage() {
                             const newTime = toIsoTimestamp(conv.serverUpdatedAt || conv.updatedAt);
                             const hasInboundActivity = conv.messages[0]?.direction === "inbound";
                             if (prevTime && newTime && newTime !== prevTime && hasInboundActivity) {
+                                if (next === prev) next = { ...prev };
                                 next[conv.id] = (next[conv.id] || 0) + 1;
 
                                 if (!playedSound) {
@@ -1702,7 +1689,7 @@ export default function InboxPage() {
                             forceFullMessagesSyncRef.current = true;
                         }
                         selectedChatUpdatedAtRef.current = nextUpdatedAt;
-                        setSelectedChat(updated);
+                        setSelectedChat((previous) => sameInboxSnapshot(previous, updated) ? previous : updated);
                     }
                 }
             } catch (error) {
@@ -2194,12 +2181,12 @@ export default function InboxPage() {
     );
     const effectiveCurrentUserId = currentTenantUser?.id || currentUserId;
 
-    const filteredConversations = conversations.filter(conv => {
+    const filteredConversations = useMemo(() => conversations.filter(conv => {
         if (viewFilter === "mine" && conv.assignedUserId !== effectiveCurrentUserId && conv.assignedUserId !== currentUserId) return false;
         if (viewFilter === "unassigned" && conv.assignedUserId) return false;
         if (!searchQuery.trim()) return true;
         return matchesConversationSearch(conv.contact || {}, conv.messages[0]?.content || "", searchQuery);
-    });
+    }), [conversations, viewFilter, effectiveCurrentUserId, currentUserId, searchQuery]);
 
     // ──── Voice Recording ────
     const assignableUsers = canAssignAnyUser
@@ -2651,110 +2638,7 @@ export default function InboxPage() {
         } catch(error) {setActionError(error instanceof Error ? error.message : "No se pudo reenviar el mensaje.");}
     };
 
-    return (
-        <>
-            {showMicPermission && <MicPermissionBanner onAllow={requestMicPermission} onDeny={() => setShowMicPermission(false)} />}
-            {confirmAction && (
-                <ConfirmModal
-                    title={confirmAction.title}
-                    description={confirmAction.desc}
-                    variant="destructive"
-                    onConfirm={handleConfirmAction}
-                    onCancel={() => setConfirmAction(null)}
-                />
-            )}
-            {reactionTargetMessage && <Dialog open onOpenChange={open=>{if (!open) setEmojiPickerMsgId(null);}}><DialogContent className={styles.reactionDialog}>
-                <DialogHeader><DialogTitle>Reaccionar al mensaje</DialogTitle><DialogDescription className="line-clamp-2 break-words">{reactionTargetMessage.content || `[${reactionTargetMessage.type}]`}</DialogDescription></DialogHeader>
-                <div className="grid grid-cols-4 gap-2 sm:grid-cols-6">{REACTION_EMOJIS.map(emoji=><button key={emoji} aria-label={`Reaccionar con ${emoji}`} disabled={!canWrite} className="h-12 rounded-xl bg-muted text-2xl hover:bg-accent" onClick={()=>{void setReaction(reactionTargetMessage.id,emoji);setEmojiPickerMsgId(null);}}>{emoji}</button>)}</div>
-                {reactionTargetMessage.reaction && <Button variant="outline" disabled={!canWrite} onClick={()=>{void setReaction(reactionTargetMessage.id,null);setEmojiPickerMsgId(null);}}>Quitar reacción actual</Button>}
-            </DialogContent></Dialog>}
-
-            <div
-                className={styles.workspace} data-active-chat={Boolean(selectedChat)}
-            >
-                {/* ──── Sidebar ──── */}
-                <div className={styles.list} data-selected={Boolean(selectedChat)}>
-                    <div className={styles.listHeader}>
-                        <div className="flex items-start justify-between gap-3">
-                            <div>
-                                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-gold">
-                                    {isWuzapiTransportReady || isMetaTransportReady ? "WhatsApp conectado" : "Centro de mensajes"}
-                                </p>
-                                <h2 className="mt-1 text-xl font-semibold tracking-tight">Chats</h2>
-                            </div>
-                            <span className="mt-1 rounded-full bg-secondary px-2.5 py-1 text-[10px] font-semibold text-muted-foreground">
-                                {filteredConversations.length} chats
-                            </span>
-                        </div>
-                        <div className="relative">
-                            <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                            <Input
-                                aria-label="Buscar chats"
-                                placeholder="Buscar chats..."
-                                className="h-11 rounded-xl border-border bg-background pl-10 pr-28 shadow-none"
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                            />
-                            {canWrite && <NewContactDialog
-                                triggerLabel="Nuevo"
-                                triggerClassName="absolute right-1 top-1/2 h-10 -translate-y-1/2 rounded-xl px-3 shadow-sm hover:-translate-y-1/2 hover:shadow-md"
-                                title="Nuevo chat"
-                                description="Captura el nombre y el teléfono para iniciar una conversación."
-                                submitLabel="Crear y abrir chat"
-                                onCreated={async ({ conversationId }) => {
-                                    await refreshConversationsAndSelect(conversationId);
-                                }}
-                            />}
-                        </div>
-                        <div className="inline-flex w-full flex-wrap gap-1 rounded-xl bg-secondary/60 p-1">
-                            {[
-                                { id: "all", label: "Todos" },
-                                { id: "mine", label: "Míos" },
-                                { id: "unassigned", label: "Sin asignar" },
-                            ].map((filter) => (
-                                <button
-                                    key={filter.id}
-                                    type="button"
-                                    aria-pressed={viewFilter === filter.id}
-                                    onClick={() => setViewFilter(filter.id as "all" | "mine" | "unassigned")}
-                                    className={cn(
-                                        styles.filter, "flex-1 rounded-lg border px-2.5 font-medium transition-all",
-                                        viewFilter === filter.id
-                                            ? "border-border bg-card text-foreground shadow-sm"
-                                            : "border-transparent bg-transparent text-muted-foreground hover:bg-card/70 hover:text-foreground",
-                                    )}
-                                >
-                                    {filter.label}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-
-                    <ScrollArea
-                        type="always"
-                        className="min-h-0 flex-1 px-2 py-2"
-                        viewportRef={conversationsViewportRef}
-                        onViewportScroll={handleConversationsScroll}
-                    >
-                        <div className="flex flex-col gap-1">
-                            {conversationLoadError && (
-                                <div
-                                    role="alert"
-                                    className="flex items-start gap-2 rounded-[1rem] border border-amber-300/70 bg-amber-50 p-3 text-left text-xs text-amber-900 dark:border-amber-700/60 dark:bg-amber-950/35 dark:text-amber-100"
-                                >
-                                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                                    <div>
-                                        <p className="font-semibold">No se pudo cargar la bandeja</p>
-                                        <p className="mt-0.5 opacity-90">{conversationLoadError} Reintentando automáticamente.</p>
-                                    </div>
-                                </div>
-                            )}
-                            {!conversationLoadError && filteredConversations.length === 0 && (
-                                <div className="rounded-[1.6rem] border border-dashed border-border/60 bg-background/50 p-10 text-center text-sm text-muted-foreground">
-                                    {searchQuery ? "No se encontraron chats" : hasMoreConversations ? "Cargando conversaciones…" : "Sin conversaciones"}
-                                </div>
-                            )}
-                            {filteredConversations.map((chat) => {
+    const conversationRows = useMemo(() => filteredConversations.map((chat) => {
                                 const currentModeLabel = getConversationModeLabel(chat);
                                 const chatTransportReady = isConversationTransportReady(chat);
                                 return (
@@ -2826,192 +2710,9 @@ export default function InboxPage() {
                                     </div>
                                 </button>
                                 );
-                            })}
-                            {hasMoreConversations && (
-                                <button
-                                    type="button"
-                                    onClick={() => void loadOlderConversations()}
-                                    disabled={isLoadingMoreConversations}
-                                    className="mt-2 rounded-[1rem] border border-dashed border-border/60 bg-background/60 px-3 py-2 text-xs font-medium text-muted-foreground transition hover:border-border hover:bg-background disabled:cursor-wait disabled:opacity-70"
-                                >
-                                    {isLoadingMoreConversations
-                                        ? "Cargando mas chats..."
-                                        : searchQuery.trim()
-                                            ? "Cargar mas chats para buscar"
-                                            : "Cargar mas chats"}
-                                </button>
-                            )}
-                            {!hasMoreConversations && conversations.length > 0 && !searchQuery.trim() && (
-                                <div className="px-3 py-2 text-center text-[11px] text-muted-foreground/70">
-                                    Fin del historial de chats
-                                </div>
-                            )}
-                        </div>
-                    </ScrollArea>
-                </div>
+                            }), [filteredConversations, isConversationTransportReady, selectedChat?.id, handleSelectConversation, formatDisplayPhone, operationContext.locale, operationContext.timeZone, unreadCounts]);
 
-                {/* ──── Main Chat ──── */}
-                <div className={styles.conversation} data-selected={Boolean(selectedChat)}>
-                    {selectedChat ? (
-                        <>
-                            {actionError && <p role="alert" className={styles.actionError}>{actionError}</p>}
-                            {/* Header */}
-                            <div className={styles.header}>
-                                <div className={styles.identity}>
-                                    {/* Back button on mobile */}
-                                    <button aria-label="Volver a la lista de chats" className={styles.back} onClick={handleCloseConversation}>
-                                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6" /></svg>
-                                    </button>
-                                    <button aria-label="Ver ficha del cliente" className="ml-1 flex items-center gap-3 overflow-hidden text-left transition hover:opacity-80 md:ml-0" onClick={() => setShowContactInfo(true)}>
-                                        <div className="relative shrink-0">
-                                        <Avatar className="h-10 w-10 flex-shrink-0 ring-1 ring-black/5 dark:ring-white/10">
-                                                <AvatarImage
-                                                    src={selectedChat.contact?.avatarUrl || undefined}
-                                                    alt={selectedChat.contact?.name || "Contacto"}
-                                                />
-                                                <AvatarFallback>{selectedChat.contact?.name?.charAt(0) || "?"}</AvatarFallback>
-                                            </Avatar>
-                                            <ConversationSourceIcon
-                                                sourceType={selectedChat.sourceType}
-                                                className="absolute -bottom-1 -right-1"
-                                            />
-                                        </div>
-                                        <div className="overflow-hidden">
-                                            <div className="flex items-center gap-1.5 truncate text-sm font-semibold tracking-tight">
-                                                <span className={styles.identityName}>{selectedChat.contact?.name || "Desconocido"}</span>
-                                                {selectedChat.status === "closed" && (
-                                                    <Badge variant="secondary" className="shrink-0 rounded-full border border-border/50 bg-background/80 px-2 py-0.5 text-[10px]">Cerrada</Badge>
-                                                )}
-                                            </div>
-                                            <div className="text-xs text-muted-foreground truncate">{formatDisplayPhone(selectedChat.contact?.phone)}</div>
-                                            <div className="text-[11px] text-muted-foreground truncate">
-                                                <span className={styles.headerMode}>{readOnly ? "Solo lectura" : selectedChat.botActive ? "IA activa" : "Modo humano"} · </span>
-                                                {selectedChat.assignedUser
-                                                    ? `Asignado a ${selectedChat.assignedUser.name || selectedChat.assignedUser.email}`
-                                                    : "Sin responsable asignado"}
-                                            </div>
-                                        </div>
-                                    </button>
-                                </div>
-                                <div className={styles.headerActions}>
-                                    <div className={styles.assignment}>
-                                        <Select
-                                            disabled={!canWrite}
-                                            value={selectedChat.assignedUserId || "__unassigned__"}
-                                            onValueChange={(value) => handleAssignConversation(value === "__unassigned__" ? "" : value)}
-                                        >
-                                            <SelectTrigger className="h-9 w-full rounded-xl border-border bg-background text-xs shadow-none">
-                                                <SelectValue placeholder="Asignar chat" />
-                                            </SelectTrigger>
-                                            <SelectContent align="end">
-                                                <SelectItem value="__unassigned__">Sin asignar</SelectItem>
-                                                {assignableUsers.map((user) => (
-                                                    <SelectItem key={user.id} value={user.id}>
-                                                        {user.name || user.email}
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-                                    <div className={styles.botToggle}>
-                                        {selectedChat.botActive ? (
-                                            <Bot className="h-3.5 w-3.5 text-emerald-600" />
-                                        ) : (
-                                            <UserIcon className="h-3.5 w-3.5 text-amber-600" />
-                                        )}
-                                        <div className="hidden sm:block">
-                                            <p className="text-[11px] font-medium leading-none">
-                                                {selectedChat.botActive ? "IA activa" : "Modo humano"}
-                                            </p>
-                                            <p className="mt-0.5 text-[10px] leading-none text-muted-foreground">
-                                                {selectedChat.botActive ? "Responde automatico" : "Bot pausado"}
-                                            </p>
-                                        </div>
-                                        <Switch
-                                            disabled={!canWrite}
-                                            checked={!selectedChat.botActive}
-                                            onCheckedChange={handleHumanModeToggle}
-                                            aria-label="Cambiar entre bot activo y modo humano"
-                                        />
-                                    </div>
-                                    <Button variant="ghost" size="icon" className="hidden h-9 w-9 rounded-xl border border-border bg-background shadow-none sm:inline-flex xl:hidden" onClick={() => setShowContactInfo(!showContactInfo)} title="Info del contacto">
-                                        <Info className="h-4 w-4" />
-                                    </Button>
-                                    <Separator orientation="vertical" className="h-6 mx-1 hidden sm:block" />
-                                    {/* Dropdown Menu */}
-                                    <DropdownMenu>
-                                        <DropdownMenuTrigger asChild>
-                                            <Button variant="ghost" size="icon" aria-label="Opciones de la conversación" className="h-10 w-10 rounded-xl">
-                                                <MoreVertical className="h-4 w-4" />
-                                            </Button>
-                                        </DropdownMenuTrigger>
-                                        <DropdownMenuContent align="end" className="w-52">
-                                            <DropdownMenuItem onClick={() => setShowContactInfo(true)}>
-                                                <Info className="h-4 w-4 mr-2" /> Info. del contacto
-                                            </DropdownMenuItem>
-                                            <DropdownMenuItem disabled={!canWrite} onClick={()=>void handleHumanModeToggle(selectedChat.botActive)}><Bot className="mr-2 size-4" />{selectedChat.botActive ? "Pausar Asistente IA" : "Activar Asistente IA"}</DropdownMenuItem>
-                                            <DropdownMenuItem disabled={!canWrite} onClick={() => {setAssignmentDraft(selectedChat.assignedUserId || "__unassigned__");setAssignmentOpen(true);}}>Asignar responsable</DropdownMenuItem>
-                                            <DropdownMenuSeparator />
-                                            <DropdownMenuItem disabled={!canWrite} onClick={() => performAction("mute")}>
-                                                {selectedChat.isMuted
-                                                    ? <><Bell className="h-4 w-4 mr-2" /> Activar notificaciones</>
-                                                    : <><BellOff className="h-4 w-4 mr-2" /> Silenciar notificaciones</>
-                                                }
-                                            </DropdownMenuItem>
-                                            <DropdownMenuItem disabled={!canWrite} onClick={() => performAction("favorite")}>
-                                                <Star className={cn("h-4 w-4 mr-2", selectedChat.isFavorite && "fill-yellow-500 text-yellow-500")} />
-                                                {selectedChat.isFavorite ? "Quitar de favoritos" : "Añadir a favoritos"}
-                                            </DropdownMenuItem>
-                                            <DropdownMenuSeparator />
-                                            <DropdownMenuItem disabled={!canWrite} onClick={() => performAction(selectedChat.status === "active" ? "close" : "reopen")}>
-                                                <Archive className="h-4 w-4 mr-2" />
-                                                {selectedChat.status === "active" ? "Cerrar chat" : "Reabrir chat"}
-                                            </DropdownMenuItem>
-                                            <DropdownMenuSeparator />
-                                            <DropdownMenuItem
-                                                disabled={!canWrite}
-                                                className="text-destructive focus:text-destructive"
-                                                onClick={() => setConfirmAction({ type: "clear", title: "Vaciar chat", desc: "¿Estás seguro de que quieres eliminar todos los mensajes de esta conversación? Esta acción no se puede deshacer." })}
-                                            >
-                                                <Eraser className="h-4 w-4 mr-2" /> Vaciar chat
-                                            </DropdownMenuItem>
-                                            <DropdownMenuItem
-                                                disabled={!canWrite}
-                                                className="text-destructive focus:text-destructive"
-                                                onClick={() => setConfirmAction({ type: "delete", title: "Eliminar chat", desc: "¿Estás seguro de que quieres eliminar esta conversación por completo? Esta acción no se puede deshacer." })}
-                                            >
-                                                <Trash2 className="h-4 w-4 mr-2" /> Eliminar chat
-                                            </DropdownMenuItem>
-                                        </DropdownMenuContent>
-                                    </DropdownMenu>
-                                </div>
-                            </div>
-
-                            {/* Messages */}
-                            <div className={styles.messages}>
-                                <div
-                                    ref={messagesContainerRef}
-                                    onScroll={handleMessagesScroll}
-                                    className={styles.messageScroll}
-                                    style={{ scrollBehavior: "auto" }}
-                                >
-                                    {/* Padding at bottom for scroll space */}
-                                    <div className="mx-auto flex max-w-[58rem] flex-col gap-3 pb-4">
-                                        {isLoadingOlderMessages && (
-                                            <div className="flex justify-center">
-                                                <Badge variant="outline" className="rounded-full border-border/60 bg-card/80 px-3.5 py-1 text-[11px] font-medium text-muted-foreground shadow-sm">
-                                                    Cargando mensajes anteriores...
-                                                </Badge>
-                                            </div>
-                                        )}
-                                        {!hasMoreMessages && messages.length > 0 && (
-                                            <div className="flex justify-center">
-                                                <Badge variant="outline" className="rounded-full border-border/50 bg-card/70 px-3.5 py-1 text-[11px] font-medium text-muted-foreground/80 shadow-sm">
-                                                    Inicio del historial
-                                                </Badge>
-                                            </div>
-                                        )}
-                                        {messages.map((msg, idx) => {
+    const messageRows = useMemo(() => messages.map((msg, idx) => {
                                             // Dynamic date separators
                                             const msgDate = new Date(msg.createdAt);
                                             const prevDate = idx > 0 ? new Date(messages[idx - 1].createdAt) : null;
@@ -3295,7 +2996,297 @@ export default function InboxPage() {
                                                     </div>
                                                 </React.Fragment>
                                             );
-                                        })}
+                                        }), [messages, operationContext, reactions, canWrite, canTrainAi, setReaction, emojiPickerMsgId]);
+
+    return (
+        <>
+            {showMicPermission && <MicPermissionBanner onAllow={requestMicPermission} onDeny={() => setShowMicPermission(false)} />}
+            {confirmAction && (
+                <ConfirmModal
+                    title={confirmAction.title}
+                    description={confirmAction.desc}
+                    variant="destructive"
+                    onConfirm={handleConfirmAction}
+                    onCancel={() => setConfirmAction(null)}
+                />
+            )}
+            {reactionTargetMessage && <Dialog open onOpenChange={open=>{if (!open) setEmojiPickerMsgId(null);}}><DialogContent className={styles.reactionDialog}>
+                <DialogHeader><DialogTitle>Reaccionar al mensaje</DialogTitle><DialogDescription className="line-clamp-2 break-words">{reactionTargetMessage.content || `[${reactionTargetMessage.type}]`}</DialogDescription></DialogHeader>
+                <div className="grid grid-cols-4 gap-2 sm:grid-cols-6">{REACTION_EMOJIS.map(emoji=><button key={emoji} aria-label={`Reaccionar con ${emoji}`} disabled={!canWrite} className="h-12 rounded-xl bg-muted text-2xl hover:bg-accent" onClick={()=>{void setReaction(reactionTargetMessage.id,emoji);setEmojiPickerMsgId(null);}}>{emoji}</button>)}</div>
+                {reactionTargetMessage.reaction && <Button variant="outline" disabled={!canWrite} onClick={()=>{void setReaction(reactionTargetMessage.id,null);setEmojiPickerMsgId(null);}}>Quitar reacción actual</Button>}
+            </DialogContent></Dialog>}
+
+            <div
+                className={styles.workspace} data-active-chat={Boolean(selectedChat)}
+            >
+                {/* ──── Sidebar ──── */}
+                <div className={styles.list} data-selected={Boolean(selectedChat)}>
+                    <div className={styles.listHeader}>
+                        <div className="flex items-start justify-between gap-3">
+                            <div>
+                                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-gold">
+                                    {isWuzapiTransportReady || isMetaTransportReady ? "WhatsApp conectado" : "Centro de mensajes"}
+                                </p>
+                                <h2 className="mt-1 text-xl font-semibold tracking-tight">Chats</h2>
+                            </div>
+                            <span className="mt-1 rounded-full bg-secondary px-2.5 py-1 text-[10px] font-semibold text-muted-foreground">
+                                {filteredConversations.length} chats
+                            </span>
+                        </div>
+                        <div className="relative">
+                            <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                            <Input
+                                aria-label="Buscar chats"
+                                placeholder="Buscar chats..."
+                                className="h-11 rounded-xl border-border bg-background pl-10 pr-28 shadow-none"
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                            />
+                            {canWrite && <NewContactDialog
+                                triggerLabel="Nuevo"
+                                triggerClassName="absolute right-1 top-1/2 h-10 -translate-y-1/2 rounded-xl px-3 shadow-sm hover:-translate-y-1/2 hover:shadow-md"
+                                title="Nuevo chat"
+                                description="Captura el nombre y el teléfono para iniciar una conversación."
+                                submitLabel="Crear y abrir chat"
+                                onCreated={async ({ conversationId }) => {
+                                    await refreshConversationsAndSelect(conversationId);
+                                }}
+                            />}
+                        </div>
+                        <div className="inline-flex w-full flex-wrap gap-1 rounded-xl bg-secondary/60 p-1">
+                            {[
+                                { id: "all", label: "Todos" },
+                                { id: "mine", label: "Míos" },
+                                { id: "unassigned", label: "Sin asignar" },
+                            ].map((filter) => (
+                                <button
+                                    key={filter.id}
+                                    type="button"
+                                    aria-pressed={viewFilter === filter.id}
+                                    onClick={() => setViewFilter(filter.id as "all" | "mine" | "unassigned")}
+                                    className={cn(
+                                        styles.filter, "flex-1 rounded-lg border px-2.5 font-medium transition-all",
+                                        viewFilter === filter.id
+                                            ? "border-border bg-card text-foreground shadow-sm"
+                                            : "border-transparent bg-transparent text-muted-foreground hover:bg-card/70 hover:text-foreground",
+                                    )}
+                                >
+                                    {filter.label}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    <ScrollArea
+                        type="always"
+                        className="min-h-0 flex-1 px-2 py-2"
+                        viewportRef={conversationsViewportRef}
+                        onViewportScroll={handleConversationsScroll}
+                    >
+                        <div className="flex flex-col gap-1">
+                            {conversationLoadError && (
+                                <div
+                                    role="alert"
+                                    className="flex items-start gap-2 rounded-[1rem] border border-amber-300/70 bg-amber-50 p-3 text-left text-xs text-amber-900 dark:border-amber-700/60 dark:bg-amber-950/35 dark:text-amber-100"
+                                >
+                                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                                    <div>
+                                        <p className="font-semibold">No se pudo cargar la bandeja</p>
+                                        <p className="mt-0.5 opacity-90">{conversationLoadError} Reintentando automáticamente.</p>
+                                    </div>
+                                </div>
+                            )}
+                            {!conversationLoadError && filteredConversations.length === 0 && (
+                                <div className="rounded-[1.6rem] border border-dashed border-border/60 bg-background/50 p-10 text-center text-sm text-muted-foreground">
+                                    {searchQuery ? "No se encontraron chats" : hasMoreConversations ? "Cargando conversaciones…" : "Sin conversaciones"}
+                                </div>
+                            )}
+                            {conversationRows}
+                            {hasMoreConversations && (
+                                <button
+                                    type="button"
+                                    onClick={() => void loadOlderConversations()}
+                                    disabled={isLoadingMoreConversations}
+                                    className="mt-2 rounded-[1rem] border border-dashed border-border/60 bg-background/60 px-3 py-2 text-xs font-medium text-muted-foreground transition hover:border-border hover:bg-background disabled:cursor-wait disabled:opacity-70"
+                                >
+                                    {isLoadingMoreConversations
+                                        ? "Cargando mas chats..."
+                                        : searchQuery.trim()
+                                            ? "Cargar mas chats para buscar"
+                                            : "Cargar mas chats"}
+                                </button>
+                            )}
+                            {!hasMoreConversations && conversations.length > 0 && !searchQuery.trim() && (
+                                <div className="px-3 py-2 text-center text-[11px] text-muted-foreground/70">
+                                    Fin del historial de chats
+                                </div>
+                            )}
+                        </div>
+                    </ScrollArea>
+                </div>
+
+                {/* ──── Main Chat ──── */}
+                <div className={styles.conversation} data-selected={Boolean(selectedChat)}>
+                    {selectedChat ? (
+                        <>
+                            {actionError && <p role="alert" className={styles.actionError}>{actionError}</p>}
+                            {/* Header */}
+                            <div className={styles.header}>
+                                <div className={styles.identity}>
+                                    {/* Back button on mobile */}
+                                    <button aria-label="Volver a la lista de chats" className={styles.back} onClick={handleCloseConversation}>
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6" /></svg>
+                                    </button>
+                                    <button aria-label="Ver ficha del cliente" className="ml-1 flex items-center gap-3 overflow-hidden text-left transition hover:opacity-80 md:ml-0" onClick={() => setShowContactInfo(true)}>
+                                        <div className="relative shrink-0">
+                                        <Avatar className="h-10 w-10 flex-shrink-0 ring-1 ring-black/5 dark:ring-white/10">
+                                                <AvatarImage
+                                                    src={selectedChat.contact?.avatarUrl || undefined}
+                                                    alt={selectedChat.contact?.name || "Contacto"}
+                                                />
+                                                <AvatarFallback>{selectedChat.contact?.name?.charAt(0) || "?"}</AvatarFallback>
+                                            </Avatar>
+                                            <ConversationSourceIcon
+                                                sourceType={selectedChat.sourceType}
+                                                className="absolute -bottom-1 -right-1"
+                                            />
+                                        </div>
+                                        <div className="overflow-hidden">
+                                            <div className="flex items-center gap-1.5 truncate text-sm font-semibold tracking-tight">
+                                                <span className={styles.identityName}>{selectedChat.contact?.name || "Desconocido"}</span>
+                                                {selectedChat.status === "closed" && (
+                                                    <Badge variant="secondary" className="shrink-0 rounded-full border border-border/50 bg-background/80 px-2 py-0.5 text-[10px]">Cerrada</Badge>
+                                                )}
+                                            </div>
+                                            <div className="text-xs text-muted-foreground truncate">{formatDisplayPhone(selectedChat.contact?.phone)}</div>
+                                            <div className="text-[11px] text-muted-foreground truncate">
+                                                <span className={styles.headerMode}>{readOnly ? "Solo lectura" : selectedChat.botActive ? "IA activa" : "Modo humano"} · </span>
+                                                {selectedChat.assignedUser
+                                                    ? `Asignado a ${selectedChat.assignedUser.name || selectedChat.assignedUser.email}`
+                                                    : "Sin responsable asignado"}
+                                            </div>
+                                        </div>
+                                    </button>
+                                </div>
+                                <div className={styles.headerActions}>
+                                    <div className={styles.assignment}>
+                                        <Select
+                                            disabled={!canWrite}
+                                            value={selectedChat.assignedUserId || "__unassigned__"}
+                                            onValueChange={(value) => handleAssignConversation(value === "__unassigned__" ? "" : value)}
+                                        >
+                                            <SelectTrigger className="h-9 w-full rounded-xl border-border bg-background text-xs shadow-none">
+                                                <SelectValue placeholder="Asignar chat" />
+                                            </SelectTrigger>
+                                            <SelectContent align="end">
+                                                <SelectItem value="__unassigned__">Sin asignar</SelectItem>
+                                                {assignableUsers.map((user) => (
+                                                    <SelectItem key={user.id} value={user.id}>
+                                                        {user.name || user.email}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div className={styles.botToggle}>
+                                        {selectedChat.botActive ? (
+                                            <Bot className="h-3.5 w-3.5 text-emerald-600" />
+                                        ) : (
+                                            <UserIcon className="h-3.5 w-3.5 text-amber-600" />
+                                        )}
+                                        <div className="hidden sm:block">
+                                            <p className="text-[11px] font-medium leading-none">
+                                                {selectedChat.botActive ? "IA activa" : "Modo humano"}
+                                            </p>
+                                            <p className="mt-0.5 text-[10px] leading-none text-muted-foreground">
+                                                {selectedChat.botActive ? "Responde automatico" : "Bot pausado"}
+                                            </p>
+                                        </div>
+                                        <Switch
+                                            disabled={!canWrite}
+                                            checked={!selectedChat.botActive}
+                                            onCheckedChange={handleHumanModeToggle}
+                                            aria-label="Cambiar entre bot activo y modo humano"
+                                        />
+                                    </div>
+                                    <Button variant="ghost" size="icon" className="hidden h-9 w-9 rounded-xl border border-border bg-background shadow-none sm:inline-flex xl:hidden" onClick={() => setShowContactInfo(!showContactInfo)} title="Info del contacto">
+                                        <Info className="h-4 w-4" />
+                                    </Button>
+                                    <Separator orientation="vertical" className="h-6 mx-1 hidden sm:block" />
+                                    {/* Dropdown Menu */}
+                                    <DropdownMenu>
+                                        <DropdownMenuTrigger asChild>
+                                            <Button variant="ghost" size="icon" aria-label="Opciones de la conversación" className="h-10 w-10 rounded-xl">
+                                                <MoreVertical className="h-4 w-4" />
+                                            </Button>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent align="end" className="w-52">
+                                            <DropdownMenuItem onClick={() => setShowContactInfo(true)}>
+                                                <Info className="h-4 w-4 mr-2" /> Info. del contacto
+                                            </DropdownMenuItem>
+                                            <DropdownMenuItem disabled={!canWrite} onClick={()=>void handleHumanModeToggle(selectedChat.botActive)}><Bot className="mr-2 size-4" />{selectedChat.botActive ? "Pausar Asistente IA" : "Activar Asistente IA"}</DropdownMenuItem>
+                                            <DropdownMenuItem disabled={!canWrite} onClick={() => {setAssignmentDraft(selectedChat.assignedUserId || "__unassigned__");setAssignmentOpen(true);}}>Asignar responsable</DropdownMenuItem>
+                                            <DropdownMenuSeparator />
+                                            <DropdownMenuItem disabled={!canWrite} onClick={() => performAction("mute")}>
+                                                {selectedChat.isMuted
+                                                    ? <><Bell className="h-4 w-4 mr-2" /> Activar notificaciones</>
+                                                    : <><BellOff className="h-4 w-4 mr-2" /> Silenciar notificaciones</>
+                                                }
+                                            </DropdownMenuItem>
+                                            <DropdownMenuItem disabled={!canWrite} onClick={() => performAction("favorite")}>
+                                                <Star className={cn("h-4 w-4 mr-2", selectedChat.isFavorite && "fill-yellow-500 text-yellow-500")} />
+                                                {selectedChat.isFavorite ? "Quitar de favoritos" : "Añadir a favoritos"}
+                                            </DropdownMenuItem>
+                                            <DropdownMenuSeparator />
+                                            <DropdownMenuItem disabled={!canWrite} onClick={() => performAction(selectedChat.status === "active" ? "close" : "reopen")}>
+                                                <Archive className="h-4 w-4 mr-2" />
+                                                {selectedChat.status === "active" ? "Cerrar chat" : "Reabrir chat"}
+                                            </DropdownMenuItem>
+                                            <DropdownMenuSeparator />
+                                            <DropdownMenuItem
+                                                disabled={!canWrite}
+                                                className="text-destructive focus:text-destructive"
+                                                onClick={() => setConfirmAction({ type: "clear", title: "Vaciar chat", desc: "¿Estás seguro de que quieres eliminar todos los mensajes de esta conversación? Esta acción no se puede deshacer." })}
+                                            >
+                                                <Eraser className="h-4 w-4 mr-2" /> Vaciar chat
+                                            </DropdownMenuItem>
+                                            <DropdownMenuItem
+                                                disabled={!canWrite}
+                                                className="text-destructive focus:text-destructive"
+                                                onClick={() => setConfirmAction({ type: "delete", title: "Eliminar chat", desc: "¿Estás seguro de que quieres eliminar esta conversación por completo? Esta acción no se puede deshacer." })}
+                                            >
+                                                <Trash2 className="h-4 w-4 mr-2" /> Eliminar chat
+                                            </DropdownMenuItem>
+                                        </DropdownMenuContent>
+                                    </DropdownMenu>
+                                </div>
+                            </div>
+
+                            {/* Messages */}
+                            <div className={styles.messages}>
+                                <div
+                                    ref={messagesContainerRef}
+                                    onScroll={handleMessagesScroll}
+                                    className={styles.messageScroll}
+                                    style={{ scrollBehavior: "auto" }}
+                                >
+                                    {/* Padding at bottom for scroll space */}
+                                    <div className="mx-auto flex max-w-[58rem] flex-col gap-3 pb-4">
+                                        {isLoadingOlderMessages && (
+                                            <div className="flex justify-center">
+                                                <Badge variant="outline" className="rounded-full border-border/60 bg-card/80 px-3.5 py-1 text-[11px] font-medium text-muted-foreground shadow-sm">
+                                                    Cargando mensajes anteriores...
+                                                </Badge>
+                                            </div>
+                                        )}
+                                        {!hasMoreMessages && messages.length > 0 && (
+                                            <div className="flex justify-center">
+                                                <Badge variant="outline" className="rounded-full border-border/50 bg-card/70 px-3.5 py-1 text-[11px] font-medium text-muted-foreground/80 shadow-sm">
+                                                    Inicio del historial
+                                                </Badge>
+                                            </div>
+                                        )}
+                                        {messageRows}
                                         <div ref={messagesEndRef} />
                                     </div>
                                 </div>

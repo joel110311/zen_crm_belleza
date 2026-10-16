@@ -715,7 +715,7 @@ export default function BrainConfigPage() {
                                     <p className="font-medium text-foreground">Qué hará automáticamente el CRM</p>
                                     <p>Actualizará la puntuación y el paso comercial del lead.</p>
                                     <p>Cuando detecte interés real, moverá el lead a la etapa <span className="font-medium text-foreground">Calificado</span>.</p>
-                                    <p>Si el cliente comparte nombre o correo, los guardará en silencio y lo verás reflejado en inbox y pipeline.</p>
+                                    <p>Si el cliente comparte nombre o correo, los guardará en silencio y lo verás reflejado en Chats y Clientes.</p>
                                 </div>
                             </div>
                         </CardContent>

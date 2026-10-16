@@ -108,7 +108,7 @@ export function WhatsAppGatewayPanel(props: Props) {
             toast({
                 title: source === "connect" ? "Historial importado al vincular" : "Historial importado",
                 description: summary
-                    ? `${summary.chatsImported || 0} chats y ${summary.messagesCreated || 0} mensajes importados sin disparar pipelines.`
+                    ? `${summary.chatsImported || 0} chats y ${summary.messagesCreated || 0} mensajes importados sin activar automatizaciones.`
                     : "La importacion historica termino correctamente.",
             });
         } catch (error) {
@@ -173,7 +173,7 @@ export function WhatsAppGatewayPanel(props: Props) {
                 toast({
                     title: "QR en preparacion",
                     description: historyImportMonths !== "0"
-                        ? `Escanea el QR. Al quedar activo, importaremos hasta ${historyImportMonths === "1" ? "30 dias" : historyImportMonths === "2" ? "60 dias" : "90 dias"} de chats sin disparar pipelines.`
+                        ? `Escanea el QR. Al quedar activo, importaremos hasta ${historyImportMonths === "1" ? "30 dias" : historyImportMonths === "2" ? "60 dias" : "90 dias"} de chats sin activar automatizaciones.`
                         : "Escanea el QR con el telefono y espera unos segundos.",
                 });
             }
@@ -340,7 +340,7 @@ export function WhatsAppGatewayPanel(props: Props) {
                             </div>
                             <div className="rounded-xl border bg-background/80 px-4 py-3">
                                 <span className="font-medium text-foreground">4. Importacion historica opcional</span>
-                                <p className="mt-1">Si eliges 1, 2 o 3 meses, el CRM trae chats/mensajes sin disparar pipelines.</p>
+                                <p className="mt-1">Si eliges 1, 2 o 3 meses, el CRM trae chats/mensajes sin activar automatizaciones.</p>
                             </div>
                         </div>
                     </div>
@@ -349,7 +349,7 @@ export function WhatsAppGatewayPanel(props: Props) {
                         <div>
                             <p className="font-medium">Importacion historica opcional</p>
                             <p className="text-sm text-muted-foreground">
-                                Puedes traer hasta 3 meses de chats y mensajes sin disparar pipelines ni crear automatizaciones por el historial.
+                                Puedes traer hasta 3 meses de chats y mensajes sin activar automatizaciones por el historial.
                             </p>
                         </div>
                         <div className="grid gap-3 md:grid-cols-[1fr_auto]">

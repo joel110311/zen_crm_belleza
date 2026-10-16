@@ -77,13 +77,6 @@ export function ContactDetails({
       month: "short",
       year: "numeric",
     });
-  const dealTags = contact.deals.flatMap((deal) =>
-    deal.dealTags.map(({ tag }) => ({
-      name: tag.name,
-      color: tag.color,
-      dealTitle: deal.title,
-    })),
-  );
   const chatHref = route(
     `/dashboard/inbox?contactId=${encodeURIComponent(contact.id)}`,
   );
@@ -193,7 +186,7 @@ export function ContactDetails({
             <ContactTags
               contactId={contact.id}
               contactTags={contact.tags}
-              dealTags={dealTags}
+
             />
             <dl className={styles.profileMeta}>
               <div>

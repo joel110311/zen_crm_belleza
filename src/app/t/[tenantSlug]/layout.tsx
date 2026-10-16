@@ -14,6 +14,8 @@ import { getControlDb } from "@/lib/control-db";
 import { getTenantSystemSettingsOrDefaults } from "@/lib/tenant-system-settings";
 import { resolveTenantBranding } from "@/lib/branding";
 import { getActiveBillingProvider } from "@/lib/billing/provider";
+import { OperationContextProvider } from "@/components/shared/operation-context-provider";
+import { buildOperationContext } from "@/lib/operation-context";
 
 export const dynamic = "force-dynamic";
 
@@ -92,6 +94,7 @@ export default async function TenantLayout({
 
     return (
         <SessionProvider session={session}>
+            <OperationContextProvider initialContext={buildOperationContext(tenantSettings)}>
             <div
                 className="apple-workspace flex h-dvh w-full overflow-hidden bg-background"
                 data-apple-workspace
@@ -105,6 +108,7 @@ export default async function TenantLayout({
                     {children}
                 </DashboardShell>
             </div>
+            </OperationContextProvider>
         </SessionProvider>
     );
 }

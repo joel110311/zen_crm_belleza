@@ -4,7 +4,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
 import {
-    BriefcaseBusiness,
     CalendarDays,
     ChevronLeft,
     ChevronRight,
@@ -26,7 +25,6 @@ const ITEMS = [
     { href: "contacts", label: "Clientes", icon: Users },
     { href: "services", label: "Servicios", icon: Scissors },
     { href: "calendar", label: "Calendario", icon: CalendarDays },
-    { href: "pipeline", label: "Pipeline", icon: BriefcaseBusiness },
     { href: "onboarding", label: "Mi negocio", icon: Store },
     { href: "settings", label: "Configuración", icon: Settings },
 ] as const;
@@ -63,7 +61,7 @@ export function TenantShell({
         };
     }, [mobileOpen]);
 
-    const availableItems = ITEMS.filter((item) => role !== "PROFESSIONAL" || item.href !== "pipeline");
+    const availableItems = ITEMS;
     const isActive = (href: string) => {
         const destination = `${base}/${href}`;
         return pathname === destination || pathname.startsWith(`${destination}/`);

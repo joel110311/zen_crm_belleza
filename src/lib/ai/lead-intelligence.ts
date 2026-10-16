@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { readContactAiState, contactAiStateJson } from "./contact-state";
 import { generateCompletion } from "@/lib/ai/openai";
 import type { AppSystemSettings } from "@/lib/system-settings";
 import {
@@ -424,41 +425,6 @@ function buildLeadAutomationInstruction(params: {
     return null;
 }
 
-async function ensureLeadIntelligence(
-    dealId: string,
-    contact: {
-        email: string | null;
-    } | null,
-) {
-    const existing = await prisma.leadIntelligence.findUnique({
-        where: { dealId },
-    });
-
-    if (existing) {
-        if (!existing.emailCaptured && contact?.email) {
-            return prisma.leadIntelligence.update({
-                where: { id: existing.id },
-                data: {
-                    emailCaptured: true,
-                    capturedEmail: contact.email,
-                    capturedEmailAt: existing.capturedEmailAt || new Date(),
-                },
-            });
-        }
-
-        return existing;
-    }
-
-    return prisma.leadIntelligence.create({
-        data: {
-            dealId,
-            emailCaptured: Boolean(contact?.email),
-            capturedEmail: contact?.email || null,
-            capturedEmailAt: contact?.email ? new Date() : null,
-        },
-    });
-}
-
 export async function processLeadAutomationTurn(params: {
     conversationId: string;
     latestUserMessage: string;
@@ -477,20 +443,9 @@ export async function processLeadAutomationTurn(params: {
         return { instruction: null, pendingCaptureField: null };
     }
 
-    const deal = await prisma.deal.findFirst({
-        where: { contactId: conversation.contactId },
-        include: {
-            stage: true,
-            intelligence: true,
-        },
-        orderBy: { updatedAt: "desc" },
-    });
-
-    if (!deal) {
-        return { instruction: null, pendingCaptureField: null };
-    }
-
-    const intelligence = await ensureLeadIntelligence(deal.id, conversation.contact);
+    const intelligence = readContactAiState(conversation.contact.aiState, conversation.contact.email);
+    const needsStateWrite = !conversation.contact.aiState ||
+        (!readContactAiState(conversation.contact.aiState).emailCaptured && intelligence.emailCaptured);
     const latestInboundMessage = await prisma.message.findFirst({
         where: {
             conversationId,
@@ -650,31 +605,6 @@ export async function processLeadAutomationTurn(params: {
         nextPendingField: thresholdReached ? nextPendingField : null,
     });
 
-    const stageToMove = thresholdReached
-        ? await (async () => {
-            const orderedActiveStages = await prisma.pipelineStage.findMany({
-                where: {
-                    isClosedWon: false,
-                    isClosedLost: false,
-                },
-                orderBy: { order: "asc" },
-                select: { id: true, isIncoming: true },
-            });
-
-            if (orderedActiveStages.length === 0) return null;
-
-            const secondStageByPosition = orderedActiveStages.length > 1 ? orderedActiveStages[1] : null;
-            const fallbackFirstNonIncoming = orderedActiveStages.find((stage) => !stage.isIncoming) || null;
-            const targetQualifiedStage = secondStageByPosition || fallbackFirstNonIncoming;
-
-            if (!targetQualifiedStage) return null;
-            if (deal.stageId === targetQualifiedStage.id) return null;
-
-            const isIncomingDeal = Boolean(deal.stage?.isIncoming);
-            return isIncomingDeal ? targetQualifiedStage : null;
-        })()
-        : null;
-
     const nameParts = capturedName ? splitFullName(capturedName) : { name: null, lastName: null };
     const noteText = savedNameThisTurn || savedEmailThisTurn ? buildSavedDataNote(capturedName, capturedEmail) : null;
     const shouldAskForNextField = Boolean(
@@ -693,10 +623,10 @@ export async function processLeadAutomationTurn(params: {
     );
 
     await prisma.$transaction(async (tx) => {
-        if (savedNameThisTurn || savedEmailThisTurn || thresholdReached || settings.leadScoringEnabled) {
-            await tx.leadIntelligence.update({
-                where: { id: intelligence.id },
-                data: {
+        if (needsStateWrite || savedNameThisTurn || savedEmailThisTurn || thresholdReached || settings.leadScoringEnabled) {
+            await tx.contact.update({
+                where: { id: conversation.contactId },
+                data: { aiState: contactAiStateJson({ ...intelligence,
                     score,
                     interestStatus: intelligenceState.interestStatus,
                     currentStep: intelligenceState.currentStep,
@@ -744,7 +674,7 @@ export async function processLeadAutomationTurn(params: {
                             },
                         }
                         : {}),
-                },
+                }) },
             });
         }
 
@@ -761,13 +691,6 @@ export async function processLeadAutomationTurn(params: {
                     ...(savedEmailThisTurn ? { email: capturedEmail } : {}),
                     ...(thresholdReached && conversation.contact?.status !== "customer" ? { status: "qualified" } : {}),
                 },
-            });
-        }
-
-        if (stageToMove?.id) {
-            await tx.deal.update({
-                where: { id: deal.id },
-                data: { stageId: stageToMove.id },
             });
         }
 
