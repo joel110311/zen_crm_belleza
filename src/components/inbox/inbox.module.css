@@ -439,7 +439,7 @@
 @media(max-width:1023px){.header .botToggle{display:none;}.headerMode{display:inline;}}
 
 /* Outbound media sit on a soft bubble, rather than the solid primary button. */
-:global(:root:is([data-color-theme="pink"], [data-color-theme="green"], [data-color-theme="gold"])) .outboundAudioButton,
-:global(:root:is([data-color-theme="pink"], [data-color-theme="green"], [data-color-theme="gold"])) .outboundMediaMeta {
+.outboundAudioButton,
+.outboundMediaMeta {
   color: var(--foreground);
 }

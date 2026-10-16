@@ -5,15 +5,17 @@
 .option:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
 .optionContent { display: flex; min-width: 0; height: 100%; align-items: center; gap: 12px; padding: 12px; border-radius: 8px; }
 .option[aria-pressed="true"] .optionContent { background: var(--secondary); }
-.preview { display: grid; grid-template-columns: 2fr 1fr 1fr; flex: 0 0 40px; height: 40px; border: 1px solid var(--preview-line); border-radius: 8px; overflow: hidden; }
+.preview { --preview-soft: #eeeeee; --preview-surface: #ffffff; --preview-line: #cccccc; display: grid; grid-template-columns: 2fr 1fr 1fr; flex: 0 0 40px; height: 40px; border: 1px solid var(--preview-line); border-radius: 8px; overflow: hidden; }
 .preview > span:nth-child(1) { background: var(--preview-primary); }
 .preview > span:nth-child(2) { background: var(--preview-soft); }
 .preview > span:nth-child(3) { background: var(--preview-surface); }
-.clinic { --preview-primary: #3a88a8; --preview-soft: #e7f2f7; --preview-surface: #080b10; --preview-line: #d4e3e9; }
-.olive { --preview-primary: #4c612b; --preview-soft: #edf1e5; --preview-surface: #fafbf7; --preview-line: #dce2d2; }
-.apple { --preview-primary: #0071e3; --preview-soft: #e5e5ea; --preview-surface: #f5f5f7; --preview-line: #d2d2d7; }
-.pink { --preview-primary: #a7426b; --preview-soft: #f8e7ef; --preview-surface: #fff8fb; --preview-line: #e6cbd8; }
+.clinic { --preview-primary: #3a88a8; }
+.olive { --preview-primary: #4c612b; }
+.apple { --preview-primary: #0071e3; }
+.pink { --preview-primary: #a7426b; }
 @container settings-content (min-width: 680px) { .options { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (prefers-reduced-motion: reduce) { .option { transition: none; } }
 
-.gold { --preview-primary: #89651f; --preview-soft: #f5ead2; --preview-surface: #fcfaf5; --preview-line: #e3d7bd; }
+.gold { --preview-primary: #89651f; }
+
+:global(.dark) .preview { --preview-soft: #2c2c2c; --preview-surface: #1e1e1e; --preview-line: #484848; }

@@ -21,31 +21,31 @@ const COLOR_THEME_OPTIONS: Array<{
     {
         id: "clinic",
         name: "Azul clínica",
-        description: "Tema principal con azul clínico y sidebar negra",
+        description: "Azul clínico sobre una base neutra",
         preview: styles.clinic,
     },
     {
         id: "green",
         name: "Olive",
-        description: "Oliva cálido, blanco y salvia suave",
+        description: "Oliva cálido como acento",
         preview: styles.olive,
     },
     {
         id: "apple",
         name: "Apple",
-        description: "Azul Apple, superficies luminosas y grises neutros",
+        description: "Azul Apple sobre una base neutra",
         preview: styles.apple,
     },
     {
         id: "pink",
         name: "Pink",
-        description: "Rosa empolvado y frambuesa para tu estudio",
+        description: "Rosa frambuesa como acento",
         preview: styles.pink,
     },
     {
         id: "gold",
         name: "Gold · Oro",
-        description: "Oro antiguo, marfil y tonos champán",
+        description: "Oro antiguo y champán como acentos",
         preview: styles.gold,
     },
 ];

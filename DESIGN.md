@@ -4,7 +4,7 @@ Actualizado el 15 de octubre de 2026. Guía del proyecto para futuras modificaci
 
 ## Dirección aprobada
 
-Conservar el rediseño adaptable aprobado, la tipografía, iconos, tamaños táctiles, navegación y prioridades de cada pantalla. Los temas cambian color y superficies; no cambian datos, permisos ni funciones. No restaurar Pipeline, Reportes ni la antigua Caja.
+Conservar el rediseño adaptable aprobado, la tipografía, iconos, tamaños táctiles, navegación y prioridades de cada pantalla. Los temas cambian únicamente el acento; comparten la misma base neutra. No cambian datos, permisos ni funciones. No restaurar Pipeline, Reportes ni la antigua Caja.
 
 Celular: una tarea clara, texto completo, campos de 16 px y controles de al menos 44 px. Escritorio: aprovechar columnas y densidad sin empequeñecer letras. Usar superficies suaves y un acento principal; sin efectos metálicos, gradientes decorativos, neones, tipografías nuevas o fotografías añadidas para cambiar un tema.
 
@@ -18,21 +18,23 @@ Celular: una tarea clara, texto completo, campos de 16 px y controles de al meno
 
 ## Paletas
 
-| Tema | Identificador conservado | Acento claro | Superficie suave | Fondo claro | Acento oscuro |
-|---|---|---|---|---|---|
-| Olive | `green` | `#4c612b` | `#edf1e5` | `#fafbf7` | `#bdcd96` |
-| Pink | `pink` | `#a7426b` | `#f8e7ef` | `#fff8fb` | `#eba6c1` |
-| Gold · Oro | `gold` | `#89651f` | `#f5ead2` | `#fcfaf5` | `#ddbe78` |
+| Tema | Identificador conservado | Acento claro | Acento oscuro |
+|---|---|---|---|
+| Azul clínica | `clinic` | Azul clínico existente | Azul clínico existente |
+| Apple | `apple` | `#0071e3` | `#2997ff` |
+| Olive | `green` | `#4c612b` | `#bdcd96` |
+| Pink | `pink` | `#a7426b` | `#eba6c1` |
+| Gold · Oro | `gold` | `#89651f` | `#ddbe78` |
 
-Olive parte de los colores del prototipo aprobado en `output/responsive-crm-prototype/index.html`. No sustituirlo por verde esmeralda en oscuro. Su texto secundario se oscurece ligeramente frente al prototipo para mejorar contraste sobre salvia. Pink usa rosa empolvado con frambuesa. Gold usa oro antiguo en claro y champán en oscuro, evitando amarillo saturado.
+**Decisión posterior de Joel, 15 de octubre de 2026:** todos los temas comparten fondos neutros. Claro: fondo y tarjetas blancos, secundarios grises claros. Oscuro: fondo negro `#000000`, tarjetas y lateral `#1e1e1e`, secundarios `#2c2c2c`. Texto, bordes, formularios, barras de desplazamiento y burbujas usan grises, sin matices azules, rosas, verdes o dorados. Se retiran los fondos de color y gradientes de las primeras variantes.
 
-Azul clínica y Apple mantienen sus paletas actuales. El color propio configurado para el portal público permanece independiente del tema del navegador.
+El color aparece en botones de acción, iconos, indicadores, foco y selecciones puntuales. No teñir otra vez toda la pantalla ni las tarjetas de contenido por cambiar el acento. Los colores de estado y de datos conservan su significado. El color propio configurado para el portal público permanece independiente del tema del navegador.
 
 ## Roles y estados
 
 Usar tokens semánticos: texto general, texto secundario, borde, superficie, acento y texto sobre acento. Los acentos pastel del modo oscuro necesitan texto oscuro en botones sólidos. Errores y badges destructivos también deben usar su propio color de texto, evitando blanco fijo sobre rojo claro. Las etiquetas de audios y documentos enviados están sobre una burbuja suave, no sobre un botón sólido; su contraste se evalúa por separado.
 
-La tarjeta de próxima cita y el lateral pueden usar los tonos suaves del tema sin teñir toda la pantalla. Reservar el acento sólido para acciones, navegación seleccionada y señales pertinentes. Estados de éxito/error conservan su significado y texto.
+La tarjeta de próxima cita y el lateral usan la base neutra compartida. Reservar el acento sólido para acciones, navegación seleccionada y señales pertinentes. Estados de éxito/error conservan su significado y texto.
 
 ## Comprobación
 
