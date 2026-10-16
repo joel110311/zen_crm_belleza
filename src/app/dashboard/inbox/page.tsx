@@ -7,6 +7,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { useWorkspaceAccess } from "@/components/layout/workspace-access-context";
 import { switchConversationDraft, forwardMessagePayload, isActiveConversationResult, recoverFailedConversationDraft, matchesConversationSearch } from "@/lib/inbox-workspace";
 import styles from "@/components/inbox/inbox.module.css";
+import { isTemporaryMessage, replaceOptimisticMessage, mergeFetchedMessages, collapseMessageDuplicates, type Message } from "@/lib/inbox-messages";
+export type { Message } from "@/lib/inbox-messages";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import {
@@ -70,23 +72,6 @@ const INBOX_FULL_RESYNC_INTERVAL_MS = 60000;
 const FALLBACK_INBOX_OPERATION = buildOperationContext();
 
 // ──────────── Types ────────────
-export type Message = {
-    id: string;
-    content: string;
-    senderId: string | null;
-    direction: string;
-    createdAt: Date;
-    type: string;
-    status?: string | null;
-    sourceType: "wuzapi" | "meta";
-    sourceId?: string | null;
-    senderType?: string | null;
-    mediaUrl?: string | null;
-    mediaType?: string | null;
-    mediaFileName?: string | null;
-    reaction?: string | null;
-};
-
 type RawMessageRecord = {
     id: string;
     content: string;
@@ -138,122 +123,6 @@ function toDisplayHost(url: string | undefined) {
     } catch {
         return null;
     }
-}
-
-function isTemporaryMessage(message: Message) {
-    return message.id.startsWith("temp-");
-}
-
-function normalizeComparableMediaUrl(mediaUrl?: string | null) {
-    const trimmed = mediaUrl?.trim();
-    if (!trimmed) return null;
-
-    try {
-        const parsed = new URL(trimmed, "https://crm.local");
-        return parsed.pathname + parsed.search;
-    } catch {
-        return trimmed.replace(/^https?:\/\/[^/]+/i, "");
-    }
-}
-
-function areLikelySameMessage(left: Message, right: Message) {
-    if (left.id === right.id) return true;
-
-    const leftCreatedAt = left.createdAt instanceof Date ? left.createdAt.getTime() : new Date(left.createdAt).getTime();
-    const rightCreatedAt = right.createdAt instanceof Date ? right.createdAt.getTime() : new Date(right.createdAt).getTime();
-    const leftMediaUrl = normalizeComparableMediaUrl(left.mediaUrl);
-    const rightMediaUrl = normalizeComparableMediaUrl(right.mediaUrl);
-
-    return (
-        left.direction === right.direction &&
-        (left.senderType || null) === (right.senderType || null) &&
-        left.type === right.type &&
-        left.sourceType === right.sourceType &&
-        (left.sourceId || null) === (right.sourceId || null) &&
-        (left.content || "") === (right.content || "") &&
-        leftMediaUrl === rightMediaUrl &&
-        (left.mediaFileName || null) === (right.mediaFileName || null) &&
-        Math.abs(leftCreatedAt - rightCreatedAt) <= 15000
-    );
-}
-
-function replaceOptimisticMessage(
-    prev: Message[],
-    optimisticId: string,
-    persistedMessage: Message,
-) {
-    let replaced = false;
-    const next = prev.map((message) => {
-        if (message.id === optimisticId) {
-            replaced = true;
-            return persistedMessage;
-        }
-
-        return message;
-    });
-
-    return collapseMessageDuplicates(replaced ? next : [...next, persistedMessage]);
-}
-
-function mergeFetchedMessages(prev: Message[], incoming: Message[]) {
-    if (incoming.length === 0) return prev;
-
-    const next = [...prev];
-
-    for (const incomingMessage of incoming) {
-        const exactIndex = next.findIndex((message) => message.id === incomingMessage.id);
-        if (exactIndex >= 0) {
-            next[exactIndex] = incomingMessage;
-            continue;
-        }
-
-        const optimisticIndex = next.findIndex((message) =>
-            isTemporaryMessage(message) && areLikelySameMessage(message, incomingMessage),
-        );
-        if (optimisticIndex >= 0) {
-            next[optimisticIndex] = incomingMessage;
-            continue;
-        }
-
-        next.push(incomingMessage);
-    }
-
-    return collapseMessageDuplicates(next);
-}
-
-function collapseMessageDuplicates(messages: Message[]) {
-    const collapsed: Message[] = [];
-
-    for (const message of messages) {
-        const exactIndex = collapsed.findIndex((existing) => existing.id === message.id);
-        if (exactIndex >= 0) {
-            collapsed[exactIndex] = message;
-            continue;
-        }
-
-        const optimisticMatchIndex = collapsed.findIndex((existing) =>
-            existing.id !== message.id &&
-            (isTemporaryMessage(existing) || isTemporaryMessage(message)) &&
-            areLikelySameMessage(existing, message),
-        );
-
-        if (optimisticMatchIndex >= 0) {
-            const existing = collapsed[optimisticMatchIndex];
-            collapsed[optimisticMatchIndex] = isTemporaryMessage(existing) && !isTemporaryMessage(message)
-                ? message
-                : existing;
-            continue;
-        }
-
-        collapsed.push(message);
-    }
-
-    collapsed.sort((left, right) => {
-        const timeDelta = left.createdAt.getTime() - right.createdAt.getTime();
-        if (timeDelta !== 0) return timeDelta;
-        return left.id.localeCompare(right.id);
-    });
-    return collapsed;
 }
 
 export type Conversation = {

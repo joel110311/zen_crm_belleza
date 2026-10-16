@@ -34,7 +34,8 @@ export function InboxNotifier() {
     const pollInFlightRef = useRef(false);
 
     useEffect(() => {
-        if (pathname === "/dashboard/inbox") {
+        // The mounted inbox already owns polling and notifications, including tenant URLs.
+        if (/^\/(?:dashboard|t\/[^/]+)\/inbox\/?$/.test(pathname)) {
             return;
         }
 

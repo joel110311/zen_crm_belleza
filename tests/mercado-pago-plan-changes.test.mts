@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- Prisma query-shaped in-memory delegates and provider fixtures. */
 import test from "node:test";
 import assert from "node:assert/strict";
+import { addMonths } from "date-fns";
 import { loadTsModule } from "./helpers/load-ts-module.mts";
 import * as policy from "../src/lib/billing/recurring-policy.ts";
 import * as changePolicy from "../src/lib/billing/plan-change-policy.ts";
@@ -9,9 +10,10 @@ import { paidPeriodStart } from "../src/lib/billing/paid-period.ts";
 type Row = Record<string, any>;
 const runtime = { environment: "production", applicationId: "app", accessToken: "fake", webhookSecret: "fake" };
 const owner = { id: "owner", email: "owner@example.invalid" };
-function fixture(high = false) {
+function fixture(high = false, calendarMonth = false) {
     const now = new Date();
-    const start = new Date(now.getTime() - 15 * 86_400_000), end = new Date(now.getTime() + 15 * 86_400_000);
+    const start = new Date(now.getTime() - 15 * 86_400_000);
+    const end = calendarMonth ? addMonths(start, 1) : new Date(now.getTime() + 15 * 86_400_000);
     const agreement: Row = { id: "a", tenantId: "t", activeKey: "t", providerSubscriptionId: "pre", planId: high ? "ai" : "basic", initialPlanId: high ? "ai" : "basic", amountCents: high ? 50000 : 20000, initialAmountCents: high ? 50000 : 20000, status: "AUTHORIZED", environment: "production", applicationId: "app", externalReference: "sub-ref", startsAt: start, currency: "MXN", cancelRequestedAt: null, reconciliationOffset: 0 };
     const tables: Record<string, Row[]> = { mercadoPagoAgreement: [agreement], mercadoPagoPlanChange: [], billingCheckoutAttempt: [], commercialEvent: [], trial: [], trialPolicy: [],
         subscription: [{ id: "s", tenantId: "t", provider: "MERCADO_PAGO", providerSubscriptionId: "pre", planId: agreement.planId, status: "ACTIVE", currentPeriodStartsAt: start, currentPeriodEndsAt: end }],
@@ -194,7 +196,8 @@ test("refund reverses only upgraded entitlement in its own period and cannot be 
 });
 
 test("historical recurring invoice remains valid after an upgrade, including its refund", async () => {
-    const f = fixture(), q = await f.quote(); await f.accept(q.id); await f.changes.reconcilePlanChangePayment(f.payment(q), runtime);
+    // Recurring invoices use calendar months, unlike the fixed 30-day proration fixtures.
+    const f = fixture(false, true), q = await f.quote(); await f.accept(q.id); await f.changes.reconcilePlanChangePayment(f.payment(q), runtime);
     const invoice = { id: "old-cycle", preapproval_id: "pre", debit_date: f.start.toISOString(), currency_id: "MXN", transaction_amount: 200, payment: { id: "old-payment", status: "approved" } };
     f.setInvoicePayment({ id: "old-payment", status: "approved", live_mode: true, application_id: "app", currency_id: "MXN", transaction_amount: 200, external_reference: "sub-ref", date_approved: f.start.toISOString() });
     await f.recurring.reconcileRecurringInvoice(invoice, runtime); assert.equal(f.tables.subscription[0].planId, "ai");

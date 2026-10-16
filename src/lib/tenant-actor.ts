@@ -128,6 +128,18 @@ export async function ensureTenantActor(
         permissions: true,
     } as const;
 
+    // Resolve permissions from the live local record on every request, but avoid a
+    // transaction and an UPDATE when its control-plane projection is unchanged.
+    const linkedActor = await tenantDb.user.findUnique({
+        where: { controlUserId: globalUser.id },
+        select,
+    });
+    if (linkedActor && linkedActor.email === globalUser.email &&
+        linkedActor.name === globalUser.name && linkedActor.role === role) {
+        await projectAcceptedProfessionalInvitation(tenantDb, access, controlUserId, linkedActor);
+        return linkedActor;
+    }
+
     const refreshActor = (id: string) => tenantDb.user.update({
         where: { id },
         data: { email: globalUser.email, name: globalUser.name, role },
