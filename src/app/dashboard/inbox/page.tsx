@@ -791,7 +791,7 @@ function AudioPlayer({ src, isOutbound }: { src: string; isOutbound: boolean }) 
                 className={cn(
                     "flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full transition-colors",
                     isOutbound
-                        ? "bg-primary/20 text-primary hover:bg-primary/30 dark:bg-primary/30 dark:text-primary-foreground dark:hover:bg-primary/40"
+                        ? `bg-primary/20 text-primary hover:bg-primary/30 dark:bg-primary/30 dark:text-primary-foreground dark:hover:bg-primary/40 ${styles.outboundAudioButton}`
                         : "bg-primary/10 hover:bg-primary/20 text-primary"
                 )}
             >
@@ -837,7 +837,7 @@ function AudioPlayer({ src, isOutbound }: { src: string; isOutbound: boolean }) 
                         )}
                     </div>
                 </div>
-                <span className={cn("text-[10px] tabular-nums", isOutbound ? "text-primary/70 dark:text-primary-foreground/75" : "text-muted-foreground")}>
+                <span className={cn("text-[10px] tabular-nums", isOutbound ? `text-primary/70 dark:text-primary-foreground/75 ${styles.outboundMediaMeta}` : "text-muted-foreground")}>
                     {timeLabel}
                 </span>
             </div>
@@ -897,7 +897,7 @@ function MediaContent({ msg, onImageClick }: { msg: Message, onImageClick?: (msg
                 <FileText className="h-8 w-8 shrink-0 opacity-70" />
                 <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate">{msg.mediaFileName || "Documento"}</p>
-                    <p className={cn("text-xs", isOutbound ? "text-primary-foreground/60" : "text-muted-foreground")}>
+                    <p className={cn("text-xs", isOutbound ? `text-primary-foreground/60 ${styles.outboundMediaMeta}` : "text-muted-foreground")}>
                         {msg.mediaType || "Descargar"}
                     </p>
                 </div>
@@ -3528,7 +3528,7 @@ export default function InboxPage() {
                                                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
                                                 <div>
                                                     <p className="text-sm font-semibold">No puedes responder todavía desde este chat</p>
-                                                    <p className="mt-1 text-xs leading-relaxed text-amber-900/80">
+                                                    <p className="mt-1 text-xs leading-relaxed text-amber-900/80 dark:text-amber-200">
                                                         {whatsAppWarningText}
                                                     </p>
                                                 </div>

@@ -1,4 +1,5 @@
 .sidebar {
+  background: var(--workspace-sidebar, var(--card));
   display: none;
 }
 .mobileHeader {

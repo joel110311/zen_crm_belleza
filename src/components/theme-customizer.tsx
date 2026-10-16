@@ -3,6 +3,7 @@
 import * as React from "react";
 import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
+import styles from "./theme-customizer.module.css";
 import {
     applyColorTheme,
     DEFAULT_COLOR_THEME,
@@ -15,25 +16,37 @@ const COLOR_THEME_OPTIONS: Array<{
     id: ColorTheme;
     name: string;
     description: string;
-    gradient: string;
+    preview: string;
 }> = [
     {
         id: "clinic",
         name: "Azul clínica",
         description: "Tema principal con azul clínico y sidebar negra",
-        gradient: "from-[#3A88A8] to-[#080b10]",
+        preview: styles.clinic,
     },
     {
         id: "green",
-        name: "Green",
-        description: "Verdes naturales con menú lateral negro",
-        gradient: "from-[#6f843d] to-[#080b10]",
+        name: "Olive",
+        description: "Oliva cálido, blanco y salvia suave",
+        preview: styles.olive,
     },
     {
         id: "apple",
         name: "Apple",
         description: "Azul Apple, superficies luminosas y grises neutros",
-        gradient: "from-[#0071e3] to-[#f5f5f7]",
+        preview: styles.apple,
+    },
+    {
+        id: "pink",
+        name: "Pink",
+        description: "Rosa empolvado y frambuesa para tu estudio",
+        preview: styles.pink,
+    },
+    {
+        id: "gold",
+        name: "Gold · Oro",
+        description: "Oro antiguo, marfil y tonos champán",
+        preview: styles.gold,
     },
 ];
 
@@ -57,7 +70,7 @@ export function ThemeCustomizer() {
     if (!mounted) return null;
 
     return (
-        <div className="grid grid-cols-1 gap-3">
+        <div className={styles.options} role="group" aria-label="Tema de colores">
             {COLOR_THEME_OPTIONS.map((option) => {
                 const isActive = activeColorTheme === option.id;
                 return (
@@ -67,17 +80,17 @@ export function ThemeCustomizer() {
                         aria-pressed={isActive}
                         onClick={() => handleColorThemeChange(option.id)}
                         className={cn(
-                            "w-full rounded-xl border-2 p-1 text-left transition-all",
+                            styles.option,
                             isActive
                                 ? "border-primary"
                                 : "border-border hover:border-primary/40"
                         )}
                     >
-                        <div className="flex min-w-0 items-center gap-3 rounded-lg bg-secondary p-3">
-                            <div className={cn("h-10 w-10 shrink-0 rounded-full bg-gradient-to-br shadow-md", option.gradient)} />
+                        <div className={styles.optionContent}>
+                            <span className={cn(styles.preview, option.preview)} aria-hidden="true"><span /><span /><span /></span>
                             <div className="min-w-0 flex-1 space-y-0.5">
                                 <p className="text-sm font-semibold text-foreground">{option.name}</p>
-                                <p className="text-xs leading-relaxed text-muted-foreground">{option.description}</p>
+                                <p className="text-[13px] leading-relaxed text-muted-foreground">{option.description}</p>
                             </div>
                             {isActive ? <Check className="h-4 w-4 shrink-0 text-primary" /> : null}
                         </div>

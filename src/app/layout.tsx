@@ -6,7 +6,7 @@ import { Toaster } from "@/components/ui/toaster"
 import { SessionProvider } from "@/components/providers/session-provider"
 import { ColorThemeProvider } from "@/components/color-theme-provider"
 import { auth } from "@/lib/auth"
-import { COLOR_THEME_STORAGE_KEY, DEFAULT_COLOR_THEME } from "@/lib/color-theme"
+import { getColorThemeInitScript, DEFAULT_COLOR_THEME } from "@/lib/color-theme"
 import { getBrandingIcons, resolveBranding, resolveTenantBranding } from "@/lib/branding"
 import { getSystemSettingsOrDefaults } from "@/lib/system-settings"
 import { getActiveTenantRuntimeContext } from "@/lib/active-tenant-context"
@@ -34,17 +34,7 @@ export async function generateMetadata(): Promise<Metadata> {
   }
 }
 
-const colorThemeInitScript = `
-(() => {
-  try {
-    const stored = window.localStorage.getItem("${COLOR_THEME_STORAGE_KEY}");
-    const nextTheme = stored === "clinic" || stored === "green" || stored === "apple" ? stored : "${DEFAULT_COLOR_THEME}";
-    document.documentElement.setAttribute("data-color-theme", nextTheme);
-  } catch {
-    document.documentElement.setAttribute("data-color-theme", "${DEFAULT_COLOR_THEME}");
-  }
-})();
-`;
+const colorThemeInitScript = getColorThemeInitScript();
 
 export default async function RootLayout({
   children,

@@ -80,7 +80,7 @@
   padding: 20px;
   border: 1px solid color-mix(in srgb, var(--primary) 20%, var(--border));
   border-radius: 14px;
-  background: color-mix(in srgb, var(--primary) 7%, var(--card));
+  background: var(--workspace-highlight, color-mix(in srgb, var(--primary) 7%, var(--card)));
 }
 .empty {
   padding: 28px 20px;

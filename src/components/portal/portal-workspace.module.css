@@ -56,7 +56,7 @@
 .primary, .secondary, .danger { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 48px; height: auto; max-width: 100%; padding: 12px 20px; border-radius: 10px; font-size: 16px; font-weight: 600; line-height: 1.5; text-align: center; white-space: normal; }
 .primary { background: var(--portal-accent); color: var(--portal-on-accent); }
 .secondary { color: var(--foreground); background: var(--secondary); }
-.danger { background: var(--destructive); color: white; }
+.danger { background: var(--destructive); color: var(--destructive-foreground, white); }
 .primary:hover, .danger:hover { filter: brightness(.94); }
 .secondary:hover, .service:hover, .slot:hover:not([aria-pressed="true"]) { background: var(--muted); }
 .notice, .error { padding: 16px; border-radius: 12px; background: var(--secondary); font-size: 14px; line-height: 1.7; }
