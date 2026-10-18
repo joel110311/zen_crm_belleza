@@ -1,7 +1,7 @@
 "use server";
 
 import { prisma } from "@/lib/db";
-import { requireAuthenticated } from "@/lib/authz";
+import { requireAnyPermission } from "@/lib/authz";
 
 export type SearchResult = {
     contacts: Array<{
@@ -21,12 +21,11 @@ export type SearchResult = {
 };
 
 export async function searchGlobal(term: string): Promise<SearchResult> {
-    await requireAuthenticated();
-    if (!term || term.length < 2) {
+    await requireAnyPermission(["contacts.manage", "patients.manage"]);
+    const normalizedTerm = term.trim().slice(0, 160);
+    if (normalizedTerm.length < 2) {
         return { contacts: [], deals: [] };
     }
-
-    const normalizedTerm = term.trim();
 
     try {
         const contacts = await
@@ -61,6 +60,6 @@ export async function searchGlobal(term: string): Promise<SearchResult> {
         };
     } catch (error) {
         console.error("Search error:", error);
-        return { contacts: [], deals: [] };
+        throw new Error("No pudimos buscar clientes. Inténtalo nuevamente.");
     }
 }
