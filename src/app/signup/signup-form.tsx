@@ -39,8 +39,10 @@ type SignupFormProps = {
 export function SignupForm({ turnstileSiteKey }: SignupFormProps) {
     const idempotencyKey = useRef(crypto.randomUUID());
     const fingerprint = useRef("");
+    const submitting = useRef(false);
     const [businessName, setBusinessName] = useState("");
     const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+    const [captchaAttempt, setCaptchaAttempt] = useState(0);
     const [error, setError] = useState<string | null>(null);
     const [message, setMessage] = useState<string | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -50,12 +52,13 @@ export function SignupForm({ turnstileSiteKey }: SignupFormProps) {
 
     async function onSubmit(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
-        if (isSubmitting) return;
+        if (submitting.current) return;
         setError(null);
         if (!captchaToken) {
             setError("Completa la verificación de seguridad para continuar.");
             return;
         }
+        submitting.current = true;
         setIsSubmitting(true);
 
         const formData = new FormData(event.currentTarget);
@@ -84,8 +87,10 @@ export function SignupForm({ turnstileSiteKey }: SignupFormProps) {
         } catch (submissionError) {
             idempotencyKey.current = crypto.randomUUID();
             setCaptchaToken(null);
+            setCaptchaAttempt(value => value + 1);
             setError(submissionError instanceof Error ? submissionError.message : "Ocurrió un error inesperado.");
         } finally {
+            submitting.current = false;
             setIsSubmitting(false);
         }
     }
@@ -103,7 +108,7 @@ export function SignupForm({ turnstileSiteKey }: SignupFormProps) {
             <div className={styles.field}><label htmlFor="signup-email">Correo electrónico</label><input id="signup-email" name="email" required type="email" autoComplete="email" aria-describedby="signup-email-hint" /><p id="signup-email-hint" className={styles.hint}>Te enviaremos un enlace para confirmar tu cuenta.</p></div>
             <PasswordField id="signup-password" name="password" label="Contraseña" autoComplete="new-password" minLength={12} maxLength={128} hint="Usa al menos 12 caracteres." />
             <label className={styles.legalConsent}><input name="legalAccepted" required type="checkbox" /><span>Acepto los <Link href="/terms" target="_blank" rel="noopener noreferrer">Términos de servicio</Link> y el <Link href="/privacy" target="_blank" rel="noopener noreferrer">Aviso de privacidad</Link>.</span></label>
-            <TurnstileWidget action="signup" onToken={handleCaptcha} siteKey={turnstileSiteKey} />
+            <TurnstileWidget key={captchaAttempt} action="signup" onToken={handleCaptcha} siteKey={turnstileSiteKey} />
             {error && <p role="alert" className={styles.error}>{error}</p>}
             <button disabled={isSubmitting} className={styles.submit} type="submit">{isSubmitting ? <><Loader2 className="size-5 animate-spin" aria-hidden="true" />Enviando verificación…</> : "Crear mi espacio de prueba"}</button>
         </fieldset>

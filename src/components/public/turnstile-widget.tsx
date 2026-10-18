@@ -25,23 +25,24 @@ export function TurnstileWidget({ action, onToken, siteKey }: TurnstileWidgetPro
     const widgetIdRef = useRef<string | null>(null);
     const [failed, setFailed] = useState(false);
     const [rendered, setRendered] = useState(false);
+    const [attempt, setAttempt] = useState(0);
     useEffect(() => {
         if (!siteKey || !containerRef.current) return;
         let active = true;
         const render = () => {
             if (!active || !containerRef.current || !window.turnstile || widgetIdRef.current) return;
             try {
+                setFailed(false);
                 widgetIdRef.current = window.turnstile.render(containerRef.current, {
                 sitekey: siteKey,
                 action,
                 theme: "auto",
                 size: "compact",
-                callback: (token: string) => onToken(token),
-                "expired-callback": () => onToken(null),
-                "error-callback": () => { setFailed(true); onToken(null); },
+                callback: (token: string) => { if (active) { setFailed(false); onToken(token); } },
+                "expired-callback": () => { if (active) onToken(null); },
+                "error-callback": () => { if (active) { setFailed(true); onToken(null); } },
                 });
                 setRendered(true);
-                setFailed(false);
             } catch {
                 setFailed(true);
                 onToken(null);
@@ -70,14 +71,20 @@ export function TurnstileWidget({ action, onToken, siteKey }: TurnstileWidgetPro
             if (widgetIdRef.current && window.turnstile) window.turnstile.remove(widgetIdRef.current);
             widgetIdRef.current = null;
         };
-    }, [action, onToken, siteKey]);
+    }, [action, onToken, siteKey, attempt]);
 
     if (!siteKey) return <p role="alert" className="text-sm text-destructive">La verificación de seguridad no está configurada.</p>;
     return (
         <div className="space-y-2">
             {!rendered && !failed && <p role="status" className="text-sm text-muted-foreground">Cargando verificación de seguridad…</p>}
-            <div ref={containerRef} className="min-h-[140px]" />
-            {failed ? <p role="alert" className="text-sm text-destructive">No se pudo cargar la verificación. Recarga la página e inténtalo de nuevo.</p> : null}
+            <div ref={containerRef} className="min-h-[140px]" hidden={failed} />
+            {failed ? <div className="space-y-2"><p role="alert" className="text-sm text-destructive">No se pudo cargar la verificación. Inténtalo de nuevo.</p><button type="button" className="inline-flex min-h-11 items-center rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium text-foreground hover:bg-secondary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary" onClick={() => {
+                onToken(null);
+                if (!window.turnstile) document.getElementById(scriptId)?.remove();
+                setFailed(false);
+                setRendered(false);
+                setAttempt(value => value + 1);
+            }}>Reintentar verificación</button></div> : null}
         </div>
     );
 }

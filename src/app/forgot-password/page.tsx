@@ -7,5 +7,5 @@ export const dynamic = "force-dynamic";
 
 export default function ForgotPasswordPage() {
     if (!isPublicTenantSignupEnabled()) redirect("/login");
-    return <AuthShell title="Recupera tu acceso" description="Te enviaremos un enlace si existe una cuenta asociada al correo."><ForgotPasswordForm turnstileSiteKey={getTurnstileSiteKey()} /></AuthShell>;
+    return <AuthShell title="Recupera tu acceso" description="Usa el correo con el que creaste tu cuenta."><ForgotPasswordForm turnstileSiteKey={getTurnstileSiteKey()} /></AuthShell>;
 }

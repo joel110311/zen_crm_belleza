@@ -8,8 +8,9 @@ function recovery(token: string | null, result: { updated?: boolean; error?: str
     const states: unknown[] = [];
     let cursor = 0;
     const requests: Array<{ url: string; body: Record<string, unknown> }> = [];
+    const submitting = { current: false };
     const mod = loadTsModule("src/app/reset-password/reset-password-form.tsx", {
-        react: { useState(initial: unknown) { const i = cursor++; if (!(i in states)) states[i] = initial; return [states[i], (value: unknown) => { states[i] = value; }]; } },
+        react: { useRef: () => submitting, useState(initial: unknown) { const i = cursor++; if (!(i in states)) states[i] = initial; return [states[i], (value: unknown) => { states[i] = value; }]; } },
         "next/navigation": { useSearchParams: () => new URLSearchParams(token ? { token } : {}) },
         "next/link": "a",
         "@/components/public/password-field": { PasswordField: () => null },
@@ -46,7 +47,9 @@ test("password mismatch stays local and offers an actionable error", async () =>
 
 test("recovery keeps the endpoint contract and blocks repeated submits while pending", async () => {
     const subject = recovery("test-token");
-    const first = form(subject.render())!.props.onSubmit(event("test-password-123"));
+    const handler = form(subject.render())!.props.onSubmit;
+    const first = handler(event("test-password-123"));
+    await handler(event("test-password-123"));
     const pendingTree = subject.render();
     assert.match(renderToStaticMarkup(pendingTree), /aria-busy="true"/);
     await form(pendingTree)!.props.onSubmit(event("test-password-123"));

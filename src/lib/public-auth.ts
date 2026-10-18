@@ -13,6 +13,8 @@ const RESET_TOKEN_TTL_MS = 30 * 60 * 1000;
 
 export const PUBLIC_AUTH_RESPONSE =
   "Si la solicitud es válida, recibirás un correo con los siguientes pasos.";
+export const PASSWORD_RESET_RESPONSE =
+  "Si este correo está registrado, recibirás un enlace para restablecer tu contraseña.";
 
 type SignupIntentInput = {
   name: string;

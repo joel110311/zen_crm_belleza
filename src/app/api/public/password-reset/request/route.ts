@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifySignupCaptcha } from "@/lib/captcha";
 import { isPublicTenantSignupEnabled } from "@/lib/multitenant-features";
-import { PUBLIC_AUTH_RESPONSE, requestPasswordReset } from "@/lib/public-auth";
+import { PASSWORD_RESET_RESPONSE, requestPasswordReset } from "@/lib/public-auth";
 import { consumeSharedRateLimit, getRequestIp, isSameApplicationOrigin } from "@/lib/security";
 
 export const runtime = "nodejs";
@@ -26,5 +26,5 @@ export async function POST(request: NextRequest) {
     } catch {
         // Never reveal account or provider state from an unauthenticated recovery request.
     }
-    return NextResponse.json({ message: PUBLIC_AUTH_RESPONSE }, { status: 202 });
+    return NextResponse.json({ message: PASSWORD_RESET_RESPONSE }, { status: 202 });
 }
