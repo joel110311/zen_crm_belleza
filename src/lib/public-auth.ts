@@ -108,8 +108,8 @@ function escapeHtml(value: string) {
   );
 }
 
-function emailHtml(title: string, copy: string, url: string, action: string) {
-  return `<!doctype html><html><body style="font-family:Arial,sans-serif;color:#172033;line-height:1.5"><h1 style="font-size:22px">${escapeHtml(title)}</h1><p>${escapeHtml(copy)}</p><p><a href="${escapeHtml(url)}" style="display:inline-block;background:#2563eb;color:white;padding:12px 18px;border-radius:8px;text-decoration:none;font-weight:600">${escapeHtml(action)}</a></p><p style="font-size:13px;color:#667085">Si no solicitaste esto, puedes ignorar este correo.</p></body></html>`;
+function emailHtml(title: string, copy: string, url: string, action: string, notice?: string) {
+  return `<!doctype html><html><body style="font-family:Arial,sans-serif;color:#172033;line-height:1.5"><h1 style="font-size:22px">${escapeHtml(title)}</h1><p>${escapeHtml(copy)}</p>${notice ? `<p style="font-weight:600">${escapeHtml(notice)}</p>` : ""}<p><a href="${escapeHtml(url)}" style="display:inline-block;background:#2563eb;color:white;padding:12px 18px;border-radius:8px;text-decoration:none;font-weight:600">${escapeHtml(action)}</a></p><p style="font-size:13px;color:#667085">Si no solicitaste esto, puedes ignorar este correo.</p></body></html>`;
 }
 
 async function recordAndSendEmail(input: {
@@ -168,17 +168,37 @@ async function sendSignupVerification(
   token: string,
 ) {
   const url = `${publicBaseUrl()}/verify-email?token=${encodeURIComponent(token)}`;
+  const db = getControlDb();
+  const [policy, redemption] = await Promise.all([
+    db.trialPolicy.findFirst({
+      where: { isActive: true },
+      orderBy: [{ isDefault: "desc" }, { updatedAt: "desc" }],
+      select: { trialDays: true },
+    }),
+    db.trialRedemption.findUnique({
+      where: { emailHmac: trialEmailHmac(intent.email) },
+      select: { redeemedAt: true },
+    }),
+  ]);
+  // Match the provisioner's current policy and fallback; the trial starts only when the space is ready.
+  const configuredDays = Number.parseInt(process.env.TENANT_TRIAL_DAYS || "", 10);
+  const durationDays = policy?.trialDays || (Number.isSafeInteger(configuredDays) && configuredDays > 0 ? configuredDays : 14);
+  const trialNotice = redemption?.redeemedAt
+    ? "Este correo ya utilizó su prueba gratuita. Podrás seleccionar un plan cuando tu espacio esté listo."
+    : `Tu prueba gratuita es de ${durationDays} días y comienza cuando el espacio de tu negocio esté listo.`;
+  const copy = `Confirma tu correo para crear el espacio de ${intent.displayName}. El enlace vence en 20 minutos.`;
   await recordAndSendEmail({
     signupIntentId: intent.id,
     recipientEmail: intent.email,
     template: "signup_verification",
     subject: "Confirma tu correo para crear tu CRM",
-    text: `Hola. Confirma tu correo para terminar de crear ${intent.displayName}: ${url}`,
+    text: `${copy}\n\n${trialNotice}\n\nConfirmar correo: ${url}`,
     html: emailHtml(
       "Confirma tu correo",
-      `Confirma tu correo para crear el espacio de ${intent.displayName}. El enlace vence en 20 minutos.`,
+      copy,
       url,
       "Confirmar correo",
+      trialNotice,
     ),
   });
 }
