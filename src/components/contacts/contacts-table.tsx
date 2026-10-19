@@ -26,6 +26,7 @@ import {
   updateAppointmentStatus,
 } from "@/app/actions/calendar";
 import { getSystemSettings } from "@/app/actions/settings";
+import { createConversation } from "@/app/actions/chat";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -627,6 +628,19 @@ export function ContactsTable({ contacts }: ContactsPageProps) {
                             `/dashboard/inbox?contactId=${encodeURIComponent(contact.id)}`,
                           )}
                           aria-label={`Abrir conversación de ${fullName}`}
+                            onClick={(event) => {
+                              if (readOnly || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+                              event.preventDefault();
+                              if (isPending) return;
+                              startTransition(async () => {
+                                try {
+                                  const conversation = await createConversation(contact.id);
+                                  router.push(route(`/dashboard/inbox?conversationId=${encodeURIComponent(conversation.id)}`));
+                                } catch {
+                                  toast({ title: "No se pudo abrir el chat", description: "Inténtalo de nuevo; el cliente conserva sus datos.", variant: "destructive" });
+                                }
+                              });
+                            }}
                           className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-primary/20 bg-primary/5 px-3 text-xs font-medium text-primary hover:bg-primary/10"
                         >
                           <WhatsAppIcon className="h-3.5 w-3.5" /> Ir al chat

@@ -63,6 +63,7 @@
 .error { color: var(--destructive); background: color-mix(in srgb, var(--destructive) 7%, var(--background)); }
 .notice p + p { margin-top: 8px; }
 .hint { font-size: 13px; color: var(--muted-foreground); line-height: 1.65; margin-top: 10px; }
+.heading p { white-space: pre-line; }
 .businessInfo { margin-top: 36px; max-width: 720px; }
 .businessInfo p { font-size: 14px; color: var(--muted-foreground); line-height: 1.7; margin-bottom: 8px; }
 .statusPanel { max-width: 640px; margin: 24px auto; padding: 32px; border-radius: 18px; background: var(--card); }

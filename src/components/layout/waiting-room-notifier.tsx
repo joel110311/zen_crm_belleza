@@ -6,7 +6,8 @@ import { usePathname } from "next/navigation";
 import { BellRing, CalendarPlus, Clock3, UserCheck, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { formatTimeInOperationZone } from "@/lib/operation-dates";
+import { formatTimeInOperationZone, formatDateTimeInOperationZone, getOperationDateKey } from "@/lib/operation-dates";
+import { tenantDashboardPath, tenantSlugFromPath } from "@/lib/tenant-request-routing";
 
 const POLL_INTERVAL_MS = 5000;
 const DISMISSED_STORAGE_KEY = "zen-crm-waiting-room-dismissed";
@@ -15,6 +16,7 @@ type WaitingRoomNotification = {
     type?: "waiting_room" | "appointment_request";
     id: string;
     title: string;
+    serviceName?: string | null;
     patientId: string | null;
     patientName: string;
     phone: string | null;
@@ -50,6 +52,7 @@ function writeDismissed(values: Set<string>) {
 export function WaitingRoomNotifier() {
     const pathname = usePathname();
     const isReception = pathname === "/dashboard/reception" || /^\/t\/[^/]+\/reception\/?$/.test(pathname);
+    const isInbox = pathname === "/dashboard/inbox" || /^\/t\/[^/]+\/inbox\/?$/.test(pathname);
     const pollInFlightRef = useRef(false);
     const [items, setItems] = useState<WaitingRoomNotification[]>([]);
     const [locale, setLocale] = useState("es-MX");
@@ -110,7 +113,7 @@ export function WaitingRoomNotifier() {
     if (isReception || visibleItems.length === 0) return null;
 
     return (
-        <div className="pointer-events-none fixed bottom-5 right-5 z-50 flex w-[min(380px,calc(100vw-2rem))] flex-col gap-3">
+        <div className={cn("pointer-events-none fixed right-4 z-50 flex w-[min(380px,calc(100vw-2rem))] flex-col gap-3 overflow-y-auto", isInbox ? "top-20 max-h-[calc(100dvh-13rem)] sm:top-4 sm:max-h-[calc(100dvh-8rem)]" : "bottom-[calc(5.5rem+env(safe-area-inset-bottom))] max-h-[calc(100dvh-7rem)] sm:bottom-5")}>
             {visibleItems.map((item) => {
                 const itemType = item.type || "waiting_room";
                 const dismissKey = `${itemType}:${item.id}`;
@@ -119,9 +122,10 @@ export function WaitingRoomNotifier() {
                     ? formatTimeInOperationZone(item.arrivalAt, locale, timeZone, { hour12: true })
                     : "Ahora";
                 const appointmentLabel = formatTimeInOperationZone(item.startTime, locale, timeZone, { hour12: true });
-                const primaryHref = isAppointmentRequest
-                    ? "/dashboard/reception"
-                    : "/dashboard/contacts";
+                const tenantSlug = tenantSlugFromPath(pathname);
+                const destination = isAppointmentRequest ? "/dashboard/reception" : "/dashboard/contacts";
+                const primaryHref = (tenantSlug ? tenantDashboardPath(tenantSlug, destination) : destination)
+                    + (isAppointmentRequest ? `?date=${getOperationDateKey(item.startTime, timeZone)}&request=${encodeURIComponent(item.id)}` : "");
 
                 return (
                     <div
@@ -141,22 +145,23 @@ export function WaitingRoomNotifier() {
                                         <p className="text-sm font-semibold text-foreground">
                                             {isAppointmentRequest ? "Nueva solicitud de cita" : "Cliente listo para atención"}
                                         </p>
-                                        <p className="mt-0.5 truncate text-base font-bold text-foreground">{item.patientName}</p>
+                                        <p className="mt-1 text-xs text-muted-foreground">Cliente</p>
+                                        <p className="mt-0.5 break-words text-base font-bold text-foreground">{item.patientName}</p>
                                     </div>
-                                    <button
+                                    {!isAppointmentRequest && <button
                                         type="button"
                                         onClick={() => dismiss(dismissKey)}
                                         className="rounded-full p-1 text-muted-foreground transition hover:bg-background hover:text-foreground"
                                         aria-label="Cerrar notificacion"
                                     >
                                         <X className="h-4 w-4" />
-                                    </button>
+                                    </button>}
                                 </div>
                                 <div className="mt-2 grid gap-1 text-xs text-muted-foreground">
                                     {isAppointmentRequest ? (
                                         <span className="inline-flex items-center gap-1.5">
                                             <Clock3 className="h-3.5 w-3.5 text-primary" />
-                                            Solicitada para {appointmentLabel}
+                                            {formatDateTimeInOperationZone(item.startTime, locale, timeZone, { weekday: "short", hour12: true })}
                                         </span>
                                     ) : null}
                                     <span className={cn("inline-flex items-center gap-1.5", isAppointmentRequest && "hidden")}>
@@ -165,18 +170,19 @@ export function WaitingRoomNotifier() {
                                     </span>
                                     <span className="inline-flex items-center gap-1.5">
                                         <BellRing className="h-3.5 w-3.5 text-primary" />
-                                        {item.title}{item.phone ? ` · ${item.phone}` : ""}
+                                        {item.serviceName || item.title}
                                     </span>
+                                    {isAppointmentRequest && <span>Profesional: {item.specialistName || "Por asignar"}</span>}
                                 </div>
                             </div>
                         </div>
                         <div className="flex items-center justify-end gap-2 p-3">
-                            <Button asChild variant="outline" size="sm">
+                            <Button asChild variant="outline" className="min-h-11">
                                 <Link href={primaryHref}>{isAppointmentRequest ? "Revisar solicitud" : "Abrir ficha"}</Link>
                             </Button>
-                            <Button size="sm" onClick={() => dismiss(dismissKey)}>
+                            {!isAppointmentRequest && <Button size="sm" onClick={() => dismiss(dismissKey)}>
                                 Entendido
-                            </Button>
+                            </Button>}
                         </div>
                     </div>
                 );

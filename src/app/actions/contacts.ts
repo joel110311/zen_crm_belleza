@@ -10,7 +10,9 @@ import {
 } from "@/lib/whatsapp-avatar";
 import { resolveMessageSourceId } from "@/lib/message-source";
 import { getSystemSettingsOrDefaults } from "@/lib/system-settings";
-import { requireAnyPermission } from "@/lib/authz";
+import { requireAnyPermission, requirePermission } from "@/lib/authz";
+import { parsePhoneByCountry, getOperationCountry } from "@/lib/operation-context";
+import { findOrCreateActiveConversationForContactSource } from "@/lib/source-conversations";
 import { getActiveTenantRuntimeContext } from "@/lib/active-tenant-context";
 import { contactListSnapshot } from "@/lib/contacts-view";
 
@@ -356,6 +358,40 @@ export async function getContact(id: string) {
     } catch (error) {
         console.error("Failed to fetch contact:", error);
         return null;
+    }
+}
+
+/** Starting a chat must reuse a booking's client without replacing their saved identity. */
+export async function startContactChat(formData: FormData) {
+    await requireClientAccess();
+    await requirePermission("chats.manage");
+    const name = String(formData.get("name") || "").trim();
+    const rawPhone = String(formData.get("phone") || "").trim();
+    if (!name || !rawPhone) return { success: false, error: "El nombre y el teléfono son obligatorios." };
+    try {
+        const settings = await getSystemSettingsOrDefaults();
+        const digits = rawPhone.replace(/\D/g, "");
+        // A Mexican ten-digit local number can start with another country's calling code (e.g. 55).
+        const inputPhone = !rawPhone.startsWith("+") && digits.length === 10 && getOperationCountry(settings.phoneDefaultCountry).code === "MX" ? `+52${digits}` : rawPhone;
+        const parsed = parsePhoneByCountry(inputPhone, settings.phoneDefaultCountry);
+        const phones = [...new Set([rawPhone, rawPhone.replace(/\D/g, ""), parsed.fullNumber, `+${parsed.fullNumber}`, parsed.nationalNumber].filter(Boolean))];
+        const findExisting = () => prisma.contact.findFirst({ where: { sourceType: "wuzapi", phone: { in: phones } }, orderBy: { createdAt: "asc" } });
+        let contact = await findExisting();
+        if (!contact) {
+            const input = new FormData();
+            input.set("name", name);
+            input.set("phone", parsed.fullNumber);
+            const created = await createContact(input);
+            if (created.success) return created;
+            // A simultaneous request may have created the same client while this one was saving.
+            contact = await findExisting();
+            if (!contact) return created;
+        }
+        const conversation = await findOrCreateActiveConversationForContactSource({ contactId: contact.id, sourceType: "wuzapi", sourceId: resolveMessageSourceId("wuzapi", settings) });
+        revalidateContactSurfaces([contact.id]);
+        return { success: true, contact, conversationId: conversation.id };
+    } catch {
+        return { success: false, error: "No se pudo abrir el chat. Tus datos siguen en el formulario." };
     }
 }
 

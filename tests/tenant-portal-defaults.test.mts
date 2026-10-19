@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { portalEnabledFromInput, portalNameAfterBusinessChange, resolveTenantPortalName } from "../src/lib/tenant-portal-defaults.ts";
+import { portalEnabledFromInput, portalNameAfterBusinessChange, resolveTenantPortalName, publicBusinessAddress } from "../src/lib/tenant-portal-defaults.ts";
+
+test("public addresses omit seeded labels but keep configured locations", () => {
+    for (const value of [null, undefined, "", "Direccion del negocio", " Dirección del negocio "]) assert.equal(publicBusinessAddress(value), null);
+    assert.equal(publicBusinessAddress("  Calle Magnolia 123  "), "Calle Magnolia 123");
+});
 
 test("first portal setup uses the tenant business name instead of seeded CRM branding", () => {
     assert.equal(resolveTenantPortalName("Zen CRM Cuidado Personal", "Zen CRM Cuidado Personal", "Barbería Central"), "Barbería Central");

@@ -1,6 +1,6 @@
 import { SettingsWorkspace } from "@/app/dashboard/settings/page";
 import { auth } from "@/lib/auth";
-import { isMultitenantChannelsEnabled } from "@/lib/multitenant-features";
+import { isMultitenantChannelsEnabled, isMultitenantInvitationsEnabled } from "@/lib/multitenant-features";
 import { requireTenantContext } from "@/lib/tenant-context";
 
 export default async function TenantSettingsPage({
@@ -28,6 +28,7 @@ export default async function TenantSettingsPage({
         <SettingsWorkspace
             billingHref={billingHref}
             channelsEnabled={isMultitenantChannelsEnabled()}
+            invitationsEnabled={isMultitenantInvitationsEnabled()}
         />
     );
 }

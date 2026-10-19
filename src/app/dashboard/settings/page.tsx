@@ -49,6 +49,7 @@ import { SpecialistManagerPanel } from "@/components/settings/specialist-manager
 import { PortalContentPanel } from "@/components/settings/portal-content-panel";
 import { LogoCropDialog } from "@/components/settings/logo-crop-dialog";
 import { UserAccessPanel } from "@/components/settings/user-access-panel";
+import { TeamInvitationManager } from "@/components/tenant/team-invitation-manager";
 import { BusinessPolicyConfigurator } from "@/components/settings/business-policy-configurator";
 import { TenantChannelSetup } from "@/components/tenant/tenant-channel-setup";
 import { Slider } from "@/components/ui/slider";
@@ -98,9 +99,11 @@ const SECTIONS: Array<{
 export function SettingsWorkspace({
     billingHref,
     channelsEnabled = false,
+    invitationsEnabled = false,
 }: {
     billingHref?: string;
     channelsEnabled?: boolean;
+    invitationsEnabled?: boolean;
 }) {
     const { readOnly } = useWorkspaceAccess();
     const [settingsLoaded, setSettingsLoaded] = useState(false);
@@ -1052,7 +1055,10 @@ export function SettingsWorkspace({
                 )}
 
                 {activeSection === "users" && canAccess("users.manage") && (
-                    <UserAccessPanel currentUserId={currentUserId} />
+                    <div className="min-w-0 space-y-8">
+                        {isTenantWorkspace && tenantSlug && <TeamInvitationManager tenantSlug={tenantSlug} enabled={invitationsEnabled} />}
+                        <UserAccessPanel currentUserId={currentUserId} allowCreate={!isTenantWorkspace} />
+                    </div>
                 )}
 
                 {activeSection === "chats" && (

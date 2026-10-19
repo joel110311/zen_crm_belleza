@@ -24,6 +24,7 @@ import {
   updateAppointmentStatus,
 } from "@/app/actions/calendar";
 import { WhatsAppIcon } from "@/components/icons/whatsapp-icon";
+import { AppointmentRequestActions } from "@/components/portal/appointment-request-actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -210,6 +211,7 @@ export default function ReceptionPage() {
     ? searchParams.get("date") || ""
     : "";
   const requestedFinishId = searchParams.get("finish") || "";
+  const requestedRequestId = searchParams.get("request") || "";
   const [isPending, startTransition] = useTransition();
   const selectedDateTouchedRef = useRef(Boolean(requestedDate));
   const finishHandledRef = useRef("");
@@ -351,6 +353,7 @@ export default function ReceptionPage() {
   );
   const visibleAppointments = dayAppointments.filter(
     (a) =>
+      (!requestedRequestId || selectedDate !== requestedDate || a.id === requestedRequestId) &&
       (statusFilter === "all" ||
         (statusFilter === "waiting"
           ? ["waiting", "called"].includes(a.status)
@@ -515,6 +518,11 @@ export default function ReceptionPage() {
     setQuery("");
     setStatusFilter("all");
     setSpecialistFilter("all");
+    if (requestedRequestId) {
+      const params = new URLSearchParams(searchParams.toString());
+      params.delete("request");
+      router.replace(`${pathname}?${params}`, { scroll: false });
+    }
   };
 
   return (
@@ -746,6 +754,7 @@ export default function ReceptionPage() {
                   appointment.status,
                 );
                 const notificationLocked = appointmentStarted || isClosed;
+                const pendingPortalRequest = appointment.source === "portal" && appointment.status === "scheduled" && appointment.confirmationStatus === "pending";
                 const primaryStatus =
                   appointment.status === "scheduled"
                     ? appointment.confirmationStatus === "confirmed"
@@ -856,6 +865,7 @@ export default function ReceptionPage() {
                       </div>
                     </div>
                     <div className={styles.appointmentActions}>
+                      {pendingPortalRequest ? <AppointmentRequestActions disabled={disabled} onDecision={(status) => runAction(() => updateAppointmentStatus(appointment.id, status, status === "cancelled" ? "Solicitud rechazada por el negocio." : undefined), status === "cancelled" ? "Solicitud rechazada" : "Cita confirmada")} /> : requestedRequestId === appointment.id ? <p role="status" className="text-sm font-medium">{appointment.status === "cancelled" ? "Solicitud rechazada" : "Solicitud confirmada"}</p> : <>
                       <div className={styles.primaryActions}>
                         {primary && actionButton(primary, true)}
                         {appointment.meetLink && (
@@ -912,6 +922,7 @@ export default function ReceptionPage() {
                           </p>
                         )}
                       </details>
+                      </>}
                     </div>
                   </article>
                 );

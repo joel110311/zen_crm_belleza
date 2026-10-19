@@ -13,7 +13,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Plus } from "lucide-react";
-import { createContact } from "@/app/actions/contacts";
+import { createContact, startContactChat } from "@/app/actions/contacts";
 import { useState } from "react";
 import { useFormStatus } from "react-dom";
 import { useToast } from "@/components/ui/use-toast";
@@ -31,6 +31,7 @@ function SubmitButton({ label }: { label: string }) {
 }
 
 type NewContactDialogProps = {
+  mode?: "contact" | "chat";
   triggerLabel?: string;
   triggerClassName?: string;
   title?: string;
@@ -43,6 +44,7 @@ type NewContactDialogProps = {
 };
 
 export function NewContactDialog({
+  mode = "contact",
   triggerLabel = "Nuevo cliente",
   triggerClassName,
   title = "Nuevo cliente",
@@ -62,8 +64,8 @@ export function NewContactDialog({
     if (readOnly) return;
     setError("");
     try {
-      const result = await createContact(formData);
-      if (result?.success && result.contact && result.conversationId) {
+      const result = await (mode === "chat" ? startContactChat(formData) : createContact(formData));
+      if (result?.success && "contact" in result && result.contact && "conversationId" in result && result.conversationId) {
         toast({
           title: title === "Nuevo chat" ? "Chat creado" : "Cliente creado",
           description:

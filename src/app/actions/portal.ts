@@ -2,6 +2,7 @@
 
 import crypto from "crypto";
 import { publicPortalSocialLinks } from "@/lib/portal-social-links";
+import { publicBusinessAddress } from "@/lib/tenant-portal-defaults";
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { prisma } from "@/lib/db";
@@ -94,7 +95,7 @@ export async function getPortalData(slug = DEFAULT_PORTAL_SLUG) {
         logoUrl: settings.clinicLogoUrl || settings.brandLogoUrl || null,
         logoScale: settings.clinicLogoScale || 100,
         subtitle: resolveBusinessSubtitle(settings.clinicSubtitle),
-        address: settings.clinicAddress || null,
+        address: publicBusinessAddress(settings.clinicAddress),
         slug: settings.portalSlug || DEFAULT_PORTAL_SLUG,
         remindersEnabled: Boolean(settings.appointmentRemindersEnabled && settings.reminderWhatsAppEnabled),
         operationContext: buildOperationContext(settings),

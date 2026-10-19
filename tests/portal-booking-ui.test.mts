@@ -5,7 +5,13 @@ import { loadTsModule } from "./helpers/load-ts-module.mts";
 
 const settle = () => new Promise<void>(resolve => setImmediate(resolve));
 const data = { enabled: true, slug: "local-portal", clinicName: "Estudio local", subtitle: "Cuidado personal", primaryColor: "#4B5F25", logoUrl: null, logoScale: 100, address: null, operationContext: { locale: "es-MX", timeZone: "UTC", phoneDefaultCountry: "MX", callingCode: "+52" }, specialists: [{ id: "specialist-a", name: "Sofía", displayName: null }], services: [{ id: "service-a", name: "Corte y peinado", description: null, price: 280, currency: "MXN", durationMinutes: 45, imageUrl: null, showPrice: true, specialists: [{ specialistId: "specialist-a" }] }] };
-type Element = React.ReactElement<Record<string, any>>;
+type Element = React.ReactElement<Record<string, unknown> & {
+    children?: React.ReactNode;
+    onClick: () => void;
+    onChange: (value: string | { target: { value: string } }) => void;
+    onSubmit: (event: { preventDefault(): void }) => void;
+    style?: React.CSSProperties & { "--portal-logo-scale"?: number };
+}>;
 function nodes(tree: React.ReactNode): Element[] { if (!React.isValidElement<{ children?: React.ReactNode }>(tree)) return []; return [tree as Element, ...React.Children.toArray(tree.props.children).flatMap(nodes)]; }
 function text(tree: React.ReactNode): string { if (typeof tree === "string" || typeof tree === "number") return String(tree); if (!React.isValidElement<{ children?: React.ReactNode }>(tree)) return ""; return React.Children.toArray(tree.props.children).map(text).join(" "); }
 function button(tree: React.ReactNode, name: string) { const found = nodes(tree).find(e => e.type === "button" && text(e).trim() === name); assert.ok(found, `button ${name}`); return found; }
@@ -40,6 +46,15 @@ function fixture(file: string, name: string, props: unknown, fetcher: (url: stri
 }
 
 const slot = "2026-10-16T14:00:00Z";
+test("booking requests a name and phone without an email field", async () => {
+    const f = fixture("src/components/portal/portal-booking.tsx", "PortalBooking", { data, mode: "tenant" }, async (url) => url.endsWith("/slot-holds") ? Response.json({ data: { holdToken: "held-slot" } }) : Response.json({ data: { slots: [slot] } }));
+    f.render(); await f.effects(); button(f.render(), "Elegir horario").props.onClick();
+    button(f.render(), "14:00").props.onClick(); await settle(); button(f.render(), "Continuar").props.onClick();
+    const tree = f.render();
+    assert.ok(nodes(tree).some(e => e.props.id === "portal-first-name"));
+    assert.ok(nodes(tree).some(e => e.props.inputId === "portal-phone"));
+    assert.ok(!nodes(tree).some(e => e.props.id === "portal-email" || e.props.type === "email"));
+});
 test("availability failure is distinct from an empty day and can be retried", async () => {
     let fails = true;
     const f = fixture("src/components/portal/portal-booking.tsx", "PortalBooking", { data, mode: "tenant" }, async () => { if (fails) throw new Error("Conexión interrumpida"); return Response.json({ data: { slots: [slot] } }); });

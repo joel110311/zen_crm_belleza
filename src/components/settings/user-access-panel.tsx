@@ -51,7 +51,7 @@ function countExtraPermissions(role: string, permissions: unknown) {
     return normalizeOverridePermissions(normalizeRole(role), permissions).length;
 }
 
-export function UserAccessPanel({ currentUserId }: { currentUserId?: string }) {
+export function UserAccessPanel({ currentUserId, allowCreate = true }: { currentUserId?: string; allowCreate?: boolean }) {
     const { toast } = useToast();
     const { readOnly } = useWorkspaceAccess();
     const [loaded, setLoaded] = useState(false);
@@ -121,7 +121,7 @@ export function UserAccessPanel({ currentUserId }: { currentUserId?: string }) {
     };
 
     const handleCreateUser = () => {
-        if (readOnly || isPending) return;
+        if (!allowCreate || readOnly || isPending) return;
         if (!newUser.name.trim() || !newUser.email.trim() || !newUser.password.trim()) return;
         startTransition(async () => {
             const result = await createUser({
@@ -210,16 +210,16 @@ export function UserAccessPanel({ currentUserId }: { currentUserId?: string }) {
                         <RefreshCw className="mr-2 h-4 w-4" />
                         Refrescar
                     </Button>
-                    <Button variant="outline" disabled={readOnly || isPending || !loaded || loadError} onClick={() => setShowAddForm((current) => !current)} className="w-full sm:w-auto">
+                    {allowCreate && <Button variant="outline" disabled={readOnly || isPending || !loaded || loadError} onClick={() => setShowAddForm((current) => !current)} className="w-full sm:w-auto">
                         {showAddForm ? <X className="mr-2 h-4 w-4" /> : <Plus className="mr-2 h-4 w-4" />}
                         {showAddForm ? "Cancelar" : "Agregar"}
-                    </Button>
+                    </Button>}
                 </div>
             </div>
 
             {loadError && <p role="alert" className="rounded-xl border p-4 text-sm text-destructive">No se pudieron cargar los usuarios. Usa Refrescar para reintentar.</p>}
             {!loaded && !loadError && <p role="status" className="rounded-xl bg-muted/30 p-4 text-sm text-muted-foreground">Cargando usuarios…</p>}
-            {showAddForm ? (
+            {allowCreate && showAddForm ? (
                 <UserForm
                     title="Nuevo usuario"
                     form={newUser}

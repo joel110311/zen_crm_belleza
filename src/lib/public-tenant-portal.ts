@@ -1,6 +1,7 @@
 import "server-only";
 import { workspaceBillingSelection, workspaceBillingState } from "@/lib/billing/workspace-access";
 import { publicPortalSocialLinks } from "@/lib/portal-social-links";
+import { publicBusinessAddress } from "@/lib/tenant-portal-defaults";
 
 import { randomUUID } from "node:crypto";
 import { Prisma, type PrismaClient } from "@prisma/client";
@@ -169,7 +170,7 @@ function serializedPortal(context: PublicPortalContext, services: Array<{
         paymentInstructions: context.settings.portalPaymentInstructions || null,
         logoUrl: context.settings.clinicLogoUrl || context.settings.brandLogoUrl || null,
         logoScale: context.settings.clinicLogoScale || 100,
-        address: context.settings.clinicAddress || null,
+        address: publicBusinessAddress(context.settings.clinicAddress),
         operationContext: {
             locale: operation.locale,
             timeZone: operation.timeZone,

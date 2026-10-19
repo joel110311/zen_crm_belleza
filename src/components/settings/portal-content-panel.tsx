@@ -307,7 +307,7 @@ export function PortalContentPanel() {
                         </div>
                     </div>
                     <div className="space-y-2">
-                        <Label>Mensaje de bienvenida</Label>
+                        <Label>Mensaje de bienvenida o promoción</Label>
                         <Textarea
                             value={portalSettings.portalIntro}
                             onChange={(event) => setPortalSettings((current) => ({ ...current, portalIntro: event.target.value }))}

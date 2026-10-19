@@ -1,5 +1,12 @@
 const SEEDED_NAMES = new Set(["zen crm cuidado personal", "zen crm belleza", "zen crm oftalmo"]);
 
+/** A seed label is not a public address. Preserve actual configured locations. */
+export function publicBusinessAddress(value: string | null | undefined) {
+    const address = value?.trim() || "";
+    const normalized = address.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+    return !address || normalized === "direccion del negocio" ? null : address;
+}
+
 function isSeededName(value: string) {
     return !value.trim() || SEEDED_NAMES.has(value.trim().toLowerCase());
 }

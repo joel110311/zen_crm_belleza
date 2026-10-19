@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Loader2, MailPlus, UserRoundCheck, UsersRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { useWorkspaceAccess } from "@/components/layout/workspace-access-context";
 
 type TeamPayload = {
     memberships: Array<{
@@ -46,6 +46,7 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 export function TeamInvitationManager({ tenantSlug, enabled, onConfigured }: Props) {
+    const { readOnly } = useWorkspaceAccess();
     const [team, setTeam] = useState<TeamPayload | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [loading, setLoading] = useState(enabled);
@@ -76,6 +77,7 @@ export function TeamInvitationManager({ tenantSlug, enabled, onConfigured }: Pro
 
     async function invite(event: React.FormEvent<HTMLFormElement>) {
         event.preventDefault();
+        if (readOnly || sending || !team || team.seats.available === 0) return;
         setSending(true);
         setError(null);
         try {
@@ -103,6 +105,7 @@ export function TeamInvitationManager({ tenantSlug, enabled, onConfigured }: Pro
     }
 
     async function revoke(invitationId: string) {
+        if (readOnly) return;
         setError(null);
         const response = await fetch(`${endpoint}/${encodeURIComponent(invitationId)}`, {
             method: "DELETE",
@@ -117,6 +120,7 @@ export function TeamInvitationManager({ tenantSlug, enabled, onConfigured }: Pro
     }
 
     async function setMembership(membershipId: string, isActive: boolean) {
+        if (readOnly) return;
         setError(null);
         const response = await fetch(`/api/t/${encodeURIComponent(tenantSlug)}/v1/memberships/${encodeURIComponent(membershipId)}`, {
             method: "PATCH",
@@ -132,7 +136,7 @@ export function TeamInvitationManager({ tenantSlug, enabled, onConfigured }: Pro
     }
 
     if (!enabled) {
-        return <div className="rounded-xl border bg-muted/30 p-5 text-sm leading-6 text-muted-foreground">El equipo está listo en el código, pero permanece cerrado hasta configurar correo transaccional y activar <code>MULTITENANT_INVITATIONS_ENABLED</code>.</div>;
+        return <p className="rounded-xl border bg-muted/30 p-5 text-sm leading-6 text-muted-foreground">Las invitaciones por correo no están disponibles en este momento. Contacta a soporte para habilitarlas.</p>;
     }
 
     return (
@@ -144,11 +148,11 @@ export function TeamInvitationManager({ tenantSlug, enabled, onConfigured }: Pro
                 </p>
             </div>
 
-            <form className="grid gap-4 rounded-xl border p-4 sm:grid-cols-2" onSubmit={invite}>
+            <form onSubmit={invite}><fieldset disabled={readOnly || sending || loading || !team} className="grid min-w-0 gap-4 rounded-xl border p-4 sm:grid-cols-2">
                 <div className="sm:col-span-2"><p className="font-medium">Invitar a una persona</p><p className="mt-1 text-sm text-muted-foreground">La invitación vence en siete días y nunca incluye una contraseña.</p></div>
                 <Field label="Correo electrónico"><Input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required maxLength={254} /></Field>
                 <Field label="Rol">
-                    <select className="h-10 w-full rounded-md border bg-background px-3 text-sm" value={role} onChange={(event) => setRole(event.target.value)}>
+                    <select className="min-h-11 w-full rounded-md border bg-background px-3 text-base" value={role} onChange={(event) => setRole(event.target.value)}>
                         <option value="RECEPTION">Recepción</option>
                         <option value="PROFESSIONAL">Profesional</option>
                         <option value="ADMIN">Administración</option>
@@ -159,21 +163,21 @@ export function TeamInvitationManager({ tenantSlug, enabled, onConfigured }: Pro
                     <Field label="Especialidad (opcional)"><Input value={specialty} onChange={(event) => setSpecialty(event.target.value)} maxLength={160} /></Field>
                 </> : null}
                 <div className="sm:col-span-2 flex justify-end"><Button type="submit" disabled={sending || team?.seats.available === 0}>{sending ? <Loader2 className="mr-2 size-4 animate-spin" /> : <MailPlus className="mr-2 size-4" />}Enviar invitación</Button></div>
-            </form>
+            </fieldset></form>
 
-            {error ? <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">{error}</p> : null}
+            {error ? <div role="alert" className="space-y-3 rounded-lg border px-3 py-3 text-sm"><p className="text-destructive">{error}</p><Button type="button" variant="outline" onClick={() => void load()} disabled={loading || sending}>Reintentar consulta</Button></div> : null}
             {loading ? <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" /> Cargando equipo…</div> : null}
 
             {team ? <div className="space-y-3">
                 <p className="text-sm font-medium">Miembros</p>
                 {team.memberships.map((membership) => <div key={membership.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border p-3 text-sm">
-                    <div><p className="font-medium">{membership.user.name}</p><p className="text-muted-foreground">{membership.user.email} · {ROLE_LABELS[membership.role] || membership.role}</p></div>
-                    {membership.role !== "OWNER" ? <Button type="button" variant="outline" size="sm" onClick={() => void setMembership(membership.id, !membership.isActive)}>{membership.isActive ? "Desactivar" : "Reactivar"}</Button> : <span className="rounded-full bg-primary/10 px-2 py-1 text-xs text-primary">Propietario</span>}
+                    <div className="min-w-0 break-words"><p className="font-medium">{membership.user.name}</p><p className="text-muted-foreground">{membership.user.email} · {ROLE_LABELS[membership.role] || membership.role}</p></div>
+                    {membership.role !== "OWNER" ? <Button type="button" variant="outline" size="sm" disabled={readOnly} onClick={() => void setMembership(membership.id, !membership.isActive)}>{membership.isActive ? "Desactivar" : "Reactivar"}</Button> : <span className="rounded-full bg-primary/10 px-2 py-1 text-xs text-primary">Propietario</span>}
                 </div>)}
                 <p className="pt-2 text-sm font-medium">Invitaciones</p>
                 {team.invitations.length === 0 ? <p className="text-sm text-muted-foreground">Aún no hay invitaciones.</p> : team.invitations.map((invitation) => <div key={invitation.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border p-3 text-sm">
-                    <div><p className="font-medium">{invitation.email}</p><p className="text-muted-foreground">{ROLE_LABELS[invitation.role] || invitation.role} · {invitation.status.toLocaleLowerCase()}</p></div>
-                    {invitation.status === "PENDING" ? <Button type="button" variant="ghost" size="sm" onClick={() => void revoke(invitation.id)}>Revocar</Button> : invitation.professionalProfileStatus === "FAILED" ? <span className="text-xs text-amber-700">Perfil profesional pendiente de reintento</span> : <UserRoundCheck className="size-4 text-muted-foreground" />}
+                    <div className="min-w-0 break-words"><p className="font-medium">{invitation.email}</p><p className="text-muted-foreground">{ROLE_LABELS[invitation.role] || invitation.role} · {invitation.status.toLocaleLowerCase()}</p></div>
+                    {invitation.status === "PENDING" ? <Button type="button" variant="ghost" size="sm" disabled={readOnly} onClick={() => void revoke(invitation.id)}>Revocar</Button> : invitation.professionalProfileStatus === "FAILED" ? <span className="text-xs text-amber-700">Perfil profesional pendiente de reintento</span> : <UserRoundCheck className="size-4 text-muted-foreground" />}
                 </div>)}
             </div> : null}
         </div>
@@ -181,5 +185,5 @@ export function TeamInvitationManager({ tenantSlug, enabled, onConfigured }: Pro
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
-    return <label className="space-y-2"><Label>{label}</Label>{children}</label>;
+    return <label className="min-w-0 space-y-2"><span className="text-sm font-medium">{label}</span>{children}</label>;
 }

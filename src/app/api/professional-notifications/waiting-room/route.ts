@@ -76,6 +76,7 @@ export async function GET() {
         select: {
             id: true,
             title: true,
+            service: { select: { name: true } },
             startTime: true,
             endTime: true,
             arrivalAt: true,
@@ -123,6 +124,7 @@ export async function GET() {
         select: {
             id: true,
             title: true,
+            service: { select: { name: true } },
             startTime: true,
             endTime: true,
             createdAt: true,
@@ -162,6 +164,7 @@ export async function GET() {
                 type: "appointment_request",
                 id: appointment.id,
                 title: appointment.title,
+                serviceName: appointment.service?.name || appointment.title,
                 patientId: appointment.patientId || appointment.patient?.id || null,
                 patientName: patientDisplayName(appointment),
                 phone: appointment.patient?.phone || appointment.contact?.phone || null,
@@ -175,6 +178,7 @@ export async function GET() {
                 type: "waiting_room",
                 id: appointment.id,
                 title: appointment.title,
+                serviceName: appointment.service?.name || appointment.title,
                 patientId: appointment.patientId || appointment.patient?.id || null,
                 patientName: patientDisplayName(appointment),
                 phone: appointment.patient?.phone || appointment.contact?.phone || null,

@@ -99,7 +99,6 @@ export function PortalBooking({ data, mode = "legacy" }: Props) {
     const [firstName, setFirstName] = useState("");
     const [lastName, setLastName] = useState("");
     const [phone, setPhone] = useState("");
-    const [email, setEmail] = useState("");
     const [reason, setReason] = useState(data.services[0]?.name || "Servicio de cuidado personal");
     const [sendReminders, setSendReminders] = useState(Boolean(data.remindersEnabled));
     const [step, setStep] = useState<"service" | "time" | "details">("service");
@@ -270,7 +269,6 @@ export function PortalBooking({ data, mode = "legacy" }: Props) {
                         firstName: firstName.trim(),
                         lastName: lastName.trim(),
                         phone,
-                        email: email.trim(),
                     }),
                 });
                 const payload = await response.json().catch(() => null) as {
@@ -371,7 +369,6 @@ export function PortalBooking({ data, mode = "legacy" }: Props) {
                         <fieldset className={styles.fields} disabled={busy}>
                             <div className={styles.twoFields}><div className={styles.field}><label htmlFor="portal-first-name">{mode === "tenant" ? "Nombre" : "Nombre completo"}</label><input id="portal-first-name" autoComplete={mode === "tenant" ? "given-name" : "name"} required value={firstName} onChange={event => setFirstName(event.target.value)} /></div>{mode === "tenant" && <div className={styles.field}><label htmlFor="portal-last-name">Apellidos (opcional)</label><input id="portal-last-name" autoComplete="family-name" value={lastName} onChange={event => setLastName(event.target.value)} /></div>}</div>
                             <div className={`${styles.field} ${styles.phone}`}><label htmlFor="portal-phone">Teléfono de WhatsApp</label><PhonePrefixInput inputId="portal-phone" required value={phone} onChange={setPhone} defaultCountry={operationContext.phoneDefaultCountry} disabled={busy} /><p className={styles.hint}>Selecciona el país y escribe tu número.</p></div>
-                            {mode === "tenant" && <div className={styles.field}><label htmlFor="portal-email">Correo electrónico (opcional)</label><input id="portal-email" type="email" autoComplete="email" value={email} onChange={event => setEmail(event.target.value)} /></div>}
                             {mode === "legacy" && remindersGloballyEnabled && <label className="flex min-h-11 items-start gap-3 text-sm"><input type="checkbox" checked={sendReminders} onChange={event => setSendReminders(event.target.checked)} className="mt-1 size-5 shrink-0" /><span>Recibir recordatorios por WhatsApp</span></label>}
                             {formError && <p role="alert" className={styles.error}>{formError}</p>}
                             <div className={styles.actions}><button type="button" className={styles.secondary} onClick={() => setStep("time")} disabled={busy}><ArrowLeft className="size-4" aria-hidden="true" />Horario</button><button type="submit" className={styles.primary} disabled={busy}>{isPending ? <><Loader2 className="size-5 animate-spin" aria-hidden="true" />Enviando…</> : "Solicitar cita"}</button></div>

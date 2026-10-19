@@ -28,6 +28,7 @@ import { businessDayBounds } from "@/lib/calendar/business-hours";
 import { resolveCalendarClient } from "@/lib/calendar/client-selection";
 import { validCalendarDateKey } from "@/lib/calendar/draft";
 import { operationDateReference } from "@/lib/operation-dates";
+import { tenantDashboardPath } from "@/lib/tenant-request-routing";
 
 const APPOINTMENT_INCLUDE = {
   user: true,
@@ -37,11 +38,12 @@ const APPOINTMENT_INCLUDE = {
   service: true,
 } as const;
 
-function revalidateCalendarSurfaces() {
-  revalidatePath("/dashboard");
-  revalidatePath("/dashboard/calendar");
-  revalidatePath("/dashboard/reception");
-  revalidatePath("/dashboard/patients");
+async function revalidateCalendarSurfaces() {
+  const runtime = await getActiveTenantRuntimeContext("read");
+  for (const path of ["/dashboard", "/dashboard/calendar", "/dashboard/reception", "/dashboard/contacts"]) {
+    revalidatePath(path);
+    if (runtime) revalidatePath(tenantDashboardPath(runtime.slug, path));
+  }
 }
 
 function makePublicToken() {
@@ -361,7 +363,7 @@ export async function assignAppointmentDetails(
     });
 
     await syncAppointmentReminders(appointmentId);
-    revalidateCalendarSurfaces();
+    await revalidateCalendarSurfaces();
     return { success: true, appointment: updated };
   } catch (error) {
     console.error("Failed to assign appointment details:", error);
@@ -399,7 +401,7 @@ export async function assignAppointmentClient(
       // keeps winning over the real contact in calendar/dashboard views.
       patientId: contact.patients[0]?.id || "",
     });
-    revalidateCalendarSurfaces();
+    await revalidateCalendarSurfaces();
     return { success: true, appointment };
   } catch (error) {
     console.error("Failed to assign appointment client:", error);
@@ -431,7 +433,7 @@ export async function assignAppointmentSpecialist(
       specialistId: specialist.id,
     });
     await syncAppointmentReminders(appointmentId);
-    revalidateCalendarSurfaces();
+    await revalidateCalendarSurfaces();
     return { success: true, appointment };
   } catch (error) {
     console.error("Failed to assign appointment specialist:", error);
@@ -487,7 +489,7 @@ export async function createAppointment(data: {
       contactId: patientValidation.contactId || undefined,
     });
     await syncAppointmentReminders(appointment.id);
-    revalidateCalendarSurfaces();
+    await revalidateCalendarSurfaces();
     return { success: true, appointment };
   } catch (error) {
     console.error("Failed to create appointment:", error);
@@ -550,7 +552,7 @@ export async function updateAppointment(
 
     const appointment = await updateManagedAppointment(id, nextData);
     await syncAppointmentReminders(id);
-    revalidateCalendarSurfaces();
+    await revalidateCalendarSurfaces();
     return { success: true, appointment };
   } catch (error) {
     console.error("Failed to update appointment:", error);
@@ -643,7 +645,7 @@ export async function updateAppointmentStatus(
         id,
         reason?.trim() || "Cita cancelada desde el CRM.",
       );
-      revalidateCalendarSurfaces();
+      await revalidateCalendarSurfaces();
       return { success: true, appointment };
     }
 
@@ -697,7 +699,7 @@ export async function updateAppointmentStatus(
       );
     }
 
-    revalidateCalendarSurfaces();
+    await revalidateCalendarSurfaces();
     return { success: true, appointment };
   } catch (error) {
     console.error("Failed to update appointment status:", error);
@@ -754,7 +756,7 @@ export async function cloneAppointmentAsOverbook(id: string) {
       data: { parentAppointmentId: appointment.id },
     });
 
-    revalidateCalendarSurfaces();
+    await revalidateCalendarSurfaces();
     return { success: true, appointment: cloned };
   } catch (error) {
     console.error("Failed to clone appointment:", error);
@@ -792,7 +794,7 @@ export async function sendAppointmentReminder(id: string) {
 
   const result = await sendImmediateAppointmentReminder(id);
   if (result.success) {
-    revalidateCalendarSurfaces();
+    await revalidateCalendarSurfaces();
   }
   return result;
 }
@@ -812,7 +814,7 @@ export async function sendDueAppointmentReminders() {
 
   await syncFutureAppointmentReminders();
   const result = await processDueAppointmentReminders();
-  revalidateCalendarSurfaces();
+  await revalidateCalendarSurfaces();
   return result;
 }
 
@@ -820,7 +822,7 @@ export async function retryAppointmentReminderSend(reminderId: string) {
   await requireAnyPermission(["reception.manage", "calendar.manage"]);
 
   const result = await retryAppointmentReminder(reminderId);
-  revalidateCalendarSurfaces();
+  await revalidateCalendarSurfaces();
   return result;
 }
 
@@ -857,7 +859,7 @@ export async function cancelAppointmentByToken(token: string, reason?: string) {
     include: APPOINTMENT_INCLUDE,
   });
 
-  revalidateCalendarSurfaces();
+  await revalidateCalendarSurfaces();
   revalidatePath(`/portal/turno/${token}`);
   return { success: true, appointment: updated };
 }
@@ -868,7 +870,7 @@ export async function deleteAppointment(id: string) {
   try {
     await getActiveTenantRuntimeContext("write");
     await deleteManagedAppointment(id);
-    revalidateCalendarSurfaces();
+    await revalidateCalendarSurfaces();
     return { success: true };
   } catch (error) {
     console.error("Failed to delete appointment:", error);

@@ -69,6 +69,7 @@ function calendar(zone = "America/Mexico_City", denied = false) {
         "next/cache": {}, "@/lib/calendar/appointments": {}, "@/lib/appointment-reminders": {}, "@/lib/system-settings": {}, "@/lib/operation-context": {}, "@/lib/calendar/client-selection": {},
         "@/lib/authz": { requirePermission: async () => { if (denied) throw new Error("Forbidden"); } },
         "@/lib/active-tenant-context": { getActiveTenantRuntimeContext: async () => ({ accessMode: "READ_ONLY" }) },
+        "@/lib/tenant-request-routing": {},
         "@/lib/google-calendar": { syncGoogleCalendarToCrm: async () => { syncs++; } },
         "@/lib/calendar/business-hours": hours, "@/lib/calendar/draft": { validCalendarDateKey },
         "@/lib/operation-dates": { operationDateReference: (key: string, timeZone: string) => hours.zonedDateTimeToUtc(key, "12:00", timeZone) },
