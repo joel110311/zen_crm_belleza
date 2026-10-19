@@ -20,7 +20,7 @@ async function page(recurringEnabled: boolean) {
         "next/navigation": { notFound() { throw new Error("not found"); }, redirect() { throw new Error("redirect"); } },
         "next/link": (props: React.ComponentProps<"a">) => React.createElement("a", props),
         "./billing.module.css": {},
-        "./coupon-checkout": { CouponCheckout: () => null },
+        "./coupon-checkout": loadTsModule("src/app/billing/[tenantSlug]/coupon-checkout.tsx", { "./billing.module.css": {} }),
         "@/lib/billing/presentation": billingPresentation,
         "./billing-actions": { BillingActions: ({ planSlug }: { planSlug?: string }) => planSlug ? React.createElement("button", {}, "Pagar solo un mes") : null },
         "./billing-status-refresh": { BillingStatusRefresh: () => null },
@@ -92,4 +92,100 @@ for (const consent of [false, true]) {
             assert.equal(requests[0].body.consentVersion, RECURRING_CONSENT_VERSION);
         }
     });
+}
+
+test("billing keeps status in the header and the collapsed coupon inside its plan", async () => {
+  const html = await page(true);
+  const header = html.slice(html.indexOf("<header"), html.indexOf("</header>"));
+  const article = html.slice(
+    html.indexOf("<article"),
+    html.indexOf("</article>"),
+  );
+  assert.match(header, /Estado actual/);
+  assert.doesNotMatch(
+    html,
+    /Secciones de facturación|href="#estado"|href="#planes"|href="#ayuda"/,
+  );
+  assert.match(article, /Cupón para Esencial/);
+  assert.match(article, /aria-expanded="false"/);
+  assert.ok(
+    article.indexOf("Cupón para Esencial") < article.indexOf("Qué incluye"),
+  );
+  assert.doesNotMatch(html, /ZEN-50|<select/);
+});
+
+function elements(
+  node: unknown,
+): React.ReactElement<Record<string, unknown>>[] {
+  if (Array.isArray(node)) return node.flatMap(elements);
+  if (!React.isValidElement<Record<string, unknown>>(node)) return [];
+  return [node, ...elements(node.props.children)];
+}
+
+for (const slug of ["esencial", "automatiza", "pro"]) {
+  test(`coupon preview is bound to the ${slug} card without another plan selector`, async () => {
+    let hook = 0;
+    const requests: Record<string, unknown>[] = [];
+    const mod = loadTsModule(
+      "src/app/billing/[tenantSlug]/coupon-checkout.tsx",
+      {
+        react: {
+          useId: () => `coupon-${slug}`,
+          useRef: () => ({ current: false }),
+          useState: () => [
+            [true, "PRIVATE-TEST", null, false, false, ""][hook++],
+            () => {},
+          ],
+        },
+        "./billing.module.css": {},
+      },
+      {
+        fetch: async (_url: string, options: RequestInit) => {
+          requests.push(JSON.parse(String(options.body)));
+          return Response.json({
+            quote: {
+              code: "PRIVATE-TEST",
+              discountPercent: 50,
+              originalCents: 49900,
+              amountCents: 24950,
+              currency: "MXN",
+            },
+          });
+        },
+      },
+    );
+    const Component = mod.CouponCheckout as React.ComponentType<{
+      tenantSlug: string;
+      plan: {
+        slug: string;
+        name: string;
+        currency: string;
+        monthlyAmountCents: number;
+      };
+      disabled: boolean;
+    }>;
+    const tree = (
+      Component as (
+        props: React.ComponentProps<typeof Component>,
+      ) => React.ReactNode
+    )({
+      tenantSlug: "logicapp",
+      plan: { slug, name: slug, currency: "MXN", monthlyAmountCents: 49900 },
+      disabled: false,
+    });
+    const nodes = elements(tree);
+    assert.equal(nodes.filter((node) => node.type === "select").length, 0);
+    const input = nodes.find((node) => node.type === "input")!;
+    assert.equal(input.props.placeholder, undefined);
+    const form = nodes.find((node) => node.type === "form")!;
+    await (
+      form.props.onSubmit as (event: {
+        preventDefault(): void;
+      }) => Promise<void>
+    )({ preventDefault() {} });
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0].planSlug, slug);
+    assert.equal(requests[0].action, "preview");
+    assert.equal(requests[0].consent, false);
+  });
 }

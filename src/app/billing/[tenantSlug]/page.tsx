@@ -57,8 +57,8 @@ export default async function BillingPage({
   const billingProvider = getActiveBillingProvider();
   const recurringEnabled =
     billingProvider === "MERCADO_PAGO" && isMercadoPagoSubscriptionsEnabled();
-  const [plans, trial, subscriptions, selection, agreement, promotion] = await Promise.all(
-    [
+  const [plans, trial, subscriptions, selection, agreement, promotion] =
+    await Promise.all([
       db.plan.findMany({
         where: { isActive: true },
         orderBy: { monthlyAmountCents: "asc" },
@@ -120,9 +120,11 @@ export default async function BillingPage({
           planChanges: { where: { activeKey: { not: null } }, take: 1 },
         },
       }),
-      db.billingCouponRedemption.findUnique({ where: { activeKey: context.tenant.tenantId }, include: { coupon: { select: { code: true } } } }),
-    ],
-  );
+      db.billingCouponRedemption.findUnique({
+        where: { activeKey: context.tenant.tenantId },
+        include: { coupon: { select: { code: true } } },
+      }),
+    ]);
 
   const subscription =
     subscriptions.find(
@@ -159,25 +161,27 @@ export default async function BillingPage({
       ),
   );
   const checkoutNotice =
-    checkout === "coupon" && promotion?.status === "APPLIED" && promotion.discountPercent === 100
-      ? "Mes promocional activado sin costo. Tu prueba se conserva y no se programaron cargos automáticos. Consulta abajo la fecha de tu periodo."
+    checkout === "coupon" &&
+    promotion?.status === "APPLIED" &&
+    promotion.discountPercent === 100
+      ? "Mes promocional activado sin costo. Tu prueba se conserva y no se programaron cargos automáticos. Consulta las fechas en Estado actual."
       : checkout === "plan-change"
-      ? "Regresaste del pago proporcional. La mejora sólo se activa cuando Mercado Pago aprueba el pago y confirma el nuevo importe de la misma suscripción. Actualiza el estado abajo para verificarlo."
-      : checkout === "subscription"
-        ? "Regresaste de autorizar una suscripción. La autorización no confirma un cobro: verificaremos cada pago con Mercado Pago antes de ampliar tu acceso. Puedes actualizar el estado abajo."
-        : checkout === "success"
-          ? billingProvider === "MERCADO_PAGO"
-            ? "Regresaste de Mercado Pago. Estamos verificando el pago directamente con el proveedor; el acceso se actualizará únicamente cuando quede aprobado."
-            : "Tu plan quedó registrado. Confirmaremos la activación cuando el proveedor notifique el resultado del pago."
-          : checkout === "scheduled" && billingProvider === "STRIPE"
-            ? "Tu método de pago quedó registrado de forma segura. Consulta abajo la fecha de activación del plan."
-            : checkout === "pending"
-              ? "Mercado Pago dejó el pago pendiente. Conservaremos tu estado actual hasta recibir la confirmación."
-              : checkout === "failure"
-                ? "Mercado Pago no completó el cobro. No modificamos tu acceso ni tu prueba."
-                : checkout === "cancelled"
-                  ? "El pago fue cancelado. Tu espacio y prueba no cambiaron."
-                  : null;
+        ? "Regresaste del pago proporcional. La mejora sólo se activa cuando Mercado Pago aprueba el pago y confirma el nuevo importe de la misma suscripción. Actualiza el estado abajo para verificarlo."
+        : checkout === "subscription"
+          ? "Regresaste de autorizar una suscripción. La autorización no confirma un cobro: verificaremos cada pago con Mercado Pago antes de ampliar tu acceso. Puedes actualizar el estado abajo."
+          : checkout === "success"
+            ? billingProvider === "MERCADO_PAGO"
+              ? "Regresaste de Mercado Pago. Estamos verificando el pago directamente con el proveedor; el acceso se actualizará únicamente cuando quede aprobado."
+              : "Tu plan quedó registrado. Confirmaremos la activación cuando el proveedor notifique el resultado del pago."
+            : checkout === "scheduled" && billingProvider === "STRIPE"
+                ? "Tu método de pago quedó registrado de forma segura. Consulta la fecha de activación en Estado actual."
+              : checkout === "pending"
+                ? "Mercado Pago dejó el pago pendiente. Conservaremos tu estado actual hasta recibir la confirmación."
+                : checkout === "failure"
+                  ? "Mercado Pago no completó el cobro. No modificamos tu acceso ni tu prueba."
+                  : checkout === "cancelled"
+                    ? "El pago fue cancelado. Tu espacio y prueba no cambiaron."
+                    : null;
 
   return (
     <main className={styles.page} data-billing-workspace>
@@ -197,30 +201,110 @@ export default async function BillingPage({
         Volver al CRM
       </Link>
       <header className={styles.heading}>
-        <p>{context.tenant.displayName}</p>
-        <h1>
-          <CreditCard
-            className="size-7 shrink-0 text-primary"
-            aria-hidden="true"
-          />
-          Plan y facturación
-        </h1>
-        <p>
-          Consulta tu acceso, compara los planes y administra tu suscripción.
-        </p>
+        <div className={styles.headingCopy}>
+          <p>{context.tenant.displayName}</p>
+          <h1>
+            <CreditCard
+              className="size-7 shrink-0 text-primary"
+              aria-hidden="true"
+            />
+            Plan y facturación
+          </h1>
+          <p>
+            Consulta tu acceso, compara los planes y administra tu suscripción.
+          </p>
+        </div>
+        <section
+          id="estado"
+          aria-labelledby="billing-current-title"
+          className={styles.currentStatus}
+        >
+          <h2 id="billing-current-title">Estado actual</h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            {subscription
+              ? `${subscription.plan?.name || "Plan"}: ${billingSubscriptionLabel(subscription.status)}${subscription.currentPeriodEndsAt ? ` · periodo hasta ${new Intl.DateTimeFormat("es-MX", { dateStyle: "medium" }).format(subscription.currentPeriodEndsAt)}` : ""}`
+              : billingProvider === "STRIPE" &&
+                  selection &&
+                  ["PENDING_SETUP", "SCHEDULED", "PROCESSING"].includes(
+                    selection.status,
+                  )
+                ? `${selection.plan.name}: ${selection.status === "PENDING_SETUP" ? "falta confirmar la tarjeta" : `programado para ${new Intl.DateTimeFormat("es-MX", { dateStyle: "medium", timeStyle: "short" }).format(selection.scheduledFor)}`}. Puedes cambiar de plan antes de esa fecha en los planes de abajo.`
+                : historicalSubscription
+                  ? `${historicalSubscription.plan?.name || "Plan"}: acceso anterior conservado${historicalSubscription.currentPeriodEndsAt ? ` hasta ${new Intl.DateTimeFormat("es-MX", { dateStyle: "medium" }).format(historicalSubscription.currentPeriodEndsAt)}` : ""}. Los nuevos pagos se realizan con Mercado Pago.`
+                  : hasActiveTrial(trial, new Date())
+                    ? `Prueba activa hasta ${new Intl.DateTimeFormat("es-MX", { dateStyle: "medium" }).format(trial!.endsAt)}.`
+                    : "Sin suscripción activa."}
+          </p>
+          {promotion?.status === "APPLIED" &&
+          promotion.periodStartsAt &&
+          promotion.periodEndsAt ? (
+            <p className="mt-3 text-sm leading-6 text-muted-foreground">
+              Promoción de un mes con {promotion.discountPercent}% de descuento:
+              del{" "}
+              {new Intl.DateTimeFormat("es-MX", {
+                dateStyle: "medium",
+                timeZone: context.tenant.timeZone,
+              }).format(promotion.periodStartsAt)}{" "}
+              al{" "}
+              {new Intl.DateTimeFormat("es-MX", {
+                dateStyle: "medium",
+                timeZone: context.tenant.timeZone,
+              }).format(promotion.periodEndsAt)}
+              .{" "}
+              {hasActiveTrial(trial, new Date())
+                ? "Tu prueba gratuita conserva su fecha original. "
+                : ""}
+              Después deberás contratar al precio normal; el cupón no activa
+              renovación automática.
+            </p>
+          ) : null}
+          {billingProvider === "MERCADO_PAGO" &&
+          subscription &&
+          !agreement?.activeKey ? (
+            <p className="mt-2 text-sm text-muted-foreground">
+              {promotion?.discountPercent === 100
+                ? "Tu mes gratuito no tiene renovación automática activa."
+                : "Tu pago anterior no tiene renovación automática activa."}
+              {recurringEnabled
+                ? " Para los siguientes meses, contrata una suscripción en los planes de abajo. El primer cobro respetará tu periodo ya pagado."
+                : " Conservas el periodo ya pagado."}
+            </p>
+          ) : null}
+          {billingProvider === "STRIPE" && selection?.status === "FAILED" ? (
+            <p className="mt-3 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+              No fue posible activar el plan. No realizaremos intentos ocultos;
+              soporte puede revisar y reintentar la activación.{" "}
+              {selection.lastError ? `Referencia: ${selection.lastError}` : ""}
+            </p>
+          ) : null}
+          {hasStripeCustomer ? (
+            <div className="mt-4 max-w-xs">
+              <BillingActions
+                tenantSlug={context.tenant.slug}
+                canManage={hasStripeCustomer}
+                billingProvider={billingProvider}
+              />
+            </div>
+          ) : null}
+        </section>
       </header>
-      <nav className={styles.navigation} aria-label="Secciones de facturación">
-        <a href="#estado">Mi plan</a>
-        <a href="#planes">Comparar planes</a>
-        <a href="#ayuda">Uso y pagos</a>
-      </nav>
       {context.tenant.expiryNotice ? (
         <section className={styles.expiry}>
-          <h2 className="font-semibold">
-            {context.tenant.expiryNotice.phase === "DELETION_DUE"
-              ? "Plazo de conservación finalizado"
-              : "Tu negocio está en solo lectura"}
-          </h2>
+          <div className={styles.expiryHeading}>
+            <h2 className="font-semibold">
+              {context.tenant.expiryNotice.phase === "DELETION_DUE"
+                ? "Plazo de conservación finalizado"
+                : "Tu negocio está en solo lectura"}
+            </h2>
+            {context.tenant.expiryNotice.phase !== "DELETION_DUE" ? (
+              <a
+                className="font-medium text-primary underline underline-offset-4"
+                href={`/api/t/${encodeURIComponent(context.tenant.slug)}/export`}
+              >
+                Exportar datos del CRM
+              </a>
+            ) : null}
+          </div>
           <p className="mt-2">
             El plazo de conservación de tres meses termina el{" "}
             <strong>
@@ -234,14 +318,6 @@ export default async function BillingPage({
               ? "El acceso a los datos ha finalizado y su eliminación puede estar en curso."
               : "Reactiva un plan antes de esa fecha para seguir trabajando y conservarlos."}
           </p>
-          {context.tenant.expiryNotice.phase !== "DELETION_DUE" ? (
-            <a
-              className="mt-3 inline-block font-medium text-primary underline underline-offset-4"
-              href={`/api/t/${encodeURIComponent(context.tenant.slug)}/export`}
-            >
-              Exportar datos del CRM
-            </a>
-          ) : null}
         </section>
       ) : null}
       {checkoutNotice ? (
@@ -249,55 +325,8 @@ export default async function BillingPage({
           {checkoutNotice}
         </p>
       ) : null}
-      <div className={styles.summary}>
-        <section
-          id="estado"
-          aria-labelledby="billing-current-title"
-          className={styles.panel}
-        >
-          <h2 id="billing-current-title">Estado actual</h2>
-          <p className="mt-2 text-sm text-muted-foreground">
-            {subscription
-              ? `${subscription.plan?.name || "Plan"}: ${billingSubscriptionLabel(subscription.status)}${subscription.currentPeriodEndsAt ? ` · periodo hasta ${new Intl.DateTimeFormat("es-MX", { dateStyle: "medium" }).format(subscription.currentPeriodEndsAt)}` : ""}`
-              : billingProvider === "STRIPE" &&
-                  selection &&
-                  ["PENDING_SETUP", "SCHEDULED", "PROCESSING"].includes(
-                    selection.status,
-                  )
-                ? `${selection.plan.name}: ${selection.status === "PENDING_SETUP" ? "falta confirmar la tarjeta" : `programado para ${new Intl.DateTimeFormat("es-MX", { dateStyle: "medium", timeStyle: "short" }).format(selection.scheduledFor)}`}. Puedes cambiar de plan antes de esa fecha desde Comparar planes.`
-                : historicalSubscription
-                  ? `${historicalSubscription.plan?.name || "Plan"}: acceso anterior conservado${historicalSubscription.currentPeriodEndsAt ? ` hasta ${new Intl.DateTimeFormat("es-MX", { dateStyle: "medium" }).format(historicalSubscription.currentPeriodEndsAt)}` : ""}. Los nuevos pagos se realizan con Mercado Pago.`
-                  : hasActiveTrial(trial, new Date())
-                    ? `Prueba activa hasta ${new Intl.DateTimeFormat("es-MX", { dateStyle: "medium" }).format(trial!.endsAt)}.`
-                    : "Sin suscripción activa."}
-          </p>
-          {promotion?.status === "APPLIED" && promotion.periodStartsAt && promotion.periodEndsAt ? <p className="mt-3 text-sm leading-6 text-muted-foreground">Promoción de un mes con {promotion.discountPercent}% de descuento: del {new Intl.DateTimeFormat("es-MX", { dateStyle: "medium", timeZone: context.tenant.timeZone }).format(promotion.periodStartsAt)} al {new Intl.DateTimeFormat("es-MX", { dateStyle: "medium", timeZone: context.tenant.timeZone }).format(promotion.periodEndsAt)}. {hasActiveTrial(trial, new Date()) ? "Tu prueba gratuita conserva su fecha original. " : ""}Después deberás contratar al precio normal; el cupón no activa renovación automática.</p> : null}
-          {billingProvider === "MERCADO_PAGO" &&
-          subscription &&
-          !agreement?.activeKey ? (
-            <p className="mt-2 text-sm text-muted-foreground">
-              {promotion?.discountPercent === 100 ? "Tu mes gratuito no tiene renovación automática activa." : "Tu pago anterior no tiene renovación automática activa."}
-              {recurringEnabled
-                ? " Para los siguientes meses, contrata una suscripción desde Comparar planes. El primer cobro respetará tu periodo ya pagado."
-                : " Conservas el periodo ya pagado."}
-            </p>
-          ) : null}
-          {billingProvider === "STRIPE" && selection?.status === "FAILED" ? (
-            <p className="mt-3 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-              No fue posible activar el plan. No realizaremos intentos ocultos;
-              soporte puede revisar y reintentar la activación.{" "}
-              {selection.lastError ? `Referencia: ${selection.lastError}` : ""}
-            </p>
-          ) : null}
-          <div className="mt-4 max-w-xs">
-            <BillingActions
-              tenantSlug={context.tenant.slug}
-              canManage={hasStripeCustomer}
-              billingProvider={billingProvider}
-            />
-          </div>
-        </section>
-        {billingProvider === "MERCADO_PAGO" && agreement ? (
+      {billingProvider === "MERCADO_PAGO" && agreement ? (
+        <div className={styles.summary}>
           <section
             aria-labelledby="billing-management-title"
             className={styles.panel}
@@ -336,7 +365,6 @@ export default async function BillingPage({
                   timeStyle: "short",
                   timeZone: "America/Mexico_City",
                 }).format(agreement.nextPaymentAt)}
-
               </p>
             ) : null}
             <p className="mt-2 text-sm text-muted-foreground">
@@ -400,9 +428,8 @@ export default async function BillingPage({
               canCancel={Boolean(agreement.activeKey)}
             />
           </section>
-        ) : null}
-      </div>
-      {billingProvider === "MERCADO_PAGO" ? <CouponCheckout tenantSlug={context.tenant.slug} plans={plans.filter(plan => plan.currency === "MXN" && Boolean(plan.monthlyAmountCents))} disabled={Boolean(agreement?.activeKey) || promotion?.status === "APPLIED"} unavailableReason={promotion?.status === "APPLIED" ? "Este negocio ya utilizó su promoción. Puedes contratar una suscripción al precio normal desde Comparar planes." : undefined} /> : null}
+        </div>
+      ) : null}
       <section
         id="planes"
         aria-labelledby="billing-plans-title"
@@ -478,6 +505,28 @@ export default async function BillingPage({
                     )}
                   </p>
                 )}
+                {billingProvider === "MERCADO_PAGO" &&
+                plan.currency === "MXN" &&
+                plan.monthlyAmountCents ? (
+                  <CouponCheckout
+                    tenantSlug={context.tenant.slug}
+                    plan={{
+                      slug: plan.slug,
+                      name: plan.name,
+                      monthlyAmountCents: plan.monthlyAmountCents,
+                      currency: plan.currency,
+                    }}
+                    disabled={
+                      Boolean(agreement?.activeKey) ||
+                      promotion?.status === "APPLIED"
+                    }
+                    unavailableReason={
+                      promotion?.status === "APPLIED"
+                        ? "Este negocio ya utilizó su promoción. Puedes contratar este plan al precio normal."
+                        : undefined
+                    }
+                  />
+                ) : null}
                 <details className={styles.features}>
                   <summary>Qué incluye</summary>
                   <div>
