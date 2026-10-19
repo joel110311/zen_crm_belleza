@@ -84,6 +84,7 @@ test("control page distinguishes unauthorized, forbidden and infrastructure fail
         "@/lib/platform-admin": { PlatformAdminAccessError: AccessError, requirePlatformAdmin: async () => { throw failure; } },
         "@/lib/control-db": { getControlDb: () => { databaseAccesses++; throw new Error("must not read protected data"); } },
         "@/components/control/commerce-control-center": {}, "@/components/control/workspace-support-center": {}, "@/lib/ai/platform-runtime": {},
+        "@/components/control/coupon-control-center": {}, "@/lib/billing/coupons": {},
         "@/lib/billing/provider": {}, "@/lib/billing/platform-runtime": {},
     });
     const page = mod.default as () => Promise<Parameters<typeof renderToStaticMarkup>[0]>;

@@ -80,6 +80,8 @@ async function warningCandidates(pool, field, hoursExpression) {
             WHERE m."tenantId"=tr."tenantId" AND m.role='OWNER' AND m."isActive"=true ORDER BY m."createdAt" LIMIT 1
          ) u ON true
          WHERE tr.status IN ('ACTIVE','ENDING') AND tr."endsAt">NOW()
+           AND NOT EXISTS (SELECT 1 FROM "Subscription" s WHERE s."tenantId"=tr."tenantId" AND s.status IN ('ACTIVE','TRIALING')
+             AND (s."currentPeriodEndsAt" IS NULL OR s."currentPeriodEndsAt">tr."endsAt"))
            AND tr."endsAt"<=NOW()+(COALESCE(${hoursExpression}, 48)*INTERVAL '1 hour')
            ${lowerBound}
            AND tr."${field}" IS NULL

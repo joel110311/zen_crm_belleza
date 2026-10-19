@@ -5,6 +5,7 @@ import { BillingActions } from "./billing-actions";
 import { BillingStatusRefresh } from "./billing-status-refresh";
 import { RecurringCheckout, RecurringManagement } from "./recurring-controls";
 import { PlanChangeActions } from "./plan-change-actions";
+import { CouponCheckout } from "./coupon-checkout";
 import { isMercadoPagoSubscriptionsEnabled } from "@/lib/billing/mercado-pago";
 import { BillingAccessError, requireBillingOwner } from "@/lib/billing/context";
 import { getActiveBillingProvider } from "@/lib/billing/provider";
@@ -56,7 +57,7 @@ export default async function BillingPage({
   const billingProvider = getActiveBillingProvider();
   const recurringEnabled =
     billingProvider === "MERCADO_PAGO" && isMercadoPagoSubscriptionsEnabled();
-  const [plans, trial, subscriptions, selection, agreement] = await Promise.all(
+  const [plans, trial, subscriptions, selection, agreement, promotion] = await Promise.all(
     [
       db.plan.findMany({
         where: { isActive: true },
@@ -119,6 +120,7 @@ export default async function BillingPage({
           planChanges: { where: { activeKey: { not: null } }, take: 1 },
         },
       }),
+      db.billingCouponRedemption.findUnique({ where: { activeKey: context.tenant.tenantId }, include: { coupon: { select: { code: true } } } }),
     ],
   );
 
@@ -157,7 +159,9 @@ export default async function BillingPage({
       ),
   );
   const checkoutNotice =
-    checkout === "plan-change"
+    checkout === "coupon" && promotion?.status === "APPLIED" && promotion.discountPercent === 100
+      ? "Mes promocional activado sin costo. Tu prueba se conserva y no se programaron cargos automáticos. Consulta abajo la fecha de tu periodo."
+      : checkout === "plan-change"
       ? "Regresaste del pago proporcional. La mejora sólo se activa cuando Mercado Pago aprueba el pago y confirma el nuevo importe de la misma suscripción. Actualiza el estado abajo para verificarlo."
       : checkout === "subscription"
         ? "Regresaste de autorizar una suscripción. La autorización no confirma un cobro: verificaremos cada pago con Mercado Pago antes de ampliar tu acceso. Puedes actualizar el estado abajo."
@@ -267,11 +271,12 @@ export default async function BillingPage({
                     ? `Prueba activa hasta ${new Intl.DateTimeFormat("es-MX", { dateStyle: "medium" }).format(trial!.endsAt)}.`
                     : "Sin suscripción activa."}
           </p>
+          {promotion?.status === "APPLIED" && promotion.periodStartsAt && promotion.periodEndsAt ? <p className="mt-3 text-sm leading-6 text-muted-foreground">Promoción de un mes con {promotion.discountPercent}% de descuento: del {new Intl.DateTimeFormat("es-MX", { dateStyle: "medium", timeZone: context.tenant.timeZone }).format(promotion.periodStartsAt)} al {new Intl.DateTimeFormat("es-MX", { dateStyle: "medium", timeZone: context.tenant.timeZone }).format(promotion.periodEndsAt)}. {hasActiveTrial(trial, new Date()) ? "Tu prueba gratuita conserva su fecha original. " : ""}Después deberás contratar al precio normal; el cupón no activa renovación automática.</p> : null}
           {billingProvider === "MERCADO_PAGO" &&
           subscription &&
           !agreement?.activeKey ? (
             <p className="mt-2 text-sm text-muted-foreground">
-              Tu pago anterior no tiene renovación automática activa.
+              {promotion?.discountPercent === 100 ? "Tu mes gratuito no tiene renovación automática activa." : "Tu pago anterior no tiene renovación automática activa."}
               {recurringEnabled
                 ? " Para los siguientes meses, contrata una suscripción desde Comparar planes. El primer cobro respetará tu periodo ya pagado."
                 : " Conservas el periodo ya pagado."}
@@ -397,6 +402,7 @@ export default async function BillingPage({
           </section>
         ) : null}
       </div>
+      {billingProvider === "MERCADO_PAGO" ? <CouponCheckout tenantSlug={context.tenant.slug} plans={plans.filter(plan => plan.currency === "MXN" && Boolean(plan.monthlyAmountCents))} disabled={Boolean(agreement?.activeKey) || promotion?.status === "APPLIED"} unavailableReason={promotion?.status === "APPLIED" ? "Este negocio ya utilizó su promoción. Puedes contratar una suscripción al precio normal desde Comparar planes." : undefined} /> : null}
       <section
         id="planes"
         aria-labelledby="billing-plans-title"

@@ -267,6 +267,7 @@ model Tenant {
   billingSelection        BillingSelection?
   billingCheckoutAttempts BillingCheckoutAttempt[]
   mercadoPagoAgreements   MercadoPagoAgreement[]
+  couponRedemptions       BillingCouponRedemption[]
 
   @@index([status, provisioningStatus])
   @@index([billingStatus, accessMode])
@@ -425,9 +426,54 @@ model BillingCheckoutAttempt {
   plan               Plan                  @relation(fields: [planId], references: [id], onDelete: Restrict)
   recurringAgreement MercadoPagoAgreement? @relation(fields: [recurringAgreementId], references: [id], onDelete: Restrict)
   planChange         MercadoPagoPlanChange? @relation(fields: [planChangeId], references: [id], onDelete: Restrict)
+  couponRedemption   BillingCouponRedemption?
 
   @@index([tenantId, createdAt])
   @@index([provider, status, createdAt])
+}
+
+/** Introductory one-month promotions. Trial policies remain independent. */
+model BillingCoupon {
+  id               String   @id @default(cuid())
+  code             String   @unique
+  discountPercent  Int
+  allowedPlanSlugs String[]
+  maxUses          Int
+  expiresAt        DateTime
+  active           Boolean  @default(true)
+  createdByUserId  String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  redemptions      BillingCouponRedemption[]
+
+  @@index([active, createdAt])
+}
+
+/** Immutable price snapshot. Uncertain checkouts retain their slot until reviewed. */
+model BillingCouponRedemption {
+  id                String   @id
+  couponId          String
+  tenantId          String?
+  activeKey         String?  @unique
+  planId            String
+  originalCents     Int
+  amountCents       Int
+  discountPercent   Int
+  currency          String
+  status            String   @default("RESERVED")
+  checkoutAttemptId String?  @unique
+  checkoutUrl       String?
+  periodStartsAt    DateTime?
+  periodEndsAt      DateTime?
+  lastError         String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  coupon            BillingCoupon @relation(fields: [couponId], references: [id], onDelete: Restrict)
+  tenant            Tenant? @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  checkoutAttempt   BillingCheckoutAttempt? @relation(fields: [checkoutAttemptId], references: [id], onDelete: SetNull)
+
+  @@index([couponId, status])
+  @@index([tenantId, createdAt])
 }
 
 /** Authorization is separate from paid access. Retain every agreement and billed cycle. */

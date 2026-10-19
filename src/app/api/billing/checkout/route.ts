@@ -70,6 +70,7 @@ export async function POST(request: NextRequest) {
             await db.$transaction(async (tx) => {
                 await tx.$queryRaw`SELECT id FROM "Tenant" WHERE id = ${tenant.tenantId} FOR UPDATE`;
                 if (await tx.mercadoPagoAgreement.findUnique({ where: { activeKey: tenant.tenantId } })) throw new BillingAccessError("Ya existe una autorización de renovación. Adminístrala antes de iniciar otro pago.");
+                if (await tx.billingCheckoutAttempt.findFirst({ where: { tenantId: tenant.tenantId, couponRedemption: { status: "RESERVED" } } })) throw new BillingAccessError("Hay un pago promocional pendiente de revisión. Continúa con ese pago antes de iniciar otro.");
                 await tx.billingCheckoutAttempt.create({
                     data: {
                         id: attemptId,

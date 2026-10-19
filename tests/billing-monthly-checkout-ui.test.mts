@@ -20,6 +20,7 @@ async function page(recurringEnabled: boolean) {
         "next/navigation": { notFound() { throw new Error("not found"); }, redirect() { throw new Error("redirect"); } },
         "next/link": (props: React.ComponentProps<"a">) => React.createElement("a", props),
         "./billing.module.css": {},
+        "./coupon-checkout": { CouponCheckout: () => null },
         "@/lib/billing/presentation": billingPresentation,
         "./billing-actions": { BillingActions: ({ planSlug }: { planSlug?: string }) => planSlug ? React.createElement("button", {}, "Pagar solo un mes") : null },
         "./billing-status-refresh": { BillingStatusRefresh: () => null },
@@ -34,6 +35,7 @@ async function page(recurringEnabled: boolean) {
             plan: { findMany: async () => [plan] }, trial: { findUnique: async () => null },
             subscription: { findMany: async () => [] }, billingSelection: { findUnique: async () => null },
             mercadoPagoAgreement: { findFirst: async () => null },
+            billingCouponRedemption: { findUnique: async () => null },
         }) },
     });
     const tree = await (mod.default as (props: unknown) => Promise<React.ReactNode>)({ params: Promise.resolve({ tenantSlug: "logicapp" }), searchParams: Promise.resolve({}) });

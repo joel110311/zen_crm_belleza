@@ -61,6 +61,7 @@ async function reconcilePayment(payment: MercadoPagoPayment, runtime: MercadoPag
     const attempt = await db.billingCheckoutAttempt.findUnique({
         where: { externalReference },
         include: {
+            couponRedemption: true,
             tenant: { select: { id: true, trial: { select: { id: true, status: true, endsAt: true } } } },
             plan: { select: { id: true } },
         },
@@ -157,11 +158,14 @@ async function reconcilePayment(payment: MercadoPagoPayment, runtime: MercadoPag
                     lastError: null,
                 },
             });
-            if (attempt.tenant.trial && attempt.tenant.trial.status !== "CONVERTED") {
+            if (attempt.tenant.trial && attempt.tenant.trial.status !== "CONVERTED" && !attempt.couponRedemption) {
                 await tx.trial.update({
                     where: { id: attempt.tenant.trial.id },
                     data: { status: "CONVERTED", convertedAt: paidAt },
                 });
+            }
+            if (attempt.couponRedemption) {
+                await tx.billingCouponRedemption.update({ where: { id: attempt.couponRedemption.id }, data: { status: "APPLIED", periodStartsAt, periodEndsAt, lastError: null } });
             }
             await tx.tenant.updateMany({
                 where: { id: attempt.tenantId, status: { notIn: ["SUSPENDED", "ARCHIVED"] }, accessMode: { not: "SUSPENDED" } },

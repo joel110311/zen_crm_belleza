@@ -52,6 +52,8 @@ async function checkControlPlaneHealth(): Promise<HealthDatabaseState> {
                 getControlDb().$queryRaw`SELECT "reconciliationOffset" FROM "MercadoPagoAgreement" LIMIT 0`,
                 getControlDb().$queryRaw`SELECT "activeKey" FROM "MercadoPagoPlanChange" LIMIT 0`,
                 getControlDb().$queryRaw`SELECT "deletionAt" FROM "TenantDataRetention" LIMIT 0`,
+                getControlDb().$queryRaw`SELECT "discountPercent" FROM "BillingCoupon" LIMIT 0`,
+                getControlDb().$queryRaw`SELECT "checkoutAttemptId" FROM "BillingCouponRedemption" LIMIT 0`,
             ]),
             new Promise((_, reject) => {
                 timeoutHandle = setTimeout(() => {

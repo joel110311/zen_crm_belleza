@@ -63,7 +63,10 @@ export async function startRecurringSubscription(input: {
         const [trial, paid, pendingCheckout] = await Promise.all([
             tx.trial.findUnique({ where: { tenantId: input.tenantId } }),
             tx.subscription.findFirst({ where: { tenantId: input.tenantId, status: "ACTIVE", currentPeriodEndsAt: { gt: new Date() } }, orderBy: { currentPeriodEndsAt: "desc" } }),
-            tx.billingCheckoutAttempt.findFirst({ where: { tenantId: input.tenantId, recurringAgreementId: null, status: { in: ["CREATED", "PENDING"] }, createdAt: { gt: new Date(Date.now() - 48 * 3_600_000) } } }),
+            tx.billingCheckoutAttempt.findFirst({ where: { tenantId: input.tenantId, recurringAgreementId: null, OR: [
+                { status: { in: ["CREATED", "PENDING"] }, createdAt: { gt: new Date(Date.now() - 48 * 3_600_000) } },
+                { couponRedemption: { status: "RESERVED" } },
+            ] } }),
         ]);
         if (pendingCheckout) throw new RecurringBillingError("Hay un pago individual pendiente. Confírmalo o espera a que expire antes de activar la renovación.");
         const startsAt = paidPeriodStart(new Date(Date.now() + 5 * 60_000), [trial && ["ACTIVE", "ENDING"].includes(trial.status) ? trial.endsAt : null, paid?.currentPeriodEndsAt]);

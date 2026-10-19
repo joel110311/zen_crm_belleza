@@ -50,6 +50,11 @@ async function allowance(explicitTenantId?: string): Promise<UsageAllowance | nu
         }),
         db.trial.findUnique({ where: { tenantId }, select: { status: true, startsAt: true, endsAt: true } }),
     ]);
+    // A prepaid promotional month must not spend its quota before the ordinary trial ends.
+    if (subscription?.currentPeriodStartsAt && subscription.currentPeriodStartsAt > now
+        && trial && ["ACTIVE", "ENDING"].includes(trial.status) && trial.endsAt > now) {
+        return { tenantId, planId: null, periodStart: trial.startsAt, periodEnd: trial.endsAt, limit: 500 };
+    }
     if (subscription?.plan) {
         const limits = subscription.plan.limits && typeof subscription.plan.limits === "object" && !Array.isArray(subscription.plan.limits)
             ? subscription.plan.limits as Record<string, unknown> : {};
