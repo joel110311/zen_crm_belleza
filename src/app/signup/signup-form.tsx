@@ -48,7 +48,10 @@ export function SignupForm({ turnstileSiteKey }: SignupFormProps) {
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     useEffect(() => { fingerprint.current = signupFingerprint(); }, []);
-    const handleCaptcha = useCallback((token: string | null) => setCaptchaToken(token), []);
+    const handleCaptcha = useCallback((token: string | null) => {
+        setCaptchaToken(token);
+        setError(current => current === "Completa la verificación de seguridad para continuar." ? null : current);
+    }, []);
 
     async function onSubmit(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
@@ -96,7 +99,7 @@ export function SignupForm({ turnstileSiteKey }: SignupFormProps) {
     }
 
     if (message) {
-        return <div className={styles.notice} role="status"><strong>Revisa tu correo</strong><p>{message}</p><p>El enlace vence pronto. Si ya tienes cuenta, puedes iniciar sesión abajo.</p></div>;
+        return <div className={styles.notice} role="status"><strong>Solicitud recibida</strong><p>Si este correo aún no tiene cuenta, recibirás un enlace para confirmar el registro. Revisa también Spam.</p><p>Si ya tienes cuenta, inicia sesión abajo. Registrarte de nuevo no crea otro negocio ni cambia tu contraseña.</p></div>;
     }
 
     return <form className={styles.form} onSubmit={onSubmit} aria-busy={isSubmitting}>
@@ -110,7 +113,7 @@ export function SignupForm({ turnstileSiteKey }: SignupFormProps) {
             <label className={styles.legalConsent}><input name="legalAccepted" required type="checkbox" /><span>Acepto los <Link href="/terms" target="_blank" rel="noopener noreferrer">Términos de servicio</Link> y el <Link href="/privacy" target="_blank" rel="noopener noreferrer">Aviso de privacidad</Link>.</span></label>
             <TurnstileWidget key={captchaAttempt} action="signup" onToken={handleCaptcha} siteKey={turnstileSiteKey} />
             {error && <p role="alert" className={styles.error}>{error}</p>}
-            <button disabled={isSubmitting} className={styles.submit} type="submit">{isSubmitting ? <><Loader2 className="size-5 animate-spin" aria-hidden="true" />Enviando verificación…</> : "Crear mi espacio de prueba"}</button>
+            <button disabled={isSubmitting} className={styles.submit} type="submit">{isSubmitting ? <><Loader2 className="size-5 animate-spin" aria-hidden="true" />Enviando verificación…</> : "Crear cuenta"}</button>
         </fieldset>
     </form>;
 }

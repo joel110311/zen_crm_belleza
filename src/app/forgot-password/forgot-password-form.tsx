@@ -23,7 +23,10 @@ export function ForgotPasswordForm({ turnstileSiteKey }: ForgotPasswordFormProps
         fingerprint.current = window.sessionStorage.getItem(key) || crypto.randomUUID();
         window.sessionStorage.setItem(key, fingerprint.current);
     }, []);
-    const handleCaptcha = useCallback((token: string | null) => setCaptchaToken(token), []);
+    const handleCaptcha = useCallback((token: string | null) => {
+        setCaptchaToken(token);
+        setError(current => current === "Completa la verificación de seguridad para continuar." ? null : current);
+    }, []);
     async function submit(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
         if (submitting.current) return;

@@ -38,11 +38,12 @@ test("security widget fits narrow layouts and keeps expiration/error token inval
     const cleanup = subject.mount();
     assert.equal(subject.options().size, "compact");
     assert.equal(subject.options().action, "signup");
+    assert.equal(subject.options().retry, "never");
     (subject.options().callback as (token: string) => void)("test-token");
     (subject.options()["expired-callback"] as () => void)();
     (subject.options()["error-callback"] as () => void)();
     assert.deepEqual(subject.tokens, ["test-token", null, null]);
-    assert.match(renderToStaticMarkup(subject.render()), /No se pudo cargar/);
+    assert.match(renderToStaticMarkup(subject.render()), /No se pudo completar/);
     cleanup();
     assert.equal(subject.listeners.size, 0);
     assert.equal(subject.cleaned(), true);
@@ -82,7 +83,42 @@ test("failed verification can restart the widget without reloading and ignores r
     assert.equal(subject.tokens.length, count);
     (subject.options().callback as (token: string) => void)("fresh-token");
     assert.equal(subject.tokens.at(-1), "fresh-token");
-    assert.doesNotMatch(renderToStaticMarkup(subject.render()), /No se pudo cargar/);
+    assert.doesNotMatch(renderToStaticMarkup(subject.render()), /No se pudo completar/);
+});
+
+for (const code of ["300030", "600010"]) {
+    test(`a rejected browser (${code}) gets a visible explanation and a manual retry`, () => {
+        const subject = widget(); subject.render(); subject.mount();
+        (subject.options()["error-callback"] as (code: string) => void)(code);
+        const html = renderToStaticMarkup(subject.render());
+        assert.match(html, /No pudimos verificar este navegador/);
+        assert.match(html, /otro navegador o en tu teléfono/);
+        assert.match(html, /hidden=""/);
+        assert.ok(findRetry(subject.render()));
+        assert.deepEqual(subject.tokens, [null]);
+    });
+}
+
+test("expired and timed-out challenges discard the token and offer recovery", () => {
+    const subject = widget(); subject.render(); subject.mount();
+    assert.equal(subject.options()["refresh-expired"], "manual");
+    assert.equal(subject.options()["refresh-timeout"], "manual");
+    for (const callback of ["expired-callback", "timeout-callback"]) {
+        (subject.options().callback as (token: string) => void)("fresh-token");
+        (subject.options()[callback] as () => void)();
+        assert.equal(subject.tokens.at(-1), null);
+        assert.match(renderToStaticMarkup(subject.render()), /La verificación venció/);
+        assert.ok(findRetry(subject.render()));
+    }
+});
+
+test("a configuration failure does not suggest that the password is wrong", () => {
+    const subject = widget(); subject.render(); subject.mount();
+    (subject.options()["error-callback"] as (code: string) => void)("110200");
+    const html = renderToStaticMarkup(subject.render());
+    assert.match(html, /contacta a soporte/);
+    assert.doesNotMatch(html, /contraseña/);
+    assert.deepEqual(subject.tokens, [null]);
 });
 
 test("retry replaces a failed script load instead of waiting forever for an old load event", () => {

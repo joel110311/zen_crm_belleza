@@ -36,6 +36,19 @@ const submit = (tree: Element[]) => tree.find(e => e.type === "form")!.props.onS
 
 for (const signup of [true, false]) {
     const name = signup ? "signup" : "password recovery";
+    test(`${name} clears a missing-challenge message on retry without hiding a server error`, async () => {
+        const subject = formHarness(signup);
+        await submit(subject.render())(submitEvent);
+        assert.ok(subject.render().some(e => e.props.role === "alert" && e.props.children === "Completa la verificación de seguridad para continuar."));
+        (captcha(subject.render()).props.onToken as (token: string | null) => void)(null);
+        assert.ok(!subject.render().some(e => e.props.role === "alert"));
+        (captcha(subject.render()).props.onToken as (token: string | null) => void)("first-token");
+        const pending = submit(subject.render())(submitEvent);
+        subject.requests[0].resolve(Response.json({ error: "No fue posible enviar el correo." }, { status: 400 }));
+        await pending;
+        (captcha(subject.render()).props.onToken as (token: string | null) => void)(null);
+        assert.ok(subject.render().some(e => e.props.role === "alert" && e.props.children === "No fue posible enviar el correo."));
+    });
     test(`${name} renews consumed verification after a rejected request and blocks immediate duplicate submissions`, async () => {
         const subject = formHarness(signup);
         (captcha(subject.render()).props.onToken as (token: string) => void)("first-token");
@@ -52,6 +65,11 @@ for (const signup of [true, false]) {
         subject.requests[1].resolve(Response.json({ message: "Revisa tu correo." }, { status: 202 })); await retry;
         assert.ok(subject.render().some(e => e.props.role === "status"));
         assert.ok(!subject.render().some(e => e.type === "form"));
+        if (signup) {
+            assert.ok(subject.render().some(e => e.type === "strong" && e.props.children === "Solicitud recibida"));
+            assert.ok(subject.render().some(e => e.type === "p" && typeof e.props.children === "string" && e.props.children.includes("Registrarte de nuevo no crea otro negocio")));
+            assert.ok(!subject.render().some(e => e.type === "strong" && e.props.children === "Revisa tu correo"));
+        }
         if (!signup) {
             assert.ok(subject.render().some(e => e.type === "strong" && e.props.children === "Solicitud recibida"));
             assert.ok(subject.render().some(e => e.props.href === "/signup"));
