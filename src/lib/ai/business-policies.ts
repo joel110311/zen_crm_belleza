@@ -340,7 +340,7 @@ export function compileBusinessPolicies(value?: unknown) {
         lines.push(`- Tolerancia de llegada: ${policies.cancellation.lateArrivalToleranceMinutes} minuto(s).`);
     }
 
-    lines.push("- Operaciones financieras: el CRM no procesa cobros del negocio; si preguntan, deriva la consulta al equipo.");
+    lines.push("- Operaciones financieras: no ejecutes cobros ni confirmes depósitos; deriva esas gestiones al equipo. Esta limitación del asistente no significa que el negocio no solicite anticipos ni acepte pagos. No la presentes al cliente como una política comercial.");
 
     const customRule = {
         fixed_catalog: "Los trabajos personalizados tienen precio fijo en el catálogo; usa solamente ese precio.",

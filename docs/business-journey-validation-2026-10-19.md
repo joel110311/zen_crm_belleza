@@ -50,11 +50,25 @@ Se traducen los estados de invitación al español. Además, el menú de un mens
 
 Validación de esta corrección: compilación correcta, 425 pruebas (423 aprobadas, dos opcionales omitidas), lint de código afectado y pruebas nuevas correcto. Tres estados del formulario revisados en los seis anchos CSS previstos, campos de 16 px y botón de 48 px; a 320 × 500 el formulario completo se alcanza con desplazamiento vertical. Evidencia local en output/business-journey.
 
+## Tercera pasada tras el redespliegue
+
+- GitHub terminó correctamente la compilación y publicación de f233d88. Joel informó todos los servicios en 1/1; además se verificó el comportamiento actualizado desde el navegador de producción.
+- Al recargar Usuarios, la invitación figura como **Aceptada**. Su enlace privado muestra **Invitación aceptada**, el negocio correcto y el acceso para iniciar sesión; no vuelve a pedir nombre ni contraseña. No se creó otra invitación ni se amplió ningún permiso.
+- Tras recargar el chat autorizado, el recordatorio aparece como mensaje **enviado**, sin confundirse con un mensaje entrante. Siguen visibles los tres envíos descritos; en esta pasada aún no había una respuesta entrante del número autorizado.
+- Simulador de producción con gpt-4o-mini: precio $350 y duración de 60 minutos correctos; ubicación y horarios correctos, incluido cierre en domingo. Estas pruebas aisladas no envían WhatsApp ni ejecutan operaciones de agenda.
+- Una tercera pregunta sobre dónde depositar mostró un fallo: el modelo afirmó que el negocio no pide anticipos porque el CRM no procesa cobros. La limitación del software no acredita esa política comercial.
+
+## Corrección de la respuesta sobre pagos
+
+Se aclaran las instrucciones financieras: el asistente no ejecuta cobros ni confirma depósitos, pero eso no determina si el negocio solicita anticipos. Ante datos de pago no verificados debe consultar al equipo, sin inventar cuentas o condiciones ni explicar limitaciones internas del CRM al cliente. La regla también forma parte del contexto común, para negocios sin políticas adicionales y configuraciones guardadas anteriormente.
+
+Verificación local: compilación de producción correcta; 427 pruebas, 425 aprobadas y dos opcionales omitidas; lint de los archivos afectados correcto. Las pruebas nuevas verifican el contexto común y las dos variantes heredadas de configuración de anticipos. No certifican el resultado futuro del modelo; la pregunta que falló debe repetirse con el modelo real después del siguiente redespliegue.
+
 ## Pendiente
 
 Esta entrega no requiere migraciones ni tablas. Joel realiza el redespliegue.
 
-1. Redesplegar la corrección del formulario de invitación y repetir su presentación en producción.
+1. Redesplegar la nueva instrucción sobre pagos y repetir en el simulador la consulta sobre el anticipo. La corrección del formulario de invitación ya está verificada en producción.
 2. Validar respuesta entrante de WhatsApp desde el número autorizado y, si corresponde, la respuesta automática del asistente. El chat controlado y el autopiloto siguen pausados; no se activaron respuestas a contactos ajenos a la validación.
 3. Pruebas físicas en Android/Chrome e iPhone/Safari. La revisión adaptable de escritorio no sustituye esa validación.
 4. Cobro real y renovación los valida Joel con las cuentas vencidas, según su decisión. El cupón no acredita el funcionamiento de un cargo real.
