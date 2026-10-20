@@ -69,8 +69,12 @@ Verificación local: compilación de producción correcta; 427 pruebas, 425 apro
 Esta entrega no requiere migraciones ni tablas. Joel realiza el redespliegue.
 
 1. Redesplegar la nueva instrucción sobre pagos y repetir en el simulador la consulta sobre el anticipo. La corrección del formulario de invitación ya está verificada en producción.
-2. Validar respuesta entrante de WhatsApp desde el número autorizado y, si corresponde, la respuesta automática del asistente. El chat controlado y el autopiloto siguen pausados; no se activaron respuestas a contactos ajenos a la validación.
+2. Validar la respuesta automática del asistente en un entorno controlado. La recepción y respuesta manual de WhatsApp ya se completaron, como se detalla abajo. El chat controlado y el autopiloto siguen pausados; no se activaron respuestas a contactos ajenos a la validación.
 3. Pruebas físicas en Android/Chrome e iPhone/Safari. La revisión adaptable de escritorio no sustituye esa validación.
 4. Cobro real y renovación los valida Joel con las cuentas vencidas, según su decisión. El cupón no acredita el funcionamiento de un cargo real.
 
 Las pruebas aprobadas cubren los casos descritos; no certifican todas las combinaciones posibles ni respuestas futuras de un modelo.
+
+## Recepción real de WhatsApp completada
+
+Joel envió desde el número autorizado «Hola, ¿a qué hora es mi cita?». El mensaje apareció como entrante en la conversación existente del cliente correcto, conservando la asignación al propietario. Se respondió manualmente con la cita confirmada para el 20 de octubre a las 11:00, el servicio, profesional y duración de 60 minutos; el CRM confirmó **Enviado a WhatsApp**. Esto acredita recepción y envío manual desde el CRM, no lectura del destinatario ni respuesta automática de IA. Evidencia visual del intercambio en output/business-journey/production-whatsapp-roundtrip.jpg, excluida de Git.
