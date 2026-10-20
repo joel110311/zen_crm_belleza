@@ -38,6 +38,8 @@ function apiError(payload: unknown, fallback: string) {
     return fallback;
 }
 
+const INVITATION_STATUS_LABELS: Record<string, string> = { PENDING: "Pendiente", ACCEPTED: "Aceptada", REVOKED: "Revocada", EXPIRED: "Vencida" };
+
 const ROLE_LABELS: Record<string, string> = {
     OWNER: "Propietario",
     ADMIN: "Administración",
@@ -176,7 +178,7 @@ export function TeamInvitationManager({ tenantSlug, enabled, onConfigured }: Pro
                 </div>)}
                 <p className="pt-2 text-sm font-medium">Invitaciones</p>
                 {team.invitations.length === 0 ? <p className="text-sm text-muted-foreground">Aún no hay invitaciones.</p> : team.invitations.map((invitation) => <div key={invitation.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border p-3 text-sm">
-                    <div className="min-w-0 break-words"><p className="font-medium">{invitation.email}</p><p className="text-muted-foreground">{ROLE_LABELS[invitation.role] || invitation.role} · {invitation.status.toLocaleLowerCase()}</p></div>
+                    <div className="min-w-0 break-words"><p className="font-medium">{invitation.email}</p><p className="text-muted-foreground">{ROLE_LABELS[invitation.role] || invitation.role} · {INVITATION_STATUS_LABELS[invitation.status] || "No disponible"}</p></div>
                     {invitation.status === "PENDING" ? <Button type="button" variant="ghost" size="sm" disabled={readOnly} onClick={() => void revoke(invitation.id)}>Revocar</Button> : invitation.professionalProfileStatus === "FAILED" ? <span className="text-xs text-amber-700">Perfil profesional pendiente de reintento</span> : <UserRoundCheck className="size-4 text-muted-foreground" />}
                 </div>)}
             </div> : null}

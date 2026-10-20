@@ -7,7 +7,7 @@ type Element = React.ReactElement<Record<string, any>>;
 const settle = () => new Promise<void>(resolve => setImmediate(resolve));
 function nodes(tree: React.ReactNode): Element[] { return React.isValidElement<{ children?: React.ReactNode }>(tree) ? [tree as Element, ...React.Children.toArray(tree.props.children).flatMap(nodes)] : []; }
 function text(tree: React.ReactNode): string { return typeof tree === "string" ? tree : React.isValidElement<{ children?: React.ReactNode }>(tree) ? React.Children.toArray(tree.props.children).map(text).join(" ") : ""; }
-function fixture(kind: "invitation" | "deletion", fetcher: (url: string, init?: RequestInit) => Promise<Response>, hash = "") {
+function fixture(kind: "invitation" | "deletion", fetcher: (url: string, init?: RequestInit) => Promise<Response>, hash = "", props: Record<string, unknown> = {}) {
     let cursor = 0, refCursor = 0, mounted = false;
     const states: unknown[] = [], refs: Array<{ current: unknown }> = [], effects: Array<() => void> = [];
     const location = { hash };
@@ -22,7 +22,7 @@ function fixture(kind: "invitation" | "deletion", fetcher: (url: string, init?: 
         "@/components/ui/button": { Button: "button" }, "@/components/ui/input": { Input: "input" }, "@/components/ui/label": { Label: "label" },
     }, { fetch: fetcher, window: { location, history: { replaceState(_a: unknown, _b: unknown, path: string) { location.hash = path.includes("#") ? `#${path.split("#")[1]}` : ""; } } }, crypto: { getRandomValues: (bytes: Uint8Array) => bytes.fill(7) } });
     return {
-        render() { cursor = refCursor = 0; return (mod[kind === "invitation" ? "InvitationAcceptanceForm" : "AccountDeletionPanel"] as (props: unknown) => Element)({ token: "local-test-token" }); },
+        render() { cursor = refCursor = 0; return (mod[kind === "invitation" ? "InvitationAcceptanceForm" : "AccountDeletionPanel"] as (props: unknown) => Element)({ token: "local-test-token", ...props }); },
         async mount() { effects.forEach(fn => fn()); mounted = true; await settle(); }, location,
     };
 }
@@ -43,11 +43,26 @@ test("invitation preserves new-account payload and blocks duplicate requests bef
     assert.equal(form(f.render()), undefined); assert.ok(nodes(f.render()).some(e => e.props.href === "/login?redirectTo=%2Ft%2Flocal"));
 });
 
-test("existing-account invitation sends empty optional fields; failure retains inputs for retry", async () => {
+test("existing-account invitation has no credential fields and sends only its token; failure can be retried", async () => {
     let fail = true; const calls: any[] = [];
-    const f = fixture("invitation", async (_url, init) => { calls.push(JSON.parse(String(init?.body))); return fail ? Response.json({ error: { message: "La invitación venció." } }, { status: 404 }) : Response.json({ data: { displayName: "Local", signInPath: "/login" } }); });
-    await form(f.render()).props.onSubmit(event); assert.equal(calls[0].password, ""); assert.equal(calls[0].name, ""); assert.match(text(f.render()), /La invitación venció/); assert.ok(form(f.render()));
+    const f = fixture("invitation", async (_url, init) => { calls.push(JSON.parse(String(init?.body))); return fail ? Response.json({ error: { message: "La invitación venció." } }, { status: 404 }) : Response.json({ data: { displayName: "Local", signInPath: "/login" } }); }, "", { requiresNewAccount: false });
+    assert.ok(!nodes(f.render()).some(e => e.type === "input"));
+    await form(f.render()).props.onSubmit(event); assert.deepEqual(calls[0], { token: "local-test-token" }); assert.match(text(f.render()), /La invitación venció/); assert.ok(form(f.render()));
     fail = false; await form(f.render()).props.onSubmit(event); assert.equal(calls.length, 2); assert.equal(form(f.render()), undefined);
+});
+
+test("a new invited account requires name and password without instructions to leave them empty", () => {
+    const f = fixture("invitation", async () => Response.json({}));
+    assert.equal(field(f.render(), "invitation-name").props.required, true);
+    assert.equal(field(f.render(), "invitation-password").props.required, true);
+    assert.doesNotMatch(text(f.render()), /campos vacíos|Déjala vacía/);
+    assert.match(text(f.render()), /crea una contraseña/);
+});
+
+test("an accepted invitation reloads as completed and makes no additional acceptance request", () => {
+    const f = fixture("invitation", async () => { throw new Error("must not post"); }, "", { alreadyAccepted: true, displayName: "Estudio local", signInPath: "/login?redirectTo=local" });
+    assert.equal(form(f.render()), undefined);
+    assert.ok(nodes(f.render()).some(e => e.props.href === "/login?redirectTo=local"));
 });
 
 const businesses = [{ id: "local", name: "Estudio local", soleOwner: true, successors: [{ id: "successor", name: "Equipo" }] }];

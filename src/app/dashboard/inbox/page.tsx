@@ -2899,7 +2899,7 @@ export default function InboxPage() {
                                                         <div className="relative">
                                                             <DropdownMenu>
                                                                 <DropdownMenuTrigger asChild>
-                                                                    <button type="button" aria-label={`Opciones del mensaje${responderLabel ? ` de ${responderLabel}` : " del cliente"}`} className={styles.messageMenu}>
+                                                                    <button type="button" aria-label={`Opciones del mensaje${responderLabel ? ` de ${responderLabel}` : msg.direction === "outbound" ? " enviado" : " del cliente"}`} className={styles.messageMenu}>
                                                                         <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
                                                                     </button>
                                                                 </DropdownMenuTrigger>

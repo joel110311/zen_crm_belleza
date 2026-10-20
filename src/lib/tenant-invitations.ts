@@ -369,6 +369,25 @@ function invitationTokenHash(token: unknown) {
     return hashSecurityIdentifier(`tenant-invitation:${value}`);
 }
 
+/** Only a valid, private invitation can reveal which acceptance form it needs. */
+export async function getInvitationAcceptanceDetails(token: unknown) {
+    const tokenHash = invitationTokenHash(token);
+    if (!tokenHash) return null;
+    const db = getControlDb();
+    const invitation = await db.tenantInvitation.findUnique({
+        where: { tokenHash },
+        select: { email: true, status: true, expiresAt: true, tenant: { select: { displayName: true, slug: true } } },
+    });
+    if (!invitation || invitation.expiresAt <= new Date() || !["PENDING", "ACCEPTED"].includes(invitation.status)) return null;
+    const user = await db.user.findUnique({ where: { email: invitation.email }, select: { id: true } });
+    return {
+        displayName: invitation.tenant.displayName,
+        requiresNewAccount: !user,
+        alreadyAccepted: invitation.status === "ACCEPTED",
+        signInPath: `/login?redirectTo=${encodeURIComponent(`/t/${invitation.tenant.slug}`)}`,
+    };
+}
+
 export async function acceptTenantInvitation(input: { token?: unknown; name?: unknown; password?: unknown }) {
     const tokenHash = invitationTokenHash(input.token);
     if (!tokenHash) throw new TenantInvitationError("La invitación no es válida o ya venció.", "NOT_FOUND");
