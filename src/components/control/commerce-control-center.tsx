@@ -2,13 +2,13 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { BrainCircuit, CheckCircle2, CircleAlert, CreditCard, Loader2, Network } from "lucide-react";
-import { SUPPORTED_CHAT_MODELS } from "@/lib/ai/models";
+import { CheckCircle2, CircleAlert, CreditCard, Loader2, Network } from "lucide-react";
+import { PlatformAiControlCenter, type PlatformAiControlView } from "@/components/control/platform-ai-control-center";
 
 type Policy = { trialDays: number; warningHours: number; finalWarningHours: number; graceDays: number; version: number };
 type Plan = { id: string; slug: string; name: string; monthlyAmountCents: number | null; stripePriceId: string };
 type TenantRow = { id: string; displayName: string; slug: string; accessMode: string; billingStatus: string; trialEndsAt: string | null; trialStatus: string | null; selectionStatus: string | null; lastError: string | null; qrProxyEnabled: boolean; qrProxyConfigured: boolean };
-type AiControl = { chatModel: string; geminiKeyConfigured: boolean; openaiKeyConfigured: boolean; environmentFallbackEnabled: boolean };
+type AiControl = PlatformAiControlView;
 type BillingControl = {
     provider: "STRIPE" | "MERCADO_PAGO";
     mercadoPagoEnabled: boolean;
@@ -76,28 +76,7 @@ export function CommerceControlCenter({ ai, billing, paymentAttempts, policy, pl
             </form>
         </section>
 
-        <section className="rounded-2xl border bg-card p-5 shadow-sm">
-            <div className="flex items-start gap-3">
-                <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><BrainCircuit className="size-5" /></div>
-                <div><p className="text-xs font-semibold uppercase tracking-wider text-primary">Configuración interna</p><h2 className="mt-1 text-xl font-semibold">Motor de inteligencia artificial</h2><p className="mt-1 text-sm text-muted-foreground">El modelo se aplica a todos los negocios. Las claves permanecen en los secretos del despliegue y nunca se muestran aquí.</p></div>
-            </div>
-
-            <div className="mt-5 grid gap-3 sm:grid-cols-3">
-                <KeyStatus label="Gemini" configured={ai.geminiKeyConfigured} />
-                <KeyStatus label="OpenAI" configured={ai.openaiKeyConfigured} />
-                <KeyStatus label="Lectura desde Portainer" configured={ai.environmentFallbackEnabled} />
-            </div>
-
-            <form className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end" onSubmit={(event) => { event.preventDefault(); const data = new FormData(event.currentTarget); void submit("ai-runtime", { action: "ai-runtime", chatModel: String(data.get("chatModel") || "") }); }}>
-                <label className="text-sm font-medium">Modelo conversacional
-                    <select name="chatModel" defaultValue={ai.chatModel} className="mt-1.5 h-11 w-full rounded-md border bg-background px-3">
-                        {SUPPORTED_CHAT_MODELS.map((model) => <option key={model.id} value={model.id}>{model.label} · {model.provider === "gemini" ? "Gemini" : "OpenAI"}</option>)}
-                    </select>
-                    <span className="mt-1.5 block text-xs text-muted-foreground">Gemini atiende la conversación cuando eliges un modelo Gemini. OpenAI sigue disponible para búsqueda semántica, audio y análisis de archivos.</span>
-                </label>
-                <button disabled={pending !== null} className="inline-flex h-11 items-center justify-center rounded-full bg-primary px-5 text-sm font-semibold text-primary-foreground">{pending === "ai-runtime" ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}Guardar motor</button>
-            </form>
-        </section>
+        <PlatformAiControlCenter initial={ai} />
 
         <section className="rounded-2xl border bg-card p-5 shadow-sm">
             <div className="flex items-start gap-3">

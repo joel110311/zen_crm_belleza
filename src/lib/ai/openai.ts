@@ -52,7 +52,7 @@ function getCachedGeminiModels(apiKey: string) {
     return cached.models;
 }
 
-async function fetchAvailableGeminiModels(apiKey: string) {
+async function fetchAvailableGeminiModels(apiKey: string, timeoutMs?: number) {
     const cached = getCachedGeminiModels(apiKey);
     if (cached) {
         return cached;
@@ -60,8 +60,8 @@ async function fetchAvailableGeminiModels(apiKey: string) {
 
     try {
         const response = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000&key=${apiKey}`,
-            { cache: "no-store" },
+            "https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000",
+            { cache: "no-store", headers: { "x-goog-api-key": apiKey }, signal: timeoutMs ? AbortSignal.timeout(timeoutMs) : undefined },
         );
 
         if (!response.ok) {
@@ -127,9 +127,11 @@ export async function callGeminiGenerateContent(options: {
     preferredModel?: string | null;
     payload: GeminiGenerateContentPayload;
     maxRetriesPerModel?: number;
+    timeoutMs?: number;
 }) {
-    const { apiKey, preferredModel, payload, maxRetriesPerModel = 1 } = options;
-    const discoveredModels = await fetchAvailableGeminiModels(apiKey);
+    const { apiKey, preferredModel, payload, maxRetriesPerModel = 1, timeoutMs } = options;
+    const startedAt = Date.now();
+    const discoveredModels = await fetchAvailableGeminiModels(apiKey, timeoutMs);
     const baseCandidates = buildGeminiModelCandidates(preferredModel);
     const availableCandidates = discoveredModels
         ? baseCandidates.filter((modelPath) => discoveredModels.has(modelPath))
@@ -143,11 +145,12 @@ export async function callGeminiGenerateContent(options: {
     for (const modelPath of modelCandidates) {
         for (let attempt = 0; attempt <= maxRetriesPerModel; attempt += 1) {
             const response = await fetch(
-                `https://generativelanguage.googleapis.com/v1beta/${modelPath}:generateContent?key=${apiKey}`,
+                `https://generativelanguage.googleapis.com/v1beta/${modelPath}:generateContent`,
                 {
                     method: "POST",
-                    headers: { "Content-Type": "application/json" },
+                    headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
                     body: JSON.stringify(prepareGeminiPayload(modelPath, payload)),
+                    signal: timeoutMs ? AbortSignal.timeout(Math.max(1, timeoutMs - (Date.now() - startedAt))) : undefined,
                 },
             );
 
@@ -161,9 +164,7 @@ export async function callGeminiGenerateContent(options: {
             const modelNotFound = isGeminiModelNotFound(status, errorBody);
             const retryable = GEMINI_RETRYABLE_STATUSES.has(status);
 
-            const error = new Error(
-                `Gemini API error (${status}) on ${modelPath}: ${errorBody}`,
-            );
+            const error = Object.assign(new Error(`Gemini API error (${status}) on ${modelPath}`), { status });
             lastError = error;
 
             if (modelNotFound) {
@@ -354,59 +355,65 @@ export async function generateCompletion(
     messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[],
     temperature: number = SYSTEM_SETTINGS_DEFAULTS.agentTemperature,
 ) {
-    try {
-        const settings = await prisma.systemSettings.findFirst();
-        const selectedModel = resolveChatModelSelection(
-            process.env.MULTITENANT_RUNTIME_ENABLED === "true"
-                ? await getPlatformChatModelSelection()
-                : settings?.openaiModel || SYSTEM_SETTINGS_DEFAULTS.openaiModel,
-        );
+    if (process.env.MULTITENANT_RUNTIME_ENABLED === "true") {
+        const { generatePlatformCompletion } = await import("@/lib/ai/platform-chat-router");
+        return generatePlatformCompletion(messages, temperature, callConfiguredChatProvider);
+    }
+    const settings = await prisma.systemSettings.findFirst();
+    return callConfiguredChatProvider(settings?.openaiModel || SYSTEM_SETTINGS_DEFAULTS.openaiModel, messages, temperature);
+}
 
-        if (selectedModel.provider === "gemini") {
-            const apiKey = await resolveAiProviderKey("gemini");
-            if (!apiKey) {
-                throw new Error(
-                    "Gemini API Key not configured. Guardala en Configuracion > IA o habilita ALLOW_ENV_AI_FALLBACK.",
-                );
-            }
+async function callConfiguredChatProvider(
+    selection: string,
+    messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[],
+    temperature: number,
+    timeoutMs?: number,
+) {
+    const selectedModel = resolveChatModelSelection(selection);
 
-            const systemMessage = messages.find((message) => message.role === "system");
-            const conversationMessages = messages.filter((message) => message.role !== "system");
-            const prompt = [
-                systemMessage?.content ? `INSTRUCCIONES DEL SISTEMA:\n${extractMessageText(systemMessage.content)}` : "",
-                "CONVERSACION:",
-                ...conversationMessages.map((message) => {
-                    const role = message.role === "assistant" ? "Asistente" : "Usuario";
-                    return `${role}: ${extractMessageText(message.content)}`;
-                }),
-            ]
-                .filter(Boolean)
-                .join("\n\n");
-            return callGeminiGenerateContent({
-                apiKey,
-                preferredModel: selectedModel.model,
-                payload: {
-                    contents: [
-                        {
-                            role: "user",
-                            parts: [{ text: prompt }],
-                        },
-                    ],
-                },
-            });
+    if (selectedModel.provider === "gemini") {
+        const apiKey = await resolveAiProviderKey("gemini");
+        if (!apiKey) {
+            throw new Error(
+                "Gemini API Key not configured. Guardala en Configuracion > IA o habilita ALLOW_ENV_AI_FALLBACK.",
+            );
         }
 
-        const openai = await getOpenAIClient();
-        const completion = await openai.chat.completions.create({
-            model: selectedModel.model,
-            messages,
-            temperature,
+        const systemText = messages.filter(message => message.role === "system").map(message => extractMessageText(message.content)).filter(Boolean).join("\n\n");
+        const conversationMessages = messages.filter((message) => message.role !== "system");
+        const prompt = [
+            systemText ? `INSTRUCCIONES DEL SISTEMA:\n${systemText}` : "",
+            "CONVERSACION:",
+            ...conversationMessages.map((message) => {
+                const role = message.role === "assistant" ? "Asistente" : "Usuario";
+                return `${role}: ${extractMessageText(message.content)}`;
+            }),
+        ]
+            .filter(Boolean)
+            .join("\n\n");
+        return callGeminiGenerateContent({
+            apiKey,
+            preferredModel: selectedModel.model,
+            timeoutMs,
+            maxRetriesPerModel: timeoutMs ? 0 : 1,
+            payload: {
+                contents: [
+                    {
+                        role: "user",
+                        parts: [{ text: prompt }],
+                    },
+                ],
+            },
         });
-        return completion.choices[0].message.content;
-    } catch (error) {
-        console.error("Error generating completion:", error);
-        throw error;
     }
+
+    const openai = await getOpenAIClient();
+    const completion = await openai.chat.completions.create({
+        model: selectedModel.model,
+        messages,
+        temperature,
+    }, timeoutMs ? { timeout: timeoutMs, maxRetries: 0 } : undefined);
+    return completion.choices[0].message.content;
 }
 
 function extractMessageText(

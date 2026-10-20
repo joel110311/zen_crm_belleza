@@ -35,12 +35,15 @@ export const SUPPORTED_CHAT_MODELS: SupportedChatModelOption[] = [
         description: "Mas potente para conversaciones complejas.",
     },
     {
-        id: "gemini:gemini-2.0-flash",
+        id: "gemini:models/gemini-3.5-flash-lite",
         provider: "gemini",
-        model: "gemini-2.0-flash",
-        label: "Gemini 2.0 Flash",
-        description: "Respuesta veloz con buena calidad para chat diario.",
+        model: "models/gemini-3.5-flash-lite",
+        label: "Gemini 3.5 Flash-Lite",
+        description: "Modelo Flash-Lite para tareas de texto de alto volumen.",
     },
+    { id: "gemini:models/gemini-3.6-flash", provider: "gemini", model: "models/gemini-3.6-flash", label: "Gemini 3.6 Flash", description: "Modelo Flash de propósito general." },
+    { id: "gemini:models/gemini-3.8-flash", provider: "gemini", model: "models/gemini-3.8-flash", label: "Gemini 3.8 Flash", description: "Modelo Flash reciente para tareas complejas." },
+    { id: "gemini:models/gemini-3.1-pro-preview", provider: "gemini", model: "models/gemini-3.1-pro-preview", label: "Gemini 3.1 Pro · Preview", description: "Modelo avanzado en versión preliminar." },
     {
         id: "gemini:gemini-2.5-pro",
         provider: "gemini",
@@ -58,6 +61,9 @@ export const SUPPORTED_CHAT_MODELS: SupportedChatModelOption[] = [
 ];
 
 const DEPRECATED_CHAT_MODEL_MAP: Record<string, string> = {
+    "gemini:gemini-2.0-flash": "gemini:models/gemini-3.6-flash",
+    "gemini:models/gemini-2.0-flash": "gemini:models/gemini-3.6-flash",
+    "gemini-2.0-flash": "gemini:models/gemini-3.6-flash",
     "gemini:models/gemini-3.1-flash-lite-preview": "gemini:models/gemini-3.1-flash-lite",
     "gemini:gemini-3.1-flash-lite-preview": "gemini:models/gemini-3.1-flash-lite",
     "models/gemini-3.1-flash-lite-preview": "gemini:models/gemini-3.1-flash-lite",
@@ -98,6 +104,9 @@ export function normalizeChatModelSelection(value?: string | null) {
     if (legacyGeminiMatch) {
         return legacyGeminiMatch.id;
     }
+
+    // Additional models are admitted only after server-side account discovery on save.
+    if (/^gemini:models\/gemini-[a-zA-Z0-9._-]+$/.test(trimmed)) return trimmed;
 
     return DEFAULT_CHAT_MODEL_ID;
 }
