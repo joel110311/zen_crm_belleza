@@ -7,8 +7,8 @@ import styles from "./theme-customizer.module.css";
 import {
     applyColorTheme,
     DEFAULT_COLOR_THEME,
+    isColorTheme,
     persistColorTheme,
-    readStoredColorTheme,
     type ColorTheme,
 } from "@/lib/color-theme";
 
@@ -43,6 +43,12 @@ const COLOR_THEME_OPTIONS: Array<{
         preview: styles.pink,
     },
     {
+        id: "fuchsia",
+        name: "Fucsia",
+        description: "Encabezados intensos y citas en tonos rosa",
+        preview: styles.fuchsia,
+    },
+    {
         id: "gold",
         name: "Gold · Oro",
         description: "Oro antiguo y champán como acentos",
@@ -50,24 +56,26 @@ const COLOR_THEME_OPTIONS: Array<{
     },
 ];
 
-export function ThemeCustomizer() {
-    const [mounted, setMounted] = React.useState(false);
-    const [activeColorTheme, setActiveColorTheme] = React.useState<ColorTheme>(DEFAULT_COLOR_THEME);
+function subscribeToColorTheme(onChange: () => void) {
+    const observer = new MutationObserver(onChange);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-color-theme"] });
+    return () => observer.disconnect();
+}
 
-    React.useEffect(() => {
-        setMounted(true);
-        const storedTheme = readStoredColorTheme();
-        setActiveColorTheme(storedTheme);
-        applyColorTheme(storedTheme);
-    }, []);
+function getActiveColorTheme() {
+    const theme = document.documentElement.dataset.colorTheme;
+    return isColorTheme(theme) ? theme : DEFAULT_COLOR_THEME;
+}
+
+export function ThemeCustomizer() {
+    const activeColorTheme = React.useSyncExternalStore(subscribeToColorTheme, getActiveColorTheme, () => null);
 
     const handleColorThemeChange = (nextTheme: ColorTheme) => {
-        setActiveColorTheme(nextTheme);
         applyColorTheme(nextTheme);
         persistColorTheme(nextTheme);
     };
 
-    if (!mounted) return null;
+    if (!activeColorTheme) return null;
 
     return (
         <div className={styles.options} role="group" aria-label="Tema de colores">

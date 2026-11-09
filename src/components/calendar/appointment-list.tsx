@@ -59,7 +59,9 @@ export function AppointmentList({
           appointment.status === "scheduled"
             ? appointment.confirmationStatus === "pending"
               ? "Por confirmar"
-              : "Agendada"
+              : appointment.confirmationStatus === "confirmed"
+                ? "Confirmada"
+                : "Agendada"
             : {
                 completed: "Completada",
                 waiting: "En sala",
@@ -77,8 +79,15 @@ export function AppointmentList({
             new Date(appointment.startTime).getTime()) /
             60000,
         );
+        const pending =
+          appointment.status === "scheduled" &&
+          appointment.confirmationStatus === "pending";
         return (
-          <article key={appointment.id} className={styles.appointment}>
+          <article
+            key={appointment.id}
+            className={styles.appointment}
+            data-pending={pending || undefined}
+          >
             <div className={styles.appointmentTime}>
               <time className="font-medium tabular-nums">
                 {formatTimeInOperationZone(
@@ -97,62 +106,66 @@ export function AppointmentList({
                 )}
               </time>
             </div>
-            <button
-              type="button"
-              className="min-w-0 text-left"
-              aria-label={`Ver cita de ${name}`}
-              onClick={() => onEdit(appointment)}
-            >
-              <p className="break-words text-base font-semibold">{name}</p>
-              <p className="mt-1 break-words text-sm text-muted-foreground">
-                {appointment.appointmentType || appointment.title}
-              </p>
-              <p className="mt-2 break-words text-xs leading-relaxed text-muted-foreground">
-                {specialist} <span aria-hidden="true">·</span>{" "}
-                <Clock className="inline size-3" aria-hidden="true" />{" "}
-                {duration} min
-              </p>
-              <span className="mt-3 inline-flex rounded-md bg-primary/8 px-2 py-1 text-xs font-medium text-primary">
-                {status}
-                {appointment.isOverbook ? " · Sobreturno" : ""}
-              </span>
-            </button>
-            {!readOnly ? (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="size-11"
-                    aria-label={`Opciones de cita de ${name}`}
-                  >
-                    <MoreHorizontal />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={() => onEdit(appointment)}>
-                    Ver o editar cita
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={() => onDelete(appointment.id)}
-                    className="text-destructive"
-                  >
-                    <Trash2 className="size-4" />
-                    Eliminar cita
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            ) : (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-11"
-                aria-label={`Consultar cita de ${name}`}
+            <div className={styles.appointmentCard}>
+              <button
+                type="button"
+                className={`min-w-0 text-left ${styles.appointmentDetails}`}
+                aria-label={`Ver cita de ${name}`}
                 onClick={() => onEdit(appointment)}
               >
-                <ChevronRight />
-              </Button>
-            )}
+                <p className="break-words">
+                  <span className={`block text-base font-semibold ${styles.appointmentClient}`}>{name}</span>
+                  <span className={`mt-1 block text-sm text-muted-foreground ${styles.appointmentService}`}>
+                    {appointment.appointmentType || appointment.title}
+                  </span>
+                </p>
+                <p className={`mt-2 break-words text-xs leading-relaxed text-muted-foreground ${styles.appointmentMeta}`}>
+                  {specialist} <span aria-hidden="true">·</span>{" "}
+                  <Clock className="inline size-3" aria-hidden="true" />{" "}
+                  {duration} min
+                </p>
+                <span className={`mt-3 inline-flex rounded-md bg-primary/8 px-2 py-1 text-xs font-medium text-primary ${styles.appointmentStatus}`}>
+                  {status}
+                  {appointment.isOverbook ? " · Sobreturno" : ""}
+                </span>
+              </button>
+              {!readOnly ? (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-11"
+                      aria-label={`Opciones de cita de ${name}`}
+                    >
+                      <MoreHorizontal />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => onEdit(appointment)}>
+                      Ver o editar cita
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => onDelete(appointment.id)}
+                      className="text-destructive"
+                    >
+                      <Trash2 className="size-4" />
+                      Eliminar cita
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-11"
+                  aria-label={`Consultar cita de ${name}`}
+                  onClick={() => onEdit(appointment)}
+                >
+                  <ChevronRight />
+                </Button>
+              )}
+            </div>
           </article>
         );
       })}

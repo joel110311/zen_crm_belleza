@@ -24,11 +24,14 @@ Celular: una tarea clara, texto completo, campos de 16 px y controles de al meno
 | Apple | `apple` | `#0071e3` | `#2997ff` |
 | Olive | `green` | `#4c612b` | `#bdcd96` |
 | Pink | `pink` | `#a7426b` | `#eba6c1` |
+| Fucsia | `fuchsia` | `#a71155` | `#f493c3` |
 | Gold · Oro | `gold` | `#89651f` | `#ddbe78` |
 
 **Decisión posterior de Joel, 15 de octubre de 2026:** todos los temas comparten fondos neutros. Claro: fondo y tarjetas blancos, secundarios grises claros. Oscuro: fondo negro `#000000`, tarjetas y lateral `#1e1e1e`, secundarios `#2c2c2c`. Texto, bordes, formularios, barras de desplazamiento y burbujas usan grises, sin matices azules, rosas, verdes o dorados. Se retiran los fondos de color y gradientes de las primeras variantes.
 
 El color aparece en botones de acción, iconos, indicadores, foco y selecciones puntuales. No teñir otra vez toda la pantalla ni las tarjetas de contenido por cambiar el acento. Los colores de estado y de datos conservan su significado. El color propio configurado para el portal público permanece independiente del tema del navegador.
+
+Fucsia, aprobado el 9 de noviembre de 2026, añade encabezados sólidos en Hoy y Agenda y bloques de citas en tonos rosa en la vista de lista. Los pendientes se distinguen con texto y un rosa suave. Los fondos generales siguen siendo neutros y la cuadrícula de calendario conserva los colores de cada profesional. Pink mantiene su paleta.
 
 ## Roles y estados
 

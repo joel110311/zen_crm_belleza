@@ -18,8 +18,9 @@ function fixture(stored: string | null = null, blocked = false) {
     return { mod, globals, values, attributes };
 }
 
-test("every supported theme restores consistently before first paint and after mount, including Pink", () => {
-    const { mod: catalog } = fixture(); assert.ok(catalog.COLOR_THEMES.includes("pink")); assert.ok(catalog.COLOR_THEMES.includes("gold"));
+test("every supported theme restores consistently before first paint and after mount", () => {
+    const { mod: catalog } = fixture();
+    for (const theme of ["pink", "fuchsia", "gold"]) assert.ok(catalog.COLOR_THEMES.includes(theme));
     for (const theme of catalog.COLOR_THEMES) {
         const f = fixture(theme); vm.runInNewContext(f.mod.getColorThemeInitScript(), f.globals);
         assert.equal(f.attributes.get("data-color-theme"), theme); assert.equal(f.mod.readStoredColorTheme(), theme);

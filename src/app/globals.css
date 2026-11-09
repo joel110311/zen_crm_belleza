@@ -628,6 +628,40 @@ body {
   --audio-dot: #fad1e3;
 }
 
+:root[data-color-theme="fuchsia"] {
+  --primary: #a71155;
+  --primary-foreground: #ffffff;
+  --ring: var(--primary);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-ring: var(--ring);
+  --chart-1: var(--primary);
+  --audio-bar-active: color-mix(in srgb, var(--primary) 95%, transparent);
+  --audio-bar-inactive: color-mix(in srgb, var(--primary) 25%, transparent);
+  --audio-dot: var(--primary);
+  --fuchsia-heading: #a71155;
+  --fuchsia-heading-ink: #ffffff;
+  --fuchsia-wine: #a30e54;
+  --fuchsia-berry: #b61660;
+  --fuchsia-solid-ink: #ffffff;
+  --fuchsia-rose: #f18bbb;
+  --fuchsia-rose-ink: #47112e;
+  --fuchsia-petal: #f8c2dc;
+  --fuchsia-petal-ink: #4e1935;
+}
+
+:root.dark[data-color-theme="fuchsia"] {
+  --primary: #f493c3;
+  --primary-foreground: #381125;
+  --fuchsia-heading: #851148;
+  --fuchsia-wine: #801243;
+  --fuchsia-berry: #951850;
+  --fuchsia-rose: #5e2845;
+  --fuchsia-rose-ink: #ffe4f2;
+  --fuchsia-petal: #472538;
+  --fuchsia-petal-ink: #ffdeef;
+}
+
 :root[data-color-theme="gold"] {
   --primary: #89651f;
   --primary-foreground: #ffffff;

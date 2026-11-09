@@ -13,6 +13,8 @@
 .olive { --preview-primary: #4c612b; }
 .apple { --preview-primary: #0071e3; }
 .pink { --preview-primary: #a7426b; }
+.fuchsia { --preview-primary: #a71155; }
+.preview.fuchsia > span:nth-child(2) { background: #f18bbb; }
 @container settings-content (min-width: 680px) { .options { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (prefers-reduced-motion: reduce) { .option { transition: none; } }
 

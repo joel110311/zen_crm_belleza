@@ -15,6 +15,27 @@
 .heading p {
   overflow-wrap: anywhere;
 }
+:global([data-color-theme="fuchsia"]) .heading {
+  align-items: center;
+  padding: clamp(18px, 3vw, 26px);
+  border-radius: 16px;
+  background: var(--fuchsia-heading);
+  color: var(--fuchsia-heading-ink);
+}
+:global([data-color-theme="fuchsia"]) .heading p {
+  color: var(--fuchsia-heading-ink);
+}
+:global([data-color-theme="fuchsia"]) .heading [data-slot="button"] {
+  background: var(--card);
+  color: var(--primary);
+}
+:global([data-color-theme="fuchsia"]) .heading [data-slot="button"]:hover {
+  background: var(--secondary);
+}
+:global([data-color-theme="fuchsia"]) .heading [data-slot="button"]:focus-visible {
+  outline: 2px solid var(--fuchsia-heading-ink);
+  outline-offset: 3px;
+}
 .stats {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -81,6 +102,9 @@
   border: 1px solid color-mix(in srgb, var(--primary) 20%, var(--border));
   border-radius: 14px;
   background: var(--workspace-highlight, color-mix(in srgb, var(--primary) 7%, var(--card)));
+}
+:global([data-color-theme="fuchsia"]) .nextAppointment {
+  border-inline-start: 4px solid var(--primary);
 }
 .empty {
   padding: 28px 20px;

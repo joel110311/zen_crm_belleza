@@ -84,6 +84,117 @@
   padding-top: 2px;
   font-size: 14px;
 }
+.appointmentCard {
+  display: contents;
+}
+:global([data-color-theme="fuchsia"]) .heading {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  padding: 16px;
+  border-radius: 15px;
+  color: var(--fuchsia-heading-ink);
+  background: var(--fuchsia-heading);
+}
+:global([data-color-theme="fuchsia"]) .heading p {
+  color: var(--fuchsia-heading-ink);
+}
+:global([data-color-theme="fuchsia"]) .heading > button {
+  width: auto;
+  color: var(--primary);
+  background: var(--card);
+}
+:global([data-color-theme="fuchsia"]) .heading > button:hover {
+  background: var(--secondary);
+}
+:global([data-color-theme="fuchsia"]) .heading > button:focus-visible {
+  outline: 2px solid var(--fuchsia-heading-ink);
+  outline-offset: 3px;
+}
+:global([data-color-theme="fuchsia"]) .appointment {
+  --event-bg: var(--fuchsia-wine);
+  --event-ink: var(--fuchsia-solid-ink);
+  grid-template-columns: clamp(40px, 12vw, 65px) minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+:global([data-color-theme="fuchsia"]) .appointment:nth-of-type(4n + 2) {
+  --event-bg: var(--fuchsia-rose);
+  --event-ink: var(--fuchsia-rose-ink);
+}
+:global([data-color-theme="fuchsia"]) .appointment:nth-of-type(4n + 3) {
+  --event-bg: var(--fuchsia-berry);
+}
+:global([data-color-theme="fuchsia"]) .appointment[data-pending] {
+  --event-bg: var(--fuchsia-petal);
+  --event-ink: var(--fuchsia-petal-ink);
+}
+:global([data-color-theme="fuchsia"]) .appointmentTime {
+  padding: 0;
+  font-size: 13px;
+}
+:global([data-color-theme="fuchsia"]) .appointmentCard {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) 44px;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 4px 6px 12px;
+  border-radius: 12px;
+  color: var(--event-ink);
+  background: var(--event-bg);
+  box-shadow: 0 2px 5px color-mix(in srgb, var(--fuchsia-wine) 14%, transparent);
+}
+:global([data-color-theme="fuchsia"]) .appointmentCard::before {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  border-radius: inherit;
+  background: #ffffff12;
+  clip-path: polygon(0 0, 66% 0, 50% 100%, 0 100%);
+  pointer-events: none;
+  content: "";
+}
+:global([data-color-theme="fuchsia"]) .appointmentDetails {
+  min-height: 44px;
+  border-radius: 5px;
+}
+:global([data-color-theme="fuchsia"]) .appointmentClient,
+:global([data-color-theme="fuchsia"]) .appointmentService {
+  display: inline;
+  font-size: 14px;
+  font-weight: 650;
+  color: inherit;
+}
+:global([data-color-theme="fuchsia"]) .appointmentService::before {
+  content: " · ";
+}
+:global([data-color-theme="fuchsia"]) .appointmentMeta,
+:global([data-color-theme="fuchsia"]) .appointmentStatus {
+  color: inherit;
+  margin-top: 2px;
+}
+:global([data-color-theme="fuchsia"]) .appointmentStatus {
+  padding: 0;
+  background: transparent;
+  font-weight: 650;
+}
+:global([data-color-theme="fuchsia"]) .appointmentCard > [data-slot="button"] {
+  color: inherit;
+}
+:global([data-color-theme="fuchsia"]) .appointmentCard > [data-slot="button"]:hover {
+  color: inherit;
+  background: color-mix(in srgb, currentColor 12%, transparent);
+}
+:global([data-color-theme="fuchsia"]) .appointmentCard button:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
 .agenda[data-view="calendar"] .calendarCanvas {
   display: flex;
 }
