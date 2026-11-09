@@ -1,18 +1,21 @@
 # ---- Dependencies ----
-FROM node:20-alpine AS deps
+FROM node:24.22.1-alpine AS deps
+RUN apk add --no-cache "ca-certificates>=20261020-r0" && update-ca-certificates
 WORKDIR /app
 
-RUN apk add --no-cache python3 make g++
+RUN apk add --no-cache python3 make g++ ffmpeg
 COPY package.json package-lock.json* ./
-RUN npm ci --omit=dev
+RUN test -x /usr/bin/ffmpeg && FFMPEG_BIN=/usr/bin/ffmpeg npm ci --omit=dev
 
 # ---- Builder ----
-FROM node:20-alpine AS builder
+FROM node:24.22.1-alpine AS builder
+RUN apk add --no-cache "ca-certificates>=20261020-r0" && update-ca-certificates
 WORKDIR /app
 
-RUN apk add --no-cache python3 make g++
+RUN apk add --no-cache python3 make g++ ffmpeg
 COPY package.json package-lock.json* ./
-RUN npm ci
+# Reuse Alpine's binary instead of downloading a static build from GitHub during npm ci.
+RUN test -x /usr/bin/ffmpeg && FFMPEG_BIN=/usr/bin/ffmpeg npm ci
 
 COPY . .
 
@@ -27,7 +30,8 @@ RUN npx prisma generate --config prisma.control.config.ts
 RUN npm run build
 
 # ---- Runner ----
-FROM node:20-alpine AS runner
+FROM node:24.22.1-alpine AS runner
+RUN apk add --no-cache "ca-certificates>=20261020-r0" && update-ca-certificates
 WORKDIR /app
 
 ENV NODE_ENV=production
